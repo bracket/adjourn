@@ -109,32 +109,91 @@ violation(missing_test(Module)) :-
 
 ## Installation
 
-> **Note**: This project is in early development. Installation instructions will be finalized as the implementation progresses.
-
 ### Prerequisites
 
 - Python 3.11 or higher
-- SWI-Prolog 9.1+ (for Janus Python integration)
+- pip (Python package manager)
+- SWI-Prolog 9.1+ (for Janus Python integration - not yet required)
 
-### Planned Installation Steps
+### Installing from Source
 
 ```bash
-# Install SWI-Prolog with Janus support
-# (Platform-specific instructions TBD)
-
 # Clone the repository
 git clone https://github.com/bracket/constraint.git
 cd constraint
 
-# Install Python dependencies
-pip install -e .
+# Install in development mode with all dependencies
+pip install -e ".[dev]"
 ```
+
+This will install:
+- The `constraint` package in editable mode
+- Click framework for the CLI
+- Development tools (mypy, ruff, pytest)
+- The `constraint` command-line tool
 
 ## Usage
 
-> **Note**: These are conceptual examples. The CLI and API are still being designed.
-
 ### Command-Line Interface
+
+The constraint CLI provides commands for validating repositories against constraints:
+
+```bash
+# Display help and available commands
+constraint --help
+
+# Display version information
+constraint --version
+```
+
+### Shell Completion
+
+The CLI supports shell completion for bash, zsh, and fish. This enables tab-completion of commands and options.
+
+#### Installing Bash Completion
+
+```bash
+# Generate and save the completion script
+constraint complete -o ~/.local/share/bash-completion/completions/constraint
+
+# Source it in your ~/.bashrc
+echo 'source ~/.local/share/bash-completion/completions/constraint' >> ~/.bashrc
+
+# Or enable it immediately for the current session
+eval "$(constraint complete)"
+```
+
+#### Installing Zsh Completion
+
+```bash
+# Create completions directory if it doesn't exist
+mkdir -p ~/.zsh/completions
+
+# Generate and save the completion script
+constraint complete --shell zsh -o ~/.zsh/completions/_constraint
+
+# Add to your ~/.zshrc (if not already present)
+echo 'fpath=(~/.zsh/completions $fpath)' >> ~/.zshrc
+echo 'autoload -Uz compinit && compinit' >> ~/.zshrc
+
+# Or enable it immediately for the current session
+eval "$(constraint complete --shell zsh)"
+```
+
+#### Installing Fish Completion
+
+```bash
+# Generate and save to Fish's completion directory
+constraint complete --shell fish -o ~/.config/fish/completions/constraint.fish
+
+# Fish automatically loads completions from this directory
+# Or enable it immediately for the current session
+constraint complete --shell fish | source
+```
+
+### Future CLI Commands
+
+> **Note**: The following commands are planned but not yet implemented.
 
 ```bash
 # Validate a repository against constraints
@@ -194,14 +253,20 @@ This project follows the **quickspec workflow**:
 ### Development Setup
 
 ```bash
+# Install the package in development mode with dev dependencies
+pip install -e ".[dev]"
+
 # Run tests
 pytest
 
-# Type checking (planned)
+# Type checking
 mypy src/constraint
 
-# Linting (planned)
+# Linting
 ruff check src/constraint
+
+# Run the CLI in development mode
+python -m constraint.cli --help
 ```
 
 ## Project Status
@@ -210,9 +275,10 @@ This is an **early-stage project** under active development. Current status:
 
 - [x] Project concept and architecture defined
 - [x] Repository structure established
-- [ ] Python package structure
+- [x] Python package structure
+- [x] CLI framework (Click) with bash completion
+- [x] Type checking (mypy) and linting (ruff) configured
 - [ ] Janus/SWI-Prolog integration
-- [ ] CLI framework (Click)
 - [ ] Core extractors
 - [ ] Constraint validation engine
 - [ ] Example spec packs
