@@ -1,4 +1,3 @@
-````instructions
 # Copilot Instructions: constraint
 
 ## Project Overview
@@ -86,4 +85,3 @@
 - Prioritize clear interfaces between Python and Prolog layers.
 - Design extractors to be modular and composable.
 - Keep constraint definitions simple and maintainable.
-````
