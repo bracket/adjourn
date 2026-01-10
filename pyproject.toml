@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "project-template"
+version = "0.0.0"
+description = "Template scaffold to bootstrap new projects. Rename and update during onboarding."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "TODO: Your Name" }
+]
+dependencies = []
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["src/tests"]
+addopts = "-q"
+
+[tool.coverage.run]
+source = ["project_name"]
+branch = true

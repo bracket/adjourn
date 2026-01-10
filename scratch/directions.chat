@@ -1,0 +1,129 @@
+<!-- :timestamp: 2026-01-10T03:36:36.602518-08:00 -->
+<!-- :transcribe-model: gpt-4o-mini-transcribe -->
+<!-- :input_file: /Users/bracket/tmp/chatter-voice-tmp.flac -->
+<!-- :rewrite-prompt: informal -->
+<!-- :rewrite_tokens: 936 -->
+Me:
+So I'd like to go on a little tangent and discuss two potential directions related to constraint, although I'm not clear on how yet. One idea is using logical goals in a literal sense, where a high-level goal is something that is meant to be achieved in the real world through LLMs, agents, humans, or other means. For example, consider a predicate like "pass this class" with variables for the person and the class. The body of the clause might include passing the first midterm, passing the final, turning in homework, and maybe having a grade predicate for those, such as passing with better than 50%. The idea is that these high-level goals become things that a human needs to try and execute or achieve. So if Fernando passed the class or passed the first midterm with 50%, that turns into a structured goal of having studied the first five chapters and understood the material.
+
+This idea is related to long-term goal searching, not just within a single invocation of a Prolog program or query, but by interrupting the search mechanism. It would allow some other non-logical program to attempt to achieve a sub-goal, potentially repeatedly if some looping mechanism can be encoded. If the sub-goal can ultimately be achieved, meaning it can be proven by this external program in some way, then the rest of the goal continues to be resolved.
+
+The concept of goal resolution could serve as a template for how an AI agent might operate: starting with a high-level goal that must be true, and having the agent figure out how to achieve sub-goals. The main challenge is figuring out how to structure the stopping and restarting of goal search in a structured way, where a logical query resolves what it can via standard logical programming, then suspends the search for parts that need to be resolved by non-logical means, such as humans or other agents.
+
+Chatter:
+According to a document from **January 1993** (the dated preface in *The Art of Prolog*), what you are describing is a clean generalization of two patterns the Prolog literature already treats as “normal” once you move to meta-interpreters: (1) **explicit resolvents/continuations** (so you can stop and resume), and (2) **explicit oracles** (so “missing information” can be supplied interactively or externally).
+
+## 1) You are reinventing “askable goals” (but with richer executors than a human at a terminal)
+
+In Chapter 17’s “interactive rule interpreter,” the solver is extended so that certain predicates are *designated* as **askable**, and when such a goal is encountered, the interpreter prompts for information and then *records* the answer (so it won’t ask twice) using `assert` into a “known” store.
+
+That is already your “pass this class” idea in embryo:
+
+* A high-level goal decomposes into sub-goals.
+* Some sub-goals are provable “in logic” from rules/facts.
+* Some sub-goals are **not currently provable** and must be sourced from outside (human/API/agent), i.e., an oracle.
+* Once the oracle supplies/validates them, they become facts and the proof continues.
+
+The same “oracle” pattern also appears in the debugging/diagnosis programs, where `query_goal/2` asks “Is the goal … true?” and reads an answer—again, an explicit bridge between proof search and an external source of truth.
+
+Your twist (LLMs/agents/humans instead of a console prompt) is straightforward: keep the **askable table**, but replace “ask the user” with “dispatch to an executor.”
+
+## 2) The key engineering move: make the *remaining goal list* explicit (continuation-style meta-interpreter)
+
+To *interrupt* and later *resume*, you need the solver to expose “what is left to do.” The book’s continuation-style meta-interpreter does exactly that: it makes the **remaining goals in the resolvent explicit** and notes that enhancements can exploit this because “the resolvent is accessible during the computation.”
+
+That’s the structural hook for suspension:
+
+* Normal Prolog hides the resolvent inside the engine.
+* A meta-interpreter can represent it explicitly (often as a list).
+* When you encounter an “external” goal, you *return* (or yield) a structured “pending obligation” plus the current residual goal list (the continuation).
+
+Conceptually, you want your solver to have an outcome like:
+
+* `solved(AnswerSubst)`
+* `suspended(PendingExternalGoals, ResidualGoals, CurrentBindings)`
+
+…and then your orchestrator (Python, agents, humans) works the pending set, asserts results, and calls back into the solver with the updated fact base.
+
+## 3) Resumption requires transporting partially-instantiated goals safely: freeze/melt is the canonical technique
+
+Once you suspend, you will want to persist:
+
+* the pending external goal(s),
+* the residual resolvent,
+* and the current variable bindings (which may be partially instantiated).
+
+But raw Prolog variables are not first-class objects you can safely serialize. The book explicitly proposes `freeze(Term,Frozen)` / `melt(Frozen,Thawed)` to convert a term with variables into a manipulable ground representation and then reconstruct it later, preserving instantiations made in the interim.
+
+That is almost exactly what you need for “stop the proof, hand a sub-goal to an external process, resume later.”
+
+## 4) A concrete architecture for “interruptible goal resolution”
+
+Here is a design that stays faithful to logic-program structure while supporting long-horizon execution:
+
+### Layer A — Domain rules (“what it means to pass”)
+
+Keep these mostly pure and declarative (your `pass_class/…` decomposes into exam/homework/attendance/threshold predicates).
+
+### Layer B — Meta-knowledge (“which predicates are externally dischargeable”)
+
+Maintain a table like:
+
+* `askable(grade(Person, Assessment, Score)).`
+* `askable(studied(Person, ChapterRange)).`
+* `askable(turned_in(Person, HomeworkId)).`
+
+This is exactly the book’s “askable facts table” approach, and it keeps the rules uniform while making the “external interface” explicit meta-knowledge.
+
+### Layer C — An interruptible solver (meta-interpreter over an explicit resolvent)
+
+Use a continuation/resolvent-explicit interpreter (Chapter 17’s continuation-style shape) and add one rule:
+
+* If the selected goal is provable internally: reduce as usual.
+* If it is *askable/external* and not currently known: **suspend** and emit it as a task.
+* If it is askable but known true/false: proceed accordingly.
+
+This mirrors the interactive interpreter’s “don’t ask twice” behavior by recording answers in a known-store, except now your “ask” operation is a dispatch to an external executor rather than a console prompt.
+
+### Layer D — Orchestration loop (Python/agent/human)
+
+A simple, robust loop:
+
+1. Call `solve_interruptible(Goal, Outcome)`.
+2. If `Outcome = solved`: done.
+3. If `Outcome = suspended(Pending, FrozenContinuation)`:
+
+   * persist the state (freeze is helpful here),
+   * dispatch `Pending` to executors (LLM agent, LMS API fetch, human checklist, etc.),
+   * when an executor returns evidence/results, assert `known-to-be-true/1` or `known-to-be-false/1` facts (exactly like the book’s interactive version does),
+   * resume by melting and continuing the stored continuation.
+
+## 5) Where “agentic planning templates” fit cleanly
+
+If you keep the Prolog side declarative, then a suspended goal is not “a procedure to run,” it is an **obligation** (a proposition to make true, with parameters). That is a good interface to agents:
+
+* An LLM planner can propose candidate actions that would establish `studied(Fernando, chapters(1,5))`.
+* A human can confirm completion (or an API can confirm evidence).
+* Only once there is evidence/confirmation do you assert the corresponding fact and let the proof proceed.
+
+This gives you a principled separation:
+
+* **Logic program** = specification + dependency structure.
+* **Agent/human programs** = world-interaction mechanisms.
+
+It also keeps you honest about what is “proven” versus what is merely “planned.”
+
+## 6) Two pitfalls to design around immediately
+
+1. **Non-monotonicity and retraction**
+   If you allow external agents to assert facts too freely, you will want a discipline: facts should be asserted with provenance (who/what asserted, when, with what evidence) and potentially be retractable if later contradicted. The book’s interactive interpreter stores answers to avoid repeated questions; you’ll want the same, but with auditability.
+
+2. **Variable instantiation strategy**
+   Some tasks only make sense once variables are grounded enough. The diagnosis chapter explicitly notes issues when proof trees are not ground and suggests instantiating or having the oracle instantiate queried goals that contain variables.
+   In your system: decide when to “ship” an external task with free variables versus delaying until it is sufficiently instantiated.
+
+---
+
+If you want a next concrete step inside `constraint`, the smallest “walking skeleton” is: implement a continuation-style meta-interpreter that (a) reduces normal goals, (b) suspends on `askable/1` goals returning the residual resolvent, and (c) supports freeze/melt so Python can persist and resume the computation safely.
+
+
