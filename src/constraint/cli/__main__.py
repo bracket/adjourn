@@ -7,16 +7,19 @@ from typing import Optional
 import click
 
 
-@click.group()
+@click.group(invoke_without_command=True)
 @click.version_option(version="0.0.0", prog_name="constraint")
 @click.help_option("-h", "--help")
-def main() -> None:
+@click.pass_context
+def main(ctx: click.Context) -> None:
     """Constraint checking system for validating code repositories against logical rules.
     
     This tool validates code repositories against user-defined constraints
     using Python extractors and Prolog logic rules.
     """
-    pass
+    # If no subcommand is provided, show help
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
 
 
 @main.command()
