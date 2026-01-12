@@ -22,10 +22,12 @@ def check_membership(value: int, numbers: list[int]) -> None:
     """
     print(f"Testing membership check for value {value}:")
     result = query_once("member(Value, List)", {"Value": value, "List": numbers})
-    # query_once returns None if the query fails, or a dict (possibly empty) if it succeeds
-    # When all variables are bound, successful queries return {} (empty dict)
-    # We must check 'is not None' rather than truthiness, since {} is falsy in Python
-    if result is not None:
+    # In Janus 1.5+, query_once returns a dict with a 'truth' key for queries
+    # where all variables are bound (like membership checks):
+    #   - {'truth': True} if the query succeeds
+    #   - {'truth': False} if the query fails
+    # For queries with unbound variables, it returns bindings or None
+    if result and result.get('truth', True):
         print(f"  ✓ {value} is a member of the list")
     else:
         print(f"  ✗ {value} is not a member of the list")
