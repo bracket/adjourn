@@ -45,10 +45,19 @@
 ## CLI Structure (Click)
 - Use Click framework for all CLI commands.
 - Structure commands hierarchically: main command with subcommands for different operations.
+- Main entry point: `constraint.cli.__main__:main` (accessible via `constraint` command after installation)
+- Can also be invoked as `python -m constraint.cli`
 - Provide clear help text for all commands and options.
 - Use consistent option naming (e.g., `--repo-path`, `--constraint-file`, `--verbose`).
 - Implement graceful error handling with informative messages.
 - Return appropriate exit codes: 0 for success, non-zero for errors/violations.
+
+### Bash Completion
+- The CLI supports shell completion via the `constraint complete` command
+- Generate completion scripts for bash, zsh, or fish: `constraint complete --shell [bash|zsh|fish]`
+- Output to stdout by default or to a file with `-o/--output` option
+- Generated scripts include commented installation instructions
+- To enable immediately: `eval "$(constraint complete)"`
 
 ## Knowledge Extraction Workflow
 - **Extractors**: Python modules that scan repositories and generate facts.
@@ -71,13 +80,24 @@
 - Validate constraint checking logic with known-good and known-bad scenarios.
 
 ## Tooling
-- Debug with `debugpy` on port 5678 (see `.vscode/launch.json`). Use `.vscode/bin/vsdebug` after pointing `MODULE` to the CLI entry point.
+- **Click**: CLI framework for command-line interface
+- **mypy**: Static type checking (development dependency)
+- **ruff**: Fast Python linter (development dependency)
+- **pytest**: Testing framework
+- Debug with `debugpy` on port 5678 (see `.vscode/launch.json`). Use `.vscode/bin/vsdebug` which is configured to run `python -m constraint.cli`.
 - Update `.vscode/settings.json` and `extensions.json` only when necessary for the project; keep defaults minimal.
 
+### Linting and Type Checking
+- Run type checking: `mypy src/constraint`
+- Run linting: `ruff check src/constraint`
+- All code must pass both mypy and ruff checks before commit
+
 ## Dependencies
-- **Click**: CLI framework (planned)
+- **Click**: CLI framework (>=8.1.0) - installed
+- **mypy**: Static type checking (>=1.0.0) - development dependency
+- **ruff**: Fast Python linter (>=0.1.0) - development dependency
+- **pytest**: Testing framework (>=7.4.0) - development dependency
 - **Janus**: SWI-Prolog Python integration (requires SWI-Prolog 9.1+) (planned)
-- **pytest**: Testing framework
 - Additional dependencies should be minimal and justified.
 
 ## Development Notes

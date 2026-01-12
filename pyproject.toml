@@ -3,15 +3,27 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "project-template"
+name = "constraint"
 version = "0.0.0"
-description = "Template scaffold to bootstrap new projects. Rename and update during onboarding."
+description = "A Python-based constraint checking system for validating code repositories against logical rules"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [
     { name = "TODO: Your Name" }
 ]
-dependencies = []
+dependencies = [
+    "click>=8.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "mypy>=1.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+constraint = "constraint.cli.__main__:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -24,5 +36,5 @@ testpaths = ["src/tests"]
 addopts = "-q"
 
 [tool.coverage.run]
-source = ["project_name"]
+source = ["constraint"]
 branch = true
