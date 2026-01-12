@@ -50,8 +50,11 @@ def main() -> None:
     
     # Load the Prolog file
     # The consult/1 predicate loads Prolog source files
-    # Note: Using f-string here is safe as prolog_file is constructed from __file__
-    # and not from user input, so there's no injection risk
+    # Note: Using f-string here is safe because:
+    #   1. prolog_file is constructed from __file__ (not user input)
+    #   2. Path objects from pathlib normalize paths securely
+    #   3. consult/1 requires a string path and doesn't support parameter binding
+    # In production code with user-supplied paths, validate/sanitize paths first.
     print(f"Loading Prolog file: {prolog_file}")
     query_once(f"consult('{prolog_file}')")
     print("✓ Prolog file loaded successfully")

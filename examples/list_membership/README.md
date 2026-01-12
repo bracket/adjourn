@@ -125,6 +125,8 @@ from janus_swi import query_once, query
 prolog_file = Path(__file__).parent / "list_member.pl"
 
 # Load Prolog file
+# Note: This uses string interpolation which is safe here since the path
+# is derived from __file__. For user-supplied paths, validate/sanitize first.
 query_once(f"consult('{prolog_file}')")
 
 # Enumerate all elements
