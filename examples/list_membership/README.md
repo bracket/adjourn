@@ -118,10 +118,14 @@ This predicate works in two modes:
 The Python script uses Janus to interact with Prolog:
 
 ```python
+from pathlib import Path
 from janus_swi import query_once, query
 
+# Get the path to the Prolog file
+prolog_file = Path(__file__).parent / "list_member.pl"
+
 # Load Prolog file
-query_once("consult('list_member.pl')")
+query_once(f"consult('{prolog_file}')")
 
 # Enumerate all elements
 for solution in query("member(X, List)", {"List": [10, 20, 30]}):

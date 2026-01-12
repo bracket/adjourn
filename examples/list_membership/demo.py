@@ -13,6 +13,21 @@ from pathlib import Path
 from janus_swi import query_once, query
 
 
+def check_membership(value: int, numbers: list[int]) -> None:
+    """Check if a value is a member of the list and print the result.
+    
+    Args:
+        value: The value to check for membership
+        numbers: The list to check against
+    """
+    print(f"Testing membership check for value {value}:")
+    result = query_once("member(Value, List)", {"Value": value, "List": numbers})
+    if result:
+        print(f"  ✓ {value} is a member of the list")
+    else:
+        print(f"  ✗ {value} is not a member of the list")
+
+
 def main() -> None:
     """Demonstrate Python-Prolog integration with list membership enumeration.
     
@@ -35,6 +50,8 @@ def main() -> None:
     
     # Load the Prolog file
     # The consult/1 predicate loads Prolog source files
+    # Note: Using f-string here is safe as prolog_file is constructed from __file__
+    # and not from user input, so there's no injection risk
     print(f"Loading Prolog file: {prolog_file}")
     query_once(f"consult('{prolog_file}')")
     print("✓ Prolog file loaded successfully")
@@ -56,23 +73,9 @@ def main() -> None:
     print(f"Total elements enumerated: {element_count}")
     print()
     
-    # Demonstrate membership check
-    test_value = 30
-    print(f"Testing membership check for value {test_value}:")
-    result = query_once("member(Value, List)", {"Value": test_value, "List": numbers})
-    if result:
-        print(f"  ✓ {test_value} is a member of the list")
-    else:
-        print(f"  ✗ {test_value} is not a member of the list")
-    
-    # Test with a value not in the list
-    test_value = 99
-    print(f"Testing membership check for value {test_value}:")
-    result = query_once("member(Value, List)", {"Value": test_value, "List": numbers})
-    if result:
-        print(f"  ✓ {test_value} is a member of the list")
-    else:
-        print(f"  ✗ {test_value} is not a member of the list")
+    # Demonstrate membership checks
+    check_membership(30, numbers)
+    check_membership(99, numbers)
 
 
 if __name__ == "__main__":
