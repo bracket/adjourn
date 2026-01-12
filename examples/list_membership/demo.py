@@ -9,7 +9,6 @@ This example shows how to:
 """
 
 from pathlib import Path
-from typing import Any
 
 from janus_swi import query_once, query
 
