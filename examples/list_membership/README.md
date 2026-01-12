@@ -135,7 +135,11 @@ for solution in query("member(X, List)", {"List": [10, 20, 30]}):
 
 # Check membership
 result = query_once("member(Value, List)", {"Value": 30, "List": [10, 20, 30]})
-# result is truthy if 30 is in the list
+# IMPORTANT: Check 'is not None' rather than truthiness
+# When all variables are bound, query_once returns {} (empty dict) on success
+# Empty dicts are falsy in Python, so 'if result:' would fail incorrectly
+if result is not None:
+    print("30 is in the list")
 ```
 
 ## Key Concepts
@@ -143,6 +147,9 @@ result = query_once("member(Value, List)", {"Value": 30, "List": [10, 20, 30]})
 ### Janus Query Functions
 
 - **`query_once(query_string, bindings={})`**: Executes a Prolog query and returns the first solution (or None). Use for membership checks or deterministic queries.
+  - Returns a dictionary with variable bindings if the query succeeds
+  - Returns `None` if the query fails
+  - **Important**: When all variables are already bound (e.g., in membership checks), a successful query returns an empty dict `{}`. Since empty dicts are falsy in Python, always check `if result is not None:` rather than `if result:`.
   
 - **`query(query_string, bindings={})`**: Returns an iterator over all solutions. Use for enumerating multiple results via backtracking.
 
