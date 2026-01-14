@@ -100,20 +100,23 @@ def main() -> None:
         
         # Register Python callbacks with Janus
         # We define Prolog predicates that use py_call/2 to invoke our Python functions
-        # py_call(Module:Function, Result) calls Function from Module and unifies Result
-        # py_call(Module:Function(Args), Result) calls Function(Args) from Module
+        # For functions with no arguments: py_call(Module:Function, Result)
+        # For functions with arguments: py_call(Module:Function(Args), Result)
+        # For void functions (no return): use py_call(Module:Function(Args)) or py_call(Module:Function(Args), _)
         
         # Define the py_get_input/1 predicate in Prolog to call our Python function
+        # py_get_input() takes no arguments and returns a string
         query_once("""
             assertz((py_get_input(Input) :-
-                py_call(demo:py_get_input(), Input)
+                py_call(demo:py_get_input, Input)
             ))
         """)
         
         # Define the py_print/1 predicate in Prolog to call our Python function
+        # py_print(message) takes a message argument and returns None
         query_once("""
             assertz((py_print(Message) :-
-                py_call(demo:py_print(Message))
+                py_call(demo:py_print(Message), _)
             ))
         """)
         
