@@ -5,7 +5,7 @@ Here, Prolog owns the main control flow and calls back to Python for user input.
 
 This demonstrates:
 1. Prolog as the control flow driver (owns the main loop)
-2. Python callbacks registered as Janus foreign predicates
+2. Python callbacks invoked via py_call/2 from Prolog predicates
 3. Bidirectional integration: Prolog -> Python -> Prolog
 4. Clean handling of EOF (Ctrl-D) and empty input termination
 5. List building and display logic living entirely in Prolog

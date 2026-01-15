@@ -19,7 +19,7 @@ py_get_input(Input) :-
     py_call(demo:py_get_input(), Input).
 
 % py_print/1 - Call Python to print a message
-% This predicate uses py_call/1 to invoke the Python demo.py_print(message) function
+% This predicate uses py_call/2 to invoke the Python demo.py_print(message) function
 % Mode: py_print(+Message)
 %   Message: String or term to print
 py_print(Message) :-
