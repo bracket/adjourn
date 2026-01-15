@@ -39,12 +39,12 @@ Python main() → registers callbacks → invokes Prolog main/0 →
 ## Prerequisites
 
 - Python 3.11 or higher
-- SWI-Prolog 9.1 or higher installed on your system
+- SWI-Prolog 9.2.9 or higher installed on your system
 - The `constraint` package installed with Janus support
 
 ## Installation
 
-1. Ensure SWI-Prolog 9.1+ is installed:
+1. Ensure SWI-Prolog 9.2.9+ is installed:
    ```bash
    # On Ubuntu/Debian
    sudo apt-add-repository ppa:swi-prolog/stable
@@ -288,7 +288,7 @@ To build upon this example:
 Ensure `janus-swi` is installed: `pip install janus-swi`
 
 ### "SWI-Prolog not found"
-Install SWI-Prolog 9.1+ on your system (see Installation section above)
+Install SWI-Prolog 9.2.9+ on your system (see Installation section above)
 
 ### "Foreign predicate not found"
 Ensure the Prolog file is loaded successfully and the callbacks are registered before calling `main`.

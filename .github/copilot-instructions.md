@@ -97,7 +97,7 @@
 - **mypy**: Static type checking (>=1.0.0) - development dependency
 - **ruff**: Fast Python linter (>=0.1.0) - development dependency
 - **pytest**: Testing framework (>=7.4.0) - development dependency
-- **Janus**: SWI-Prolog Python integration (requires SWI-Prolog 9.1+) (planned)
+- **Janus**: SWI-Prolog Python integration (requires SWI-Prolog 9.2.9+)
 - Additional dependencies should be minimal and justified.
 
 ## Development Notes

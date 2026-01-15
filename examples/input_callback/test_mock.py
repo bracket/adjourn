@@ -7,7 +7,7 @@ This script simulates the Prolog-Python interaction to verify that:
 2. Input handling (including EOF) functions as expected
 3. The control flow logic is sound
 
-Note: This is a mock test since we cannot install SWI-Prolog 9.1.12+ in this environment.
+Note: This is a mock test since we cannot install SWI-Prolog 9.2.9+ in this environment.
 """
 
 import sys
@@ -127,7 +127,7 @@ def main():
     print("Mock Tests for input_callback Example")
     print("=" * 70)
     print("\nNote: These tests validate the Python callback logic.")
-    print("Full integration testing requires SWI-Prolog 9.1.12+")
+    print("Full integration testing requires SWI-Prolog 9.2.9+")
     print("=" * 70)
     
     try:
@@ -141,7 +141,7 @@ def main():
         print("=" * 70)
         print("\nThe Python callback functions are working correctly.")
         print("To test the full Prolog-Python integration:")
-        print("  1. Install SWI-Prolog 9.1.12 or higher")
+        print("  1. Install SWI-Prolog 9.2.9 or higher")
         print("  2. Install janus-swi: pip install janus-swi")
         print("  3. Run: python examples/input_callback/demo.py")
         print("=" * 70)
