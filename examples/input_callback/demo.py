@@ -14,7 +14,7 @@ This demonstrates:
 import sys
 from pathlib import Path
 
-from janus_swi import query_once
+import janus_swi as janus
 
 
 def py_get_input() -> dict:
@@ -39,14 +39,14 @@ def py_get_input() -> dict:
         # Read input from user - no prompt, Prolog handles that
         user_input = input()
         # Return response(user_input, ok)
-        return {'functor': 'response', 'args': [user_input, 'ok']}
+        return (user_input, 'ok')
     except EOFError:
         # User pressed Ctrl-D (EOF) - return response('', eof)
-        return {'functor': 'response', 'args': ['', 'eof']}
+        return ('', 'eof')
     except KeyboardInterrupt:
         # User pressed Ctrl-C - treat as EOF
         print()  # Newline after ^C
-        return {'functor': 'response', 'args': ['', 'eof']}
+        return ('', 'eof')
 
 
 def py_print(message: str) -> None:
@@ -96,7 +96,7 @@ def main() -> None:
         # Note: Using f-string is safe here because prolog_file is constructed
         # from __file__ (not user input). For user-supplied paths, validate first.
         print(f"Loading Prolog file: {prolog_file}")
-        result = query_once(f"consult('{prolog_file}')")
+        result = janus.query_once(f"consult('{prolog_file}')")
         
         if not result or not result.get('truth', True):
             print(f"Error: Failed to load Prolog file: {prolog_file}", file=sys.stderr)
@@ -112,7 +112,7 @@ def main() -> None:
         print("Starting Prolog-driven interactive loop...")
         print()
         
-        result = query_once("main")
+        result = janus.query_once("main")
         
         # Check if the goal succeeded
         if result and result.get('truth', True):

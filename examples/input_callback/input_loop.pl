@@ -18,8 +18,8 @@
 %     - Content is the actual string entered by the user
 %     - Marker is 'ok' for normal input or 'eof' for EOF/Ctrl-D
 %   This structure allows the user to enter the literal string "eof" as input
-py_get_input(Response) :-
-    py_call(demo:py_get_input(), Response).
+py_get_input(Content, Marker) :-
+    py_call(demo:py_get_input(), -(Content, Marker)).
 
 % py_print/1 - Call Python to print a message
 % This predicate uses py_call/2 to invoke the Python demo.py_print(message) function
@@ -55,14 +55,7 @@ input_loop(CurrentList) :-
     py_print('Enter a value (or empty to quit): '),
     
     % Get input from Python - this calls back to Python's input()
-    (   py_get_input(Response)
-    ->  % Input received successfully - extract content and marker
-        % Janus returns Python dicts as special Prolog terms.
-        % We must use arg/3 to extract the arguments instead of pattern matching.
-        % The response structure from Python: {'functor': 'response', 'args': [Content, Marker]}
-        % becomes a compound term response(Content, Marker) that we can access with arg/3
-        arg(1, Response, Content),
-        arg(2, Response, Marker),
+    (   py_get_input(Content, Marker),
         process_input(Content, Marker, CurrentList)
     ;   % Input failed (should not happen normally)
         py_print('Error reading input. Exiting.'),
