@@ -181,10 +181,19 @@ The Prolog file (`input_loop.pl`) defines:
        % Get input from Python
        py_get_input(Response),
        
-       % Extract content and marker from response
-       Response = response(Content, Marker),
+       % Extract content and marker from response using arg/3
+       % Janus converts Python dicts to compound terms, but we need
+       % to use arg/3 to extract the arguments instead of pattern matching
+       arg(1, Response, Content),
+       arg(2, Response, Marker),
        process_input(Content, Marker, CurrentList).
    ```
+   
+   **Important:** When Python returns `{'functor': 'response', 'args': [content, marker]}`, 
+   Janus converts it to a Prolog compound term `response(content, marker)`. However, to 
+   reliably extract the arguments, we use `arg/3` instead of pattern matching like 
+   `Response = response(Content, Marker)`, which may not work consistently across all 
+   Janus versions.
 
 4. **Input Processing**:
    - `process_input(_Content, eof, List)`: Handles EOF marker (Ctrl-D)
@@ -240,15 +249,21 @@ Janus allows Prolog to call Python functions as if they were native Prolog predi
 
 - **Definition in Prolog**: Define predicates that use `py_call/2` to invoke Python functions
   ```prolog
-  py_get_input(Input) :-
-      py_call(demo:py_get_input(), Input).
+  py_get_input(Response) :-
+      py_call(demo:py_get_input(), Response).
   ```
 - **Python Module**: Make Python functions available by ensuring the module is in `sys.path`
 - **Automatic Type Conversion**: Janus converts between Python and Prolog types:
   - Python `str` ↔ Prolog atom/string
   - Python `list` ↔ Prolog list
-  - Python `dict` ↔ Prolog compound term
+  - Python `dict` with `'functor'` and `'args'` keys ↔ Prolog compound term
   - Python `None` ↔ Prolog unbound variable
+
+**Important Note on Compound Terms**: When Python returns a dictionary like 
+`{'functor': 'response', 'args': [content, marker]}`, Janus converts it to a Prolog 
+compound term. However, to reliably extract the arguments across different Janus versions, 
+use `arg/3` (e.g., `arg(1, Response, Content)`) instead of pattern matching 
+(e.g., `Response = response(Content, Marker)`).
 
 ### Control Flow Inversion
 
