@@ -16,25 +16,25 @@ from io import StringIO
 
 
 # Define the callback functions directly (extracted from demo.py)
-def py_get_input() -> dict:
+def py_get_input() -> tuple:
     """Get user input via Python's input() function.
     
     This function is called from Prolog as a foreign predicate.
-    It reads a line from stdin and returns a structured response.
+    It reads a line from stdin and returns a tuple.
     
     Returns:
-        A dictionary representing a Prolog compound term response(Content, Marker):
+        A tuple (Content, Marker) where:
         - Content: The actual string entered by the user
         - Marker: 'ok' for normal input, 'eof' for EOF/Ctrl-D
     """
     try:
         user_input = input()
-        return {'functor': 'response', 'args': [user_input, 'ok']}
+        return (user_input, 'ok')
     except EOFError:
-        return {'functor': 'response', 'args': ['', 'eof']}
+        return ('', 'eof')
     except KeyboardInterrupt:
         print()
-        return {'functor': 'response', 'args': ['', 'eof']}
+        return ('', 'eof')
 
 
 def py_print(message: str) -> None:
@@ -67,16 +67,16 @@ def test_py_get_input_normal():
     
     # Test reading inputs
     result1 = py_get_input()
-    assert result1 == {'functor': 'response', 'args': ['apple', 'ok']}, f"Expected response(apple, ok), got {result1}"
-    print(f"  Input 1: response('{result1['args'][0]}', {result1['args'][1]}) ✓")
+    assert result1 == ('apple', 'ok'), f"Expected ('apple', 'ok'), got {result1}"
+    print(f"  Input 1: {result1} ✓")
     
     result2 = py_get_input()
-    assert result2 == {'functor': 'response', 'args': ['banana', 'ok']}, f"Expected response(banana, ok), got {result2}"
-    print(f"  Input 2: response('{result2['args'][0]}', {result2['args'][1]}) ✓")
+    assert result2 == ('banana', 'ok'), f"Expected ('banana', 'ok'), got {result2}"
+    print(f"  Input 2: {result2} ✓")
     
     result3 = py_get_input()
-    assert result3 == {'functor': 'response', 'args': ['', 'ok']}, f"Expected response('', ok), got {result3}"
-    print(f"  Input 3: response('', {result3['args'][1]}) (empty) ✓")
+    assert result3 == ('', 'ok'), f"Expected ('', 'ok'), got {result3}"
+    print(f"  Input 3: {result3} (empty) ✓")
     
     sys.stdin = original_stdin
     print("✓ Normal input tests passed")
@@ -91,8 +91,8 @@ def test_py_get_input_eof():
     sys.stdin = StringIO("")  # Empty stream simulates EOF
     
     result = py_get_input()
-    assert result == {'functor': 'response', 'args': ['', 'eof']}, f"Expected response('', eof), got {result}"
-    print(f"  EOF handling: response('', {result['args'][1]}) ✓")
+    assert result == ('', 'eof'), f"Expected ('', 'eof'), got {result}"
+    print(f"  EOF handling: {result} ✓")
     
     sys.stdin = original_stdin
     print("✓ EOF tests passed")
@@ -107,8 +107,8 @@ def test_py_get_input_eof_string():
     sys.stdin = StringIO("eof\n")
     
     result = py_get_input()
-    assert result == {'functor': 'response', 'args': ['eof', 'ok']}, f"Expected response('eof', ok), got {result}"
-    print(f"  Literal 'eof' input: response('{result['args'][0]}', {result['args'][1]}) ✓")
+    assert result == ('eof', 'ok'), f"Expected ('eof', 'ok'), got {result}"
+    print(f"  Literal 'eof' input: {result} ✓")
     print("  The string 'eof' can now be added to the list!")
     
     sys.stdin = original_stdin
@@ -128,7 +128,7 @@ def simulate_prolog_loop():
         print(f"    Current list: {current_list if current_list else '[] (empty)'}")
         print(f"    Simulated input: '{test_input}'")
         
-        # Simulate the response structure
+        # Simulate the tuple response structure
         if test_input == "":
             # Empty input with ok marker
             content, marker = "", "ok"
@@ -136,7 +136,7 @@ def simulate_prolog_loop():
             # Normal input (including literal "eof" string)
             content, marker = test_input, "ok"
         
-        print(f"    Response: response('{content}', {marker})")
+        print(f"    Tuple response: ({repr(content)}, '{marker}')")
         
         # Process based on marker (not content)
         if marker == "eof":

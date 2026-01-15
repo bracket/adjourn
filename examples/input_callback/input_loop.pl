@@ -11,13 +11,15 @@
 % 4. List building and display within Prolog
 % 5. Clean termination on empty input or EOF
 
-% py_get_input/1 - Call Python to get user input
+% py_get_input/2 - Call Python to get user input
 % This predicate uses py_call/2 to invoke the Python demo.py_get_input() function
-% Mode: py_get_input(-Response)
-%   Response: A compound term response(Content, Marker) where:
-%     - Content is the actual string entered by the user
-%     - Marker is 'ok' for normal input or 'eof' for EOF/Ctrl-D
-%   This structure allows the user to enter the literal string "eof" as input
+% Mode: py_get_input(-Content, -Marker)
+%   Content: The actual string entered by the user
+%   Marker: 'ok' for normal input or 'eof' for EOF/Ctrl-D
+%   
+% Python returns a tuple (Content, Marker) which Janus converts to the
+% Prolog term -(Content, Marker). We unpack it directly in the predicate head.
+% This structure allows the user to enter the literal string "eof" as input
 py_get_input(Content, Marker) :-
     py_call(demo:py_get_input(), -(Content, Marker)).
 

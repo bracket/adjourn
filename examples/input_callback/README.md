@@ -149,16 +149,18 @@ The Prolog file (`input_loop.pl`) defines:
 
 1. **Prolog Predicates that Call Python**:
    ```prolog
-   py_get_input(Response) :-
-       py_call(demo:py_get_input(), Response).
+   py_get_input(Content, Marker) :-
+       py_call(demo:py_get_input(), -(Content, Marker)).
 
    py_print(Message) :-
        py_call(demo:py_print(Message)).
    ```
    These predicates use `py_call/2` to invoke Python functions from the `demo` module.
    
-   The `py_get_input/1` predicate receives a structured response: `response(Content, Marker)`
-   - `Content`: The actual string entered by the user
+   The `py_get_input/2` predicate unpacks a tuple from Python:
+   - Python returns: `(content, marker)` tuple
+   - Janus converts to: `-(Content, Marker)` term in Prolog
+   - Predicate directly binds: `Content` and `Marker` variables
    - `Marker`: `ok` for normal input, `eof` for EOF/Ctrl-D
    
    This allows the user to enter the literal string "eof" as input without triggering termination.
@@ -178,22 +180,14 @@ The Prolog file (`input_loop.pl`) defines:
        format_list_msg(CurrentList, ListMsg),
        py_print(ListMsg),
        
-       % Get input from Python
-       py_get_input(Response),
-       
-       % Extract content and marker from response using arg/3
-       % Janus converts Python dicts to compound terms, but we need
-       % to use arg/3 to extract the arguments instead of pattern matching
-       arg(1, Response, Content),
-       arg(2, Response, Marker),
+       % Get input from Python - unpacks tuple directly
+       py_get_input(Content, Marker),
        process_input(Content, Marker, CurrentList).
    ```
    
-   **Important:** When Python returns `{'functor': 'response', 'args': [content, marker]}`, 
-   Janus converts it to a Prolog compound term `response(content, marker)`. However, to 
-   reliably extract the arguments, we use `arg/3` instead of pattern matching like 
-   `Response = response(Content, Marker)`, which may not work consistently across all 
-   Janus versions.
+   **Note:** Python returns a tuple `(content, marker)` which Janus converts to the 
+   Prolog term `-(Content, Marker)`. The predicate `py_get_input/2` unpacks this 
+   directly, providing a clean interface for the caller.
 
 4. **Input Processing**:
    - `process_input(_Content, eof, List)`: Handles EOF marker (Ctrl-D)
@@ -208,35 +202,38 @@ The Python script (`demo.py`) does:
 
 1. **Defines Callback Functions**:
    ```python
-   def py_get_input() -> dict:
+   def py_get_input() -> tuple:
        try:
            user_input = input()
-           return {'functor': 'response', 'args': [user_input, 'ok']}
+           return (user_input, 'ok')
        except EOFError:
-           return {'functor': 'response', 'args': ['', 'eof']}
+           return ('', 'eof')
    
    def py_print(message: str) -> None:
        print(message, flush=True)
    ```
    
-   The `py_get_input()` function returns a dictionary that Janus converts to a Prolog compound term:
-   - `response(Content, ok)` for normal input
-   - `response('', eof)` for EOF/Ctrl-D
+   The `py_get_input()` function returns a Python tuple:
+   - `(content, 'ok')` for normal input
+   - `('', 'eof')` for EOF/Ctrl-D
    
-   This structure separates the input content from the termination signal.
+   Janus automatically converts the Python tuple to a Prolog term `-(Content, Marker)`, 
+   which can be unpacked directly in Prolog predicates.
 
 2. **Loads Prolog File and Invokes Main Goal**:
    ```python
+   import janus_swi as janus
+   
    # Add script directory to sys.path so Prolog can import this module
    script_dir = Path(__file__).parent.resolve()
    if str(script_dir) not in sys.path:
        sys.path.insert(0, str(script_dir))
    
    # Load Prolog file (which defines predicates using py_call)
-   query_once(f"consult('{prolog_file}')")
+   janus.query_once(f"consult('{prolog_file}')")
    
    # Invoke the Prolog main goal
-   result = query_once("main")
+   result = janus.query_once("main")
    ```
    
    This transfers control to Prolog, which then calls back to Python as needed.
@@ -249,21 +246,21 @@ Janus allows Prolog to call Python functions as if they were native Prolog predi
 
 - **Definition in Prolog**: Define predicates that use `py_call/2` to invoke Python functions
   ```prolog
-  py_get_input(Response) :-
-      py_call(demo:py_get_input(), Response).
+  py_get_input(Content, Marker) :-
+      py_call(demo:py_get_input(), -(Content, Marker)).
   ```
 - **Python Module**: Make Python functions available by ensuring the module is in `sys.path`
 - **Automatic Type Conversion**: Janus converts between Python and Prolog types:
   - Python `str` ↔ Prolog atom/string
   - Python `list` ↔ Prolog list
+  - Python `tuple` ↔ Prolog `-/2` term (e.g., `(a, b)` becomes `-(a, b)`)
   - Python `dict` with `'functor'` and `'args'` keys ↔ Prolog compound term
   - Python `None` ↔ Prolog unbound variable
 
-**Important Note on Compound Terms**: When Python returns a dictionary like 
-`{'functor': 'response', 'args': [content, marker]}`, Janus converts it to a Prolog 
-compound term. However, to reliably extract the arguments across different Janus versions, 
-use `arg/3` (e.g., `arg(1, Response, Content)`) instead of pattern matching 
-(e.g., `Response = response(Content, Marker)`).
+**Note on Tuples**: Python tuples provide a clean way to return multiple values. When Python 
+returns `(content, marker)`, Janus converts it to the Prolog term `-(content, marker)`, which 
+can be unpacked directly using pattern matching in the predicate head, as shown in 
+`py_get_input(Content, Marker)`.
 
 ### Control Flow Inversion
 

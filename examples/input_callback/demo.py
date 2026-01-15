@@ -17,14 +17,14 @@ from pathlib import Path
 import janus_swi as janus
 
 
-def py_get_input() -> dict:
+def py_get_input() -> tuple:
     """Get user input via Python's input() function.
     
     This function is called from Prolog as a foreign predicate.
-    It reads a line from stdin and returns a structured response.
+    It reads a line from stdin and returns a tuple.
     
     Returns:
-        A dictionary representing a Prolog compound term response(Content, Marker):
+        A tuple (Content, Marker) where:
         - Content: The actual string entered by the user
         - Marker: 'ok' for normal input, 'eof' for EOF/Ctrl-D
         
@@ -33,15 +33,15 @@ def py_get_input() -> dict:
     
     Note:
         This function is registered with Janus and called from Prolog.
-        The dictionary is automatically converted to a Prolog compound term.
+        The tuple is automatically converted to the Prolog -(Content, Marker) term.
     """
     try:
         # Read input from user - no prompt, Prolog handles that
         user_input = input()
-        # Return response(user_input, ok)
+        # Return tuple (user_input, ok) - Janus converts to -(user_input, ok) in Prolog
         return (user_input, 'ok')
     except EOFError:
-        # User pressed Ctrl-D (EOF) - return response('', eof)
+        # User pressed Ctrl-D (EOF) - return tuple ('', eof)
         return ('', 'eof')
     except KeyboardInterrupt:
         # User pressed Ctrl-C - treat as EOF
