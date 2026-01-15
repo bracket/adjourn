@@ -13,10 +13,13 @@
 
 % py_get_input/1 - Call Python to get user input
 % This predicate uses py_call/2 to invoke the Python demo.py_get_input() function
-% Mode: py_get_input(-Input)
-%   Input: String entered by user, or 'eof' atom on EOF/Ctrl-D
-py_get_input(Input) :-
-    py_call(demo:py_get_input(), Input).
+% Mode: py_get_input(-Response)
+%   Response: A compound term response(Content, Marker) where:
+%     - Content is the actual string entered by the user
+%     - Marker is 'ok' for normal input or 'eof' for EOF/Ctrl-D
+%   This structure allows the user to enter the literal string "eof" as input
+py_get_input(Response) :-
+    py_call(demo:py_get_input(), Response).
 
 % py_print/1 - Call Python to print a message
 % This predicate uses py_call/2 to invoke the Python demo.py_print(message) function
@@ -42,7 +45,7 @@ main :-
 % 1. Displays the current list state
 % 2. Prompts for and reads user input via Python callback
 % 3. On non-empty input: appends to list and recurses
-% 4. On empty input or EOF: terminates gracefully
+% 4. On EOF marker: terminates gracefully
 input_loop(CurrentList) :-
     % Show current list state
     format_list_msg(CurrentList, ListMsg),
@@ -52,20 +55,22 @@ input_loop(CurrentList) :-
     py_print('Enter a value (or empty to quit): '),
     
     % Get input from Python - this calls back to Python's input()
-    (   py_get_input(Input)
-    ->  % Input received successfully
-        process_input(Input, CurrentList)
+    (   py_get_input(Response)
+    ->  % Input received successfully - extract content and marker
+        Response = response(Content, Marker),
+        process_input(Content, Marker, CurrentList)
     ;   % Input failed (should not happen normally)
         py_print('Error reading input. Exiting.'),
         fail
     ).
 
-% process_input/2 - Handle the user's input
-% Mode: process_input(+Input, +CurrentList)
-%   Input: The string entered by user or 'eof'
+% process_input/3 - Handle the user's input
+% Mode: process_input(+Content, +Marker, +CurrentList)
+%   Content: The actual string entered by user
+%   Marker: 'ok' for normal input, 'eof' for EOF/Ctrl-D
 %   CurrentList: Current state of the list
-process_input(eof, CurrentList) :-
-    % EOF received (Ctrl-D) - clean termination
+process_input(_Content, eof, CurrentList) :-
+    % EOF marker received (Ctrl-D) - clean termination
     !,
     py_print(''),
     py_print('EOF received. Final list:'),
@@ -73,18 +78,18 @@ process_input(eof, CurrentList) :-
     py_print(FinalMsg),
     py_print('Goodbye!').
 
-process_input('', CurrentList) :-
-    % Empty string - clean termination
+process_input('', ok, CurrentList) :-
+    % Empty string with ok marker - clean termination
     !,
     py_print('Empty input received. Final list:'),
     format_list_display(CurrentList, FinalMsg),
     py_print(FinalMsg),
     py_print('Goodbye!').
 
-process_input(Input, CurrentList) :-
-    % Non-empty input - append to list and continue
-    atom_string(InputAtom, Input),  % Convert string to atom for cleaner display
-    append(CurrentList, [InputAtom], NewList),
+process_input(Content, ok, CurrentList) :-
+    % Non-empty input with ok marker - append to list and continue
+    atom_string(ContentAtom, Content),  % Convert string to atom for cleaner display
+    append(CurrentList, [ContentAtom], NewList),
     py_print(''),
     py_print('Value added!'),
     input_loop(NewList).  % Recurse with updated list

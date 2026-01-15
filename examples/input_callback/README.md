@@ -99,18 +99,24 @@ Enter a value (or empty to quit): banana
 
 Value added!
 Current list (2 items): [apple, banana]
+Enter a value (or empty to quit): eof
+
+Value added!
+Current list (3 items): [apple, banana, eof]
 Enter a value (or empty to quit): cherry
 
 Value added!
-Current list (3 items): [apple, banana, cherry]
+Current list (4 items): [apple, banana, eof, cherry]
 Enter a value (or empty to quit): 
 
 Empty input received. Final list:
-  [apple, banana, cherry]
+  [apple, banana, eof, cherry]
 Goodbye!
 
 ✓ Program completed successfully
 ```
+
+**Note:** The literal string "eof" can now be added to the list! The program uses a structured response `response(Content, Marker)` where the marker (not the content) determines when to terminate the loop.
 
 ## Termination Behavior
 
@@ -143,13 +149,19 @@ The Prolog file (`input_loop.pl`) defines:
 
 1. **Prolog Predicates that Call Python**:
    ```prolog
-   py_get_input(Input) :-
-       py_call(demo:py_get_input(), Input).
+   py_get_input(Response) :-
+       py_call(demo:py_get_input(), Response).
 
    py_print(Message) :-
        py_call(demo:py_print(Message)).
    ```
    These predicates use `py_call/2` to invoke Python functions from the `demo` module.
+   
+   The `py_get_input/1` predicate receives a structured response: `response(Content, Marker)`
+   - `Content`: The actual string entered by the user
+   - `Marker`: `ok` for normal input, `eof` for EOF/Ctrl-D
+   
+   This allows the user to enter the literal string "eof" as input without triggering termination.
 
 2. **Main Entry Point**:
    ```prolog
@@ -167,16 +179,19 @@ The Prolog file (`input_loop.pl`) defines:
        py_print(ListMsg),
        
        % Get input from Python
-       py_get_input(Input),
+       py_get_input(Response),
        
-       % Process the input
-       process_input(Input, CurrentList).
+       % Extract content and marker from response
+       Response = response(Content, Marker),
+       process_input(Content, Marker, CurrentList).
    ```
 
 4. **Input Processing**:
-   - `process_input(eof, List)`: Handles EOF
-   - `process_input('', List)`: Handles empty input
-   - `process_input(Input, List)`: Appends input and recurses
+   - `process_input(_Content, eof, List)`: Handles EOF marker (Ctrl-D)
+   - `process_input('', ok, List)`: Handles empty input with ok marker
+   - `process_input(Content, ok, List)`: Appends content and recurses
+   
+   The termination decision is based on the marker, not the content, allowing "eof" to be a valid input value.
 
 ### The Python Side
 
@@ -184,15 +199,22 @@ The Python script (`demo.py`) does:
 
 1. **Defines Callback Functions**:
    ```python
-   def py_get_input() -> str:
+   def py_get_input() -> dict:
        try:
-           return input()
+           user_input = input()
+           return {'functor': 'response', 'args': [user_input, 'ok']}
        except EOFError:
-           return "eof"
+           return {'functor': 'response', 'args': ['', 'eof']}
    
    def py_print(message: str) -> None:
        print(message, flush=True)
    ```
+   
+   The `py_get_input()` function returns a dictionary that Janus converts to a Prolog compound term:
+   - `response(Content, ok)` for normal input
+   - `response('', eof)` for EOF/Ctrl-D
+   
+   This structure separates the input content from the termination signal.
 
 2. **Loads Prolog File and Invokes Main Goal**:
    ```python

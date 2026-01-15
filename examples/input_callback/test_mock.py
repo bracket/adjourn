@@ -16,23 +16,25 @@ from io import StringIO
 
 
 # Define the callback functions directly (extracted from demo.py)
-def py_get_input() -> str:
+def py_get_input() -> dict:
     """Get user input via Python's input() function.
     
     This function is called from Prolog as a foreign predicate.
-    It reads a line from stdin and returns it as a string.
+    It reads a line from stdin and returns a structured response.
     
     Returns:
-        The input string, or 'eof' atom on EOF (Ctrl-D)
+        A dictionary representing a Prolog compound term response(Content, Marker):
+        - Content: The actual string entered by the user
+        - Marker: 'ok' for normal input, 'eof' for EOF/Ctrl-D
     """
     try:
         user_input = input()
-        return user_input
+        return {'functor': 'response', 'args': [user_input, 'ok']}
     except EOFError:
-        return "eof"
+        return {'functor': 'response', 'args': ['', 'eof']}
     except KeyboardInterrupt:
         print()
-        return "eof"
+        return {'functor': 'response', 'args': ['', 'eof']}
 
 
 def py_print(message: str) -> None:
@@ -64,17 +66,17 @@ def test_py_get_input_normal():
     sys.stdin = StringIO("apple\nbanana\n\n")
     
     # Test reading inputs
-    input1 = py_get_input()
-    assert input1 == "apple", f"Expected 'apple', got '{input1}'"
-    print(f"  Input 1: '{input1}' ✓")
+    result1 = py_get_input()
+    assert result1 == {'functor': 'response', 'args': ['apple', 'ok']}, f"Expected response(apple, ok), got {result1}"
+    print(f"  Input 1: response('{result1['args'][0]}', {result1['args'][1]}) ✓")
     
-    input2 = py_get_input()
-    assert input2 == "banana", f"Expected 'banana', got '{input2}'"
-    print(f"  Input 2: '{input2}' ✓")
+    result2 = py_get_input()
+    assert result2 == {'functor': 'response', 'args': ['banana', 'ok']}, f"Expected response(banana, ok), got {result2}"
+    print(f"  Input 2: response('{result2['args'][0]}', {result2['args'][1]}) ✓")
     
-    input3 = py_get_input()
-    assert input3 == "", f"Expected empty string, got '{input3}'"
-    print(f"  Input 3: '{input3}' (empty) ✓")
+    result3 = py_get_input()
+    assert result3 == {'functor': 'response', 'args': ['', 'ok']}, f"Expected response('', ok), got {result3}"
+    print(f"  Input 3: response('', {result3['args'][1]}) (empty) ✓")
     
     sys.stdin = original_stdin
     print("✓ Normal input tests passed")
@@ -89,19 +91,36 @@ def test_py_get_input_eof():
     sys.stdin = StringIO("")  # Empty stream simulates EOF
     
     result = py_get_input()
-    assert result == "eof", f"Expected 'eof', got '{result}'"
-    print(f"  EOF handling: '{result}' ✓")
+    assert result == {'functor': 'response', 'args': ['', 'eof']}, f"Expected response('', eof), got {result}"
+    print(f"  EOF handling: response('', {result['args'][1]}) ✓")
     
     sys.stdin = original_stdin
     print("✓ EOF tests passed")
+
+
+def test_py_get_input_eof_string():
+    """Test that the literal string 'eof' can be entered as input."""
+    print("\n=== Testing py_get_input with literal 'eof' string ===")
+    
+    # Simulate user typing "eof" as input
+    original_stdin = sys.stdin
+    sys.stdin = StringIO("eof\n")
+    
+    result = py_get_input()
+    assert result == {'functor': 'response', 'args': ['eof', 'ok']}, f"Expected response('eof', ok), got {result}"
+    print(f"  Literal 'eof' input: response('{result['args'][0]}', {result['args'][1]}) ✓")
+    print("  The string 'eof' can now be added to the list!")
+    
+    sys.stdin = original_stdin
+    print("✓ Literal 'eof' string test passed")
 
 
 def simulate_prolog_loop():
     """Simulate the Prolog loop logic in Python to verify the flow."""
     print("\n=== Simulating Prolog Loop Logic ===")
     
-    # Simulate the loop with predetermined inputs
-    test_inputs = ["apple", "banana", "cherry", ""]
+    # Simulate the loop with predetermined inputs, including the literal "eof" string
+    test_inputs = ["apple", "banana", "eof", "cherry", ""]
     current_list = []
     
     for i, test_input in enumerate(test_inputs):
@@ -109,16 +128,30 @@ def simulate_prolog_loop():
         print(f"    Current list: {current_list if current_list else '[] (empty)'}")
         print(f"    Simulated input: '{test_input}'")
         
-        if test_input == "eof" or test_input == "":
-            print(f"    Terminating. Final list: {current_list}")
+        # Simulate the response structure
+        if test_input == "":
+            # Empty input with ok marker
+            content, marker = "", "ok"
+        else:
+            # Normal input (including literal "eof" string)
+            content, marker = test_input, "ok"
+        
+        print(f"    Response: response('{content}', {marker})")
+        
+        # Process based on marker (not content)
+        if marker == "eof":
+            print(f"    Marker is 'eof', terminating. Final list: {current_list}")
+            break
+        elif content == "":
+            print(f"    Empty content with 'ok' marker, terminating. Final list: {current_list}")
             break
         else:
-            current_list.append(test_input)
+            current_list.append(content)
             print(f"    Updated list: {current_list}")
     
-    expected_final = ["apple", "banana", "cherry"]
+    expected_final = ["apple", "banana", "eof", "cherry"]
     assert current_list == expected_final, f"Expected {expected_final}, got {current_list}"
-    print(f"\n  ✓ Loop logic correct. Final list: {current_list}")
+    print(f"\n  ✓ Loop logic correct. Final list includes literal 'eof': {current_list}")
 
 
 def main():
@@ -134,6 +167,7 @@ def main():
         test_py_print()
         test_py_get_input_normal()
         test_py_get_input_eof()
+        test_py_get_input_eof_string()
         simulate_prolog_loop()
         
         print("\n" + "=" * 70)

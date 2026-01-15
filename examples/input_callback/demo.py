@@ -17,30 +17,36 @@ from pathlib import Path
 from janus_swi import query_once
 
 
-def py_get_input() -> str:
+def py_get_input() -> dict:
     """Get user input via Python's input() function.
     
     This function is called from Prolog as a foreign predicate.
-    It reads a line from stdin and returns it as a string.
+    It reads a line from stdin and returns a structured response.
     
     Returns:
-        The input string, or 'eof' atom on EOF (Ctrl-D)
+        A dictionary representing a Prolog compound term response(Content, Marker):
+        - Content: The actual string entered by the user
+        - Marker: 'ok' for normal input, 'eof' for EOF/Ctrl-D
+        
+        This allows the user to actually enter the string "eof" as input,
+        while using the marker to detect when to terminate the loop.
     
     Note:
         This function is registered with Janus and called from Prolog.
-        The return value is automatically converted to a Prolog term.
+        The dictionary is automatically converted to a Prolog compound term.
     """
     try:
         # Read input from user - no prompt, Prolog handles that
         user_input = input()
-        return user_input
+        # Return response(user_input, ok)
+        return {'functor': 'response', 'args': [user_input, 'ok']}
     except EOFError:
-        # User pressed Ctrl-D (EOF) - return special atom
-        return "eof"
+        # User pressed Ctrl-D (EOF) - return response('', eof)
+        return {'functor': 'response', 'args': ['', 'eof']}
     except KeyboardInterrupt:
         # User pressed Ctrl-C - treat as EOF
         print()  # Newline after ^C
-        return "eof"
+        return {'functor': 'response', 'args': ['', 'eof']}
 
 
 def py_print(message: str) -> None:
