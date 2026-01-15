@@ -141,12 +141,15 @@ All termination paths ensure:
 
 The Prolog file (`input_loop.pl`) defines:
 
-1. **Foreign Predicate Declarations**:
+1. **Prolog Predicates that Call Python**:
    ```prolog
-   :- external(py_get_input/1, py_get_input).
-   :- external(py_print/1, py_print).
+   py_get_input(Input) :-
+       py_call(demo:py_get_input(), Input).
+
+   py_print(Message) :-
+       py_call(demo:py_print(Message)).
    ```
-   These declare that `py_get_input/1` and `py_print/1` are implemented in Python.
+   These predicates use `py_call/2` to invoke Python functions from the `demo` module.
 
 2. **Main Entry Point**:
    ```prolog
@@ -191,27 +194,17 @@ The Python script (`demo.py`) does:
        print(message, flush=True)
    ```
 
-2. **Registers Callbacks with Janus**:
+2. **Loads Prolog File and Invokes Main Goal**:
    ```python
-   # Load Prolog file
+   # Add script directory to sys.path so Prolog can import this module
+   script_dir = Path(__file__).parent.resolve()
+   if str(script_dir) not in sys.path:
+       sys.path.insert(0, str(script_dir))
+   
+   # Load Prolog file (which defines predicates using py_call)
    query_once(f"consult('{prolog_file}')")
    
-   # Register callbacks as Prolog predicates
-   query_once("""
-       assertz((py_get_input(Input) :-
-           py_call(demo:py_get_input, Input)
-       ))
-   """)
-   
-   query_once("""
-       assertz((py_print(Message) :-
-           py_call(demo:py_print(Message), _)
-       ))
-   """)
-   ```
-
-3. **Invokes Prolog Main Goal**:
-   ```python
+   # Invoke the Prolog main goal
    result = query_once("main")
    ```
    
@@ -223,8 +216,12 @@ The Python script (`demo.py`) does:
 
 Janus allows Prolog to call Python functions as if they were native Prolog predicates. The integration works via:
 
-- **Declaration in Prolog**: `:- external(predicate/arity, python_name)`
-- **Registration from Python**: Using `py_call/2` or asserting wrapper predicates
+- **Definition in Prolog**: Define predicates that use `py_call/2` to invoke Python functions
+  ```prolog
+  py_get_input(Input) :-
+      py_call(demo:py_get_input(), Input).
+  ```
+- **Python Module**: Make Python functions available by ensuring the module is in `sys.path`
 - **Automatic Type Conversion**: Janus converts between Python and Prolog types:
   - Python `str` ↔ Prolog atom/string
   - Python `list` ↔ Prolog list
@@ -235,7 +232,7 @@ Janus allows Prolog to call Python functions as if they were native Prolog predi
 
 Unlike typical Python scripts that call library functions, this pattern inverts control:
 
-- **Python's role**: Setup, registration, error handling
+- **Python's role**: Setup, module import, invoking Prolog main goal, error handling
 - **Prolog's role**: Main loop, decision logic, control flow
 - **Benefits**: 
   - Leverage Prolog's declarative logic for complex control flow

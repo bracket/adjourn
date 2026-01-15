@@ -63,16 +63,17 @@ def main() -> None:
     """Main entry point for the Prolog-driven input callback demo.
     
     This function:
-    1. Registers Python callback functions as Janus foreign predicates
-    2. Loads the Prolog file containing the main loop
-    3. Invokes the Prolog main/0 goal to start the interactive loop
-    4. Handles any errors that occur during execution
+    1. Loads the Prolog file containing the main loop
+    2. Invokes the Prolog main/0 goal to start the interactive loop
+    3. Handles any errors that occur during execution
     
     The control flow is:
-    - Python registers callbacks and starts Prolog
+    - Python loads the Prolog file
+    - Prolog file defines predicates that call back to Python via py_call/2
+    - Python invokes the Prolog main/0 goal to start the loop
     - Prolog runs the main loop (input_loop/1)
-    - Prolog calls back to Python for input (py_get_input/1)
-    - Prolog calls back to Python for output (py_print/1)
+    - Prolog calls back to Python for input (py_get_input/1 -> demo:py_get_input())
+    - Prolog calls back to Python for output (py_print/1 -> demo:py_print(msg))
     - Prolog decides when to terminate
     - Control returns to Python when Prolog goal completes
     """
@@ -98,30 +99,10 @@ def main() -> None:
         print("✓ Prolog file loaded successfully")
         print()
         
-        # Register Python callbacks with Janus
-        # We define Prolog predicates that use py_call/2 to invoke our Python functions
-        # For functions with no arguments: py_call(Module:Function, Result)
-        # For functions with arguments: py_call(Module:Function(Args), Result)
-        # For void functions (no return): use py_call(Module:Function(Args)) or py_call(Module:Function(Args), _)
-        
-        # Define the py_get_input/1 predicate in Prolog to call our Python function
-        # py_get_input() takes no arguments and returns a string
-        query_once("""
-            assertz((py_get_input(Input) :-
-                py_call(demo:py_get_input, Input)
-            ))
-        """)
-        
-        # Define the py_print/1 predicate in Prolog to call our Python function
-        # py_print(message) takes a message argument and returns None
-        query_once("""
-            assertz((py_print(Message) :-
-                py_call(demo:py_print(Message), _)
-            ))
-        """)
-        
         # Now invoke the main Prolog goal
         # This starts the interactive loop in Prolog, which will call back to Python
+        # The Prolog predicates py_get_input/1 and py_print/1 use py_call/2 to
+        # invoke the Python functions defined in this module
         print("Starting Prolog-driven interactive loop...")
         print()
         

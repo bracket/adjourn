@@ -11,25 +11,19 @@
 % 4. List building and display within Prolog
 % 5. Clean termination on empty input or EOF
 
-% Foreign predicate declarations for Janus Python callbacks
-% These predicates will be implemented in Python and registered via Janus
-:- if(current_predicate(py_call/1)).
-% If Janus is available, declare foreign predicates
-:- py_lib_dirs([]).  % Use system Python paths
-:- endif.
-
 % py_get_input/1 - Call Python to get user input
-% This is a foreign predicate that will be registered from Python
-% It calls Python's input() function and returns the result
+% This predicate uses py_call/2 to invoke the Python demo.py_get_input() function
 % Mode: py_get_input(-Input)
 %   Input: String entered by user, or 'eof' atom on EOF/Ctrl-D
-:- external(py_get_input/1, py_get_input).
+py_get_input(Input) :-
+    py_call(demo:py_get_input(), Input).
 
 % py_print/1 - Call Python to print a message
-% This is a foreign predicate for printing from Prolog via Python
+% This predicate uses py_call/1 to invoke the Python demo.py_print(message) function
 % Mode: py_print(+Message)
 %   Message: String or term to print
-:- external(py_print/1, py_print).
+py_print(Message) :-
+    py_call(demo:py_print(Message)).
 
 % main/0 - Entry point for the interactive loop
 % Starts the loop with an empty list and displays welcome message
