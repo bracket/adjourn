@@ -26,9 +26,9 @@ how to proceed with constraint validation.
 
 import sys
 from pathlib import Path
-from typing import Any, Dict, NoReturn, Optional
+from typing import Any, Dict, NoReturn
 
-import janus_swi as janus
+import janus_swi as janus  # type: ignore[import-untyped]
 
 
 def load_prolog_files() -> bool:
@@ -85,7 +85,7 @@ def initialize_interpreter() -> bool:
             "toy_meta:init_named(demo, toy_program_graph_coloring:coloring(_CA, _CB, _CC, _CD))"
         )
         if result and result.get('truth', True):
-            print(f"✓ Interpreter initialized")
+            print("✓ Interpreter initialized")
             return True
         else:
             print("Error: Failed to initialize interpreter", file=sys.stderr)
