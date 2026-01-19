@@ -113,7 +113,7 @@ violation(missing_test(Module)) :-
 
 - Python 3.11 or higher
 - pip (Python package manager)
-- SWI-Prolog 9.1+ (for Janus Python integration - not yet required)
+- SWI-Prolog 9.2.9+ (for Janus Python integration)
 
 ### Installing from Source
 
