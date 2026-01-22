@@ -3,42 +3,14 @@
 % Continuation-style meta-interpreter with explicit suspension/resumption.
 % The interpreted program is given by rule/2 facts in a separate file.
 
-:- module(toy_meta, [init/2, step/3, run/3, init_named/2, step_named/2]).
+:- module(toy_meta, [init/2, step/3, run/3]).
 :- multifile toy_program_graph_coloring:rule/2.
-
-% Store current state as a named global for janus compatibility
-:- dynamic current_state/2.
 
 % --- State representation ---
 % state(Branches)
 % Branches is a list of branch(Goals), each Goals is a list representing the resolvent.
 
 init(Goal, state([branch([Goal])])).
-
-% Initialize with a named state for easier janus integration
-init_named(Name, Goal) :-
-    init(Goal, State),
-    retractall(current_state(Name, _)),
-    assertz(current_state(Name, State)).
-
-% Step with a named state, returning event as an atom for janus compatibility
-step_named(Name, EventAtom) :-
-    current_state(Name, State),
-    step(State, Event, NewState),
-    retractall(current_state(Name, _)),
-    assertz(current_state(Name, NewState)),
-    % Convert event to atom for janus
-    (Event = suspended(Label) ->
-        term_string(Label, LabelStr),
-        atom_string(LabelAtom, LabelStr),
-        atom_concat('suspended:', LabelAtom, EventAtom)
-    ; Event = solution ->
-        EventAtom = solution
-    ; Event = done ->
-        EventAtom = done
-    ; term_string(Event, EventStr),
-      atom_string(EventAtom, EventStr)
-    ).
 
 run(State0, Event, State1) :- step(State0, Event, State1).
 

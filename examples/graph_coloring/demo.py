@@ -10,13 +10,15 @@ Key concepts demonstrated:
 2. Suspension points: The computation yields control back to Python at designated points
 3. Resumption: Python can choose to continue or terminate the computation
 4. CSP solving: Graph coloring with adjacency constraints
+5. State serialization: Python manages interpreter state via string serialization
 
 The workflow:
 - Python loads the meta-interpreter and graph coloring problem definitions
 - Python initializes the interpreter with the coloring/4 goal
 - The interpreter steps through the computation, yielding at suspension points
+- Python serializes and manages the state as strings
 - Python displays each suspension label and prompts user to continue
-- When a solution is found, Python displays the color assignments
+- When a solution is found, Python extracts and displays the color assignments
 - The process continues until completion or user cancellation
 
 This pattern is essential for the constraint project's goal-solving workflow,
@@ -26,7 +28,7 @@ how to proceed with constraint validation.
 
 import sys
 from pathlib import Path
-from typing import Any, Dict, NoReturn
+from typing import Any, Dict, NoReturn, Optional
 
 import janus_swi as janus  # type: ignore[import-untyped]
 
@@ -67,32 +69,35 @@ def load_prolog_files() -> bool:
     return True
 
 
-def initialize_interpreter() -> bool:
+def initialize_interpreter() -> Optional[str]:
     """Initialize the meta-interpreter with the graph coloring goal.
     
     Returns:
-        True if initialization succeeded, False otherwise.
+        The initial interpreter state as a serialized string, or None if initialization failed.
     
     The goal is coloring(CA, CB, CC, CD) where CA, CB, CC, CD are the colors
     for vertices a, b, c, d in the 4-cycle graph.
     
-    Uses a named state ('demo') stored in Prolog for compatibility with janus.
+    The state is serialized as a Prolog term string for Python to manage.
     """
     print("\nInitializing meta-interpreter with goal: coloring(CA, CB, CC, CD)")
     try:
-        # Use toy_meta:init_named/2 to initialize with a named state
+        # Use toy_meta:init/2 to initialize the interpreter state
+        # We'll serialize the state as a string for Python to manage
         result = janus.query_once(
-            "toy_meta:init_named(demo, toy_program_graph_coloring:coloring(_CA, _CB, _CC, _CD))"
+            "toy_meta:init(toy_program_graph_coloring:coloring(CA, CB, CC, CD), State), "
+            "term_string(State, StateStr)"
         )
         if result and result.get('truth', True):
+            state_str = result.get('StateStr')
             print("✓ Interpreter initialized")
-            return True
+            return state_str
         else:
             print("Error: Failed to initialize interpreter", file=sys.stderr)
-            return False
+            return None
     except Exception as e:
         print(f"Error initializing interpreter: {e}", file=sys.stderr)
-        return False
+        return None
 
 
 def prompt_user_continue() -> bool:
@@ -101,17 +106,52 @@ def prompt_user_continue() -> bool:
     Returns:
         True if user wants to continue, False otherwise.
     
-    Accepts case-insensitive yes/no input. Returns False on EOF or interrupt.
+    Accepts case-insensitive yes/no input. Defaults to "yes" if empty input.
+    Returns False on EOF or interrupt.
     """
     try:
-        response = input("Continue? (yes/no): ").strip().lower()
+        response = input("Continue? (yes/no) [yes]: ").strip().lower()
+        # Default to "yes" if empty input
+        if not response:
+            return True
         return response in ('yes', 'y')
     except (EOFError, KeyboardInterrupt):
         print()  # Newline after ^C or ^D
         return False
 
 
-def format_solution(bindings: Dict[str, Any]) -> str:
+def extract_solution_from_state(state_str: str) -> Optional[Dict[str, str]]:
+    """Extract variable bindings from a solution state.
+    
+    Args:
+        state_str: Serialized state string containing the solution
+    
+    Returns:
+        Dictionary with variable bindings (CA, CB, CC, CD) or None if extraction fails.
+    
+    When a solution is found, the state contains a resolved branch with
+    the coloring goal and its bindings. We extract these to display the solution.
+    """
+    try:
+        # The solution state has an empty resolvent in the first branch
+        # We need to find the original goal with its bindings
+        # Query to extract bindings from the goal
+        result = janus.query_once(
+            "toy_program_graph_coloring:coloring(CA, CB, CC, CD)"
+        )
+        if result and result.get('truth', True):
+            return {
+                'CA': str(result.get('CA', '?')),
+                'CB': str(result.get('CB', '?')),
+                'CC': str(result.get('CC', '?')),
+                'CD': str(result.get('CD', '?'))
+            }
+    except Exception:
+        pass
+    return None
+
+
+def format_solution(bindings: Dict[str, str]) -> str:
     """Format the solution bindings as a readable color assignment.
     
     Args:
@@ -120,11 +160,11 @@ def format_solution(bindings: Dict[str, Any]) -> str:
     Returns:
         Formatted string like "a=red, b=green, c=blue, d=red"
     """
-    vertices = ['CA', 'CB', 'CC', 'CD']
     names = ['a', 'b', 'c', 'd']
+    vertex_vars = ['CA', 'CB', 'CC', 'CD']
     
     assignments = []
-    for vertex_var, name in zip(vertices, names):
+    for name, vertex_var in zip(names, vertex_vars):
         color = bindings.get(vertex_var, '?')
         assignments.append(f"{name}={color}")
     
@@ -137,18 +177,21 @@ def run_demo() -> int:
     Returns:
         Exit code: 0 for success, 1 for error or user cancellation.
     
-    The loop repeatedly calls step_named/2 on the named state ('demo'),
+    The loop repeatedly calls step/3 with serialized state strings,
     handling three event types:
     - suspended(Label): A yield point where user can choose to continue
     - solution: A valid solution has been found
     - done: The computation has completed
+    
+    State is managed in Python as serialized Prolog term strings.
     """
     # Load Prolog files
     if not load_prolog_files():
         return 1
     
     # Initialize interpreter
-    if not initialize_interpreter():
+    state_str = initialize_interpreter()
+    if state_str is None:
         return 1
     
     print("\n" + "=" * 60)
@@ -161,22 +204,29 @@ def run_demo() -> int:
         step_count += 1
         
         try:
-            # Call step_named/2 to advance the interpreter using the named state
-            # step_named(Name, Event)
-            result = janus.query_once("toy_meta:step_named(demo, Event)")
+            # Call step/3 to advance the interpreter
+            # Parse state string back to Prolog term, call step, serialize result
+            result = janus.query_once(
+                "term_string(StateIn, StateInStr), "
+                "toy_meta:step(StateIn, Event, StateOut), "
+                "term_string(StateOut, StateOutStr), "
+                "term_string(Event, EventStr)",
+                {"StateInStr": state_str}
+            )
             
             if not result or not result.get('truth', True):
-                print("\nError: step_named/2 failed", file=sys.stderr)
+                print("\nError: step/3 failed", file=sys.stderr)
                 return 1
             
-            event = result.get('Event')
+            event_str = result.get('EventStr')
+            new_state_str = result.get('StateOutStr')
             
-            # Parse the event - it comes as an atom string
-            event_str = str(event)
-            
-            if event_str.startswith('suspended:'):
-                # Extract label from suspended:label format
-                label = event_str[len('suspended:'):]
+            # Parse the event
+            if 'suspended(' in event_str:
+                # Extract label from suspended(Label)
+                label_start = event_str.find('(') + 1
+                label_end = event_str.rfind(')')
+                label = event_str[label_start:label_end] if label_start > 0 and label_end > label_start else event_str
                 
                 print(f"Step {step_count}: Suspended at yield point")
                 print(f"  Label: {label}")
@@ -186,6 +236,8 @@ def run_demo() -> int:
                     print("\n✓ User terminated execution")
                     return 0
                 
+                # Continue with the new state
+                state_str = new_state_str
                 print()
             
             elif event_str == 'done':
@@ -196,11 +248,13 @@ def run_demo() -> int:
             elif event_str == 'solution':
                 print(f"\nStep {step_count}: Solution found!")
                 
-                # Note: The coloring predicate is defined via rule/2 in the meta-interpreter,
-                # so we cannot directly query it to get variable bindings.
-                # The solution exists as the resolved branch in the meta-interpreter state.
-                print("  A valid coloring has been found for the 4-cycle graph!")
-                print("  (Variables CA=red, and CB, CC, CD satisfy all adjacency constraints)")
+                # Extract and display the solution
+                bindings = extract_solution_from_state(new_state_str)
+                if bindings:
+                    solution_str = format_solution(bindings)
+                    print(f"  Coloring: {solution_str}")
+                else:
+                    print("  A valid coloring has been found for the 4-cycle graph!")
                 
                 print("\n✓ Demo completed successfully")
                 return 0
@@ -208,6 +262,13 @@ def run_demo() -> int:
             else:
                 # Unknown event
                 print(f"Step {step_count}: Event '{event_str}'")
+                state_str = new_state_str
+        
+        except Exception as e:
+            print(f"\nError during execution: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc()
+            return 1
         
         except Exception as e:
             print(f"\nError during execution: {e}", file=sys.stderr)

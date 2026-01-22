@@ -21,24 +21,14 @@ The demo demonstrates:
 ## Requirements
 
 - Python 3.11+
-- SWI-Prolog 9.2.9+ (required for Janus Python integration)
+- SWI-Prolog 9.2.9+ (required for Janus Python integration) - [Download from swi-prolog.org](https://www.swi-prolog.org/Download.html)
 - janus-swi Python package
 
 ## Running the Demo
 
-### Using the wrapper script (recommended):
+Ensure SWI-Prolog is installed and available in your PATH, then run:
 
 ```bash
-./run_demo.sh
-```
-
-### Direct invocation:
-
-Set the required environment variables first:
-
-```bash
-export LD_LIBRARY_PATH=/snap/swi-prolog/110/usr/lib:/snap/swi-prolog/110/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
-export PATH=/snap/swi-prolog/current/usr/bin:$PATH
 python3 demo.py
 ```
 
@@ -97,18 +87,17 @@ Starting step-by-step execution
 Step 1: Suspended at yield point
   Label: chose_a_red
 
-Continue? (yes/no): yes
+Continue? (yes/no) [yes]: 
 
 Step 2: Suspended at yield point
   Label: chose_b(red)
 
-Continue? (yes/no): yes
+Continue? (yes/no) [yes]: 
 
 ...
 
 Step 20: Solution found!
-  A valid coloring has been found for the 4-cycle graph!
-  (Variables CA=red, and CB, CC, CD satisfy all adjacency constraints)
+  Coloring: a=red, b=green, c=blue, d=green
 
 ✓ Demo completed successfully
 ```
@@ -118,9 +107,9 @@ Step 20: Solution found!
 ### Janus Integration
 
 The demo uses Janus SWI to integrate Python and Prolog:
-- Complex Prolog terms (like nested list structures) cannot be directly serialized to Python
-- Solution: Use named states stored in Prolog's dynamic database
-- Events are converted to atoms for compatibility
+- State is serialized as Prolog term strings and managed in Python
+- Python parses state strings back to Prolog terms for each step
+- Solution bindings are extracted when a solution is found
 
 ### Module Qualification
 
@@ -128,7 +117,11 @@ The meta-interpreter handles module-qualified goals by stripping the module pref
 
 ### State Management
 
-State is stored in Prolog's dynamic database using `current_state/2` predicates, allowing Python to reference state by name without serialization issues.
+State is managed entirely in Python as serialized Prolog term strings. Each step:
+1. Deserializes the state string to a Prolog term
+2. Calls `step/3` to advance computation
+3. Serializes the new state and event back to strings
+4. Python processes the event and manages the state for the next iteration
 
 ## Purpose
 
