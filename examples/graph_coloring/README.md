@@ -109,7 +109,11 @@ Step 20: Solution found!
 The demo uses Janus SWI to integrate Python and Prolog:
 - State is serialized as Prolog term strings and managed in Python
 - Python parses state strings back to Prolog terms for each step
-- Solution bindings are extracted when a solution is found
+- Solution bindings are extracted using Prolog's dynamic database
+
+### Variable Binding Extraction
+
+When the meta-interpreter initializes, it stores the original goal with its variables in Prolog's dynamic database using `original_goal/1`. As the computation progresses, these variables get bound. When a solution is found, Python queries `original_goal/1` to extract the bound variable values.
 
 ### Module Qualification
 

@@ -3,14 +3,19 @@
 % Continuation-style meta-interpreter with explicit suspension/resumption.
 % The interpreted program is given by rule/2 facts in a separate file.
 
-:- module(toy_meta, [init/2, step/3, run/3]).
+:- module(toy_meta, [init/2, step/3, run/3, original_goal/1]).
 :- multifile toy_program_graph_coloring:rule/2.
+
+% Store the original goal for solution extraction
+:- dynamic original_goal/1.
 
 % --- State representation ---
 % state(Branches)
 % Branches is a list of branch(Goals), each Goals is a list representing the resolvent.
 
-init(Goal, state([branch([Goal])])).
+init(Goal, state([branch([Goal])])) :-
+    retractall(original_goal(_)),
+    assertz(original_goal(Goal)).
 
 run(State0, Event, State1) :- step(State0, Event, State1).
 
