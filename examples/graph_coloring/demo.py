@@ -85,9 +85,10 @@ def initialize_interpreter() -> Optional[str]:
         # Use toy_meta:init/2 to initialize the interpreter state
         # We'll serialize the state as a string for Python to manage
         # Use anonymous variables (_) to avoid issues with uninstantiated variables in Janus
+        # Only bind StateStr to avoid Janus trying to serialize the complex State term
         result = janus.query_once(
-            "toy_meta:init(toy_program_graph_coloring:coloring(_CA, _CB, _CC, _CD), State), "
-            "term_string(State, StateStr)"
+            "toy_meta:init(toy_program_graph_coloring:coloring(_CA, _CB, _CC, _CD), _State), "
+            "term_string(_State, StateStr)"
         )
         if result and result.get('truth', True):
             state_str = result.get('StateStr')
@@ -209,11 +210,12 @@ def run_demo() -> int:
         try:
             # Call step/3 to advance the interpreter
             # Parse state string back to Prolog term, call step, serialize result
+            # Use anonymous variables for complex terms to avoid Janus serialization issues
             result = janus.query_once(
-                "term_string(StateIn, StateInStr), "
-                "toy_meta:step(StateIn, Event, StateOut), "
-                "term_string(StateOut, StateOutStr), "
-                "term_string(Event, EventStr)",
+                "term_string(_StateIn, StateInStr), "
+                "toy_meta:step(_StateIn, _Event, _StateOut), "
+                "term_string(_StateOut, StateOutStr), "
+                "term_string(_Event, EventStr)",
                 {"StateInStr": state_str}
             )
             
