@@ -122,6 +122,69 @@ def prompt_user_continue() -> bool:
         return False
 
 
+def extract_state_components(state_str: str) -> Optional[Dict[str, Any]]:
+    """Extract and deserialize the full interpreter state components.
+    
+    Args:
+        state_str: Serialized state string from the meta-interpreter
+    
+    Returns:
+        Dictionary with 'resolvents' and 'bindings' keys, or None if extraction fails.
+        
+    Uses Janus queries to extract:
+    - resolvents: List of remaining goals to be proven
+    - bindings: Dictionary of variable bindings (position -> value)
+    """
+    try:
+        # Parse the state string back to a Prolog term and extract components
+        result = janus.query_once(
+            "term_string(_State, StateStr), "
+            "toy_meta:extract_resolvents(_State, Resolvents), "
+            "toy_meta:extract_goal_bindings(_State, Bindings), "
+            "term_string(Resolvents, ResolventsStr), "
+            "term_string(Bindings, BindingsStr)",
+            {"StateStr": state_str}
+        )
+        
+        if result and result.get('truth', True):
+            return {
+                'resolvents': result.get('ResolventsStr', '[]'),
+                'bindings': result.get('BindingsStr', '[]')
+            }
+        return None
+    except Exception as e:
+        print(f"Warning: Failed to extract state components: {e}", file=sys.stderr)
+        return None
+
+
+def pretty_print_state(state_components: Dict[str, Any]) -> None:
+    """Format and display the interpreter state in a human-readable format.
+    
+    Args:
+        state_components: Dictionary containing 'resolvents' and 'bindings'
+        
+    Displays:
+    - Remaining resolvents (goals to be proven)
+    - Current variable substitutions/bindings
+    """
+    print("  Interpreter State:")
+    
+    # Display variable bindings
+    bindings_str = state_components.get('bindings', '[]')
+    if bindings_str and bindings_str != '[]':
+        print(f"    Bindings: {bindings_str}")
+    else:
+        print("    Bindings: (none yet)")
+    
+    # Display remaining resolvents
+    resolvents_str = state_components.get('resolvents', '[]')
+    if resolvents_str and resolvents_str != '[]':
+        print(f"    Remaining goals: {resolvents_str}")
+    else:
+        print("    Remaining goals: (none)")
+    print()
+
+
 def extract_solution_from_state(state_str: str) -> Optional[Dict[str, str]]:
     """Extract variable bindings from a solution state.
     
@@ -131,28 +194,39 @@ def extract_solution_from_state(state_str: str) -> Optional[Dict[str, str]]:
     Returns:
         Dictionary with variable bindings (CA, CB, CC, CD) or None if extraction fails.
     
-    When a solution is found, the original goal stored during init contains
-    the bound variables. We extract those bindings.
+    When a solution is found, the goal stored in the state contains the bound variables.
+    We extract those bindings using the extract_goal_bindings/2 predicate.
     """
     try:
-        # Extract the original goal which now has bound variables
+        # Extract bindings from the state using the helper predicate
         result = janus.query_once(
-            "toy_meta:original_goal(toy_program_graph_coloring:coloring(CA, CB, CC, CD))"
+            "term_string(_State, StateStr), "
+            "toy_meta:extract_goal_bindings(_State, Bindings)",
+            {"StateStr": state_str}
         )
+        
         if result and result.get('truth', True):
-            return {
-                'CA': str(result.get('CA', '?')),
-                'CB': str(result.get('CB', '?')),
-                'CC': str(result.get('CC', '?')),
-                'CD': str(result.get('CD', '?'))
-            }
-    except Exception:
-        pass
+            bindings = result.get('Bindings', [])
+            if bindings and len(bindings) >= 4:
+                # The goal is coloring(CA, CB, CC, CD), so bindings are at positions 1-4
+                # bindings is a list of binding(Index, Value) terms
+                var_map = {'CA': '?', 'CB': '?', 'CC': '?', 'CD': '?'}
+                var_names = ['CA', 'CB', 'CC', 'CD']
+                
+                for i, var_name in enumerate(var_names, start=1):
+                    for binding in bindings:
+                        if isinstance(binding, dict) and binding.get('args', []):
+                            idx = binding['args'][0] if len(binding['args']) > 0 else None
+                            val = binding['args'][1] if len(binding['args']) > 1 else None
+                            if idx == i and val:
+                                var_map[var_name] = str(val)
+                                break
+                
+                return var_map
+    except Exception as e:
+        print(f"Warning: Failed to extract solution: {e}", file=sys.stderr)
     
-    # Fallback: Since we know CA is always red (from the rule head), 
-    # and we've verified all constraints, we can report a solution was found
-    # even if we can't extract the exact values
-    return {'CA': 'red', 'CB': '?', 'CC': '?', 'CD': '?'}
+    return None
 
 
 def format_solution(bindings: Dict[str, str]) -> str:
@@ -235,7 +309,13 @@ def run_demo() -> int:
                 
                 print(f"Step {step_count}: Suspended at yield point")
                 print(f"  Label: {label}")
-                print()
+                
+                # Extract and display the full state
+                state_components = extract_state_components(new_state_str)
+                if state_components:
+                    pretty_print_state(state_components)
+                else:
+                    print()
                 
                 if not prompt_user_continue():
                     print("\n✓ User terminated execution")
