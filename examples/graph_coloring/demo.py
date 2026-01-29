@@ -195,34 +195,27 @@ def extract_solution_from_state(state_str: str) -> Optional[Dict[str, str]]:
         Dictionary with variable bindings (CA, CB, CC, CD) or None if extraction fails.
     
     When a solution is found, the goal stored in the state contains the bound variables.
-    We extract those bindings using the extract_goal_bindings/2 predicate.
+    We extract those bindings directly by matching the goal structure.
     """
     try:
-        # Extract bindings from the state using the helper predicate
+        # Extract the goal directly from the state to get bound values
+        # The goal is coloring(CA, CB, CC, CD) or more precisely
+        # toy_program_graph_coloring:coloring(CA, CB, CC, CD)
         result = janus.query_once(
             "term_string(_State, StateStr), "
-            "toy_meta:extract_goal_bindings(_State, Bindings)",
+            "_State = state(Goal, _Branches), "
+            # Match the goal structure and extract the color arguments
+            "(Goal = toy_program_graph_coloring:coloring(CA, CB, CC, CD) ; Goal = coloring(CA, CB, CC, CD))",
             {"StateStr": state_str}
         )
         
         if result and result.get('truth', True):
-            bindings = result.get('Bindings', [])
-            if bindings and len(bindings) >= 4:
-                # The goal is coloring(CA, CB, CC, CD), so bindings are at positions 1-4
-                # bindings is a list of binding(Index, Value) terms
-                var_map = {'CA': '?', 'CB': '?', 'CC': '?', 'CD': '?'}
-                var_names = ['CA', 'CB', 'CC', 'CD']
-                
-                for i, var_name in enumerate(var_names, start=1):
-                    for binding in bindings:
-                        if isinstance(binding, dict) and binding.get('args', []):
-                            idx = binding['args'][0] if len(binding['args']) > 0 else None
-                            val = binding['args'][1] if len(binding['args']) > 1 else None
-                            if idx == i and val:
-                                var_map[var_name] = str(val)
-                                break
-                
-                return var_map
+            return {
+                'CA': str(result.get('CA', '?')),
+                'CB': str(result.get('CB', '?')),
+                'CC': str(result.get('CC', '?')),
+                'CD': str(result.get('CD', '?'))
+            }
     except Exception as e:
         print(f"Warning: Failed to extract solution: {e}", file=sys.stderr)
     
