@@ -347,12 +347,6 @@ def run_demo() -> int:
             import traceback
             traceback.print_exc()
             return 1
-        
-        except Exception as e:
-            print(f"\nError during execution: {e}", file=sys.stderr)
-            import traceback
-            traceback.print_exc()
-            return 1
 
 
 def main() -> NoReturn:
