@@ -3,7 +3,7 @@
 % Continuation-style meta-interpreter with explicit suspension/resumption.
 % The interpreted program is given by rule/2 facts in a separate file.
 
-:- module(toy_meta, [init/2, step/3, run/3, original_goal/1]).
+:- module(toy_meta, [init/2, step/3, run/3, original_goal/1, extract_state_info/4]).
 :- multifile toy_program_graph_coloring:rule/2.
 
 % Store the original goal for solution extraction
@@ -67,3 +67,18 @@ body_to_goals((A,B), Goals) :- !,
     body_to_goals(B, GB),
     append(GA, GB, Goals).
 body_to_goals(A, [A]).
+
+% --- Helper to extract state information for Python ---
+% extract_state_info(+StateStr, -NumBranches, -FirstBranchGoalStrs, -NumGoalsInFirstBranch)
+% Extracts information from a serialized state string for display purposes.
+extract_state_info(StateStr, NumBranches, FirstBranchGoalStrs, NumGoalsInFirstBranch) :-
+    term_string(State, StateStr),
+    State = state(Branches),
+    length(Branches, NumBranches),
+    (   Branches = [branch(Goals)|_]
+    ->  length(Goals, NumGoalsInFirstBranch),
+        maplist(term_string, Goals, GoalStrList),
+        FirstBranchGoalStrs = GoalStrList
+    ;   FirstBranchGoalStrs = [],
+        NumGoalsInFirstBranch = 0
+    ).

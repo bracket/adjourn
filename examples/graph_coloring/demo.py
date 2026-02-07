@@ -122,37 +122,96 @@ def prompt_user_continue() -> bool:
         return False
 
 
-def extract_solution_from_state(state_str: str) -> Optional[Dict[str, str]]:
-    """Extract variable bindings from a solution state.
+def extract_state_components(state_str: str) -> Optional[Dict[str, Any]]:
+    """Extract and deserialize the full interpreter state at a suspension point.
     
     Args:
-        state_str: Serialized state string containing the solution
+        state_str: Serialized state string from the meta-interpreter
     
     Returns:
-        Dictionary with variable bindings (CA, CB, CC, CD) or None if extraction fails.
+        Dictionary containing:
+        - 'resolvents': List of goal strings remaining to be resolved
+        - 'num_branches': Number of alternative branches in the state
+        - 'num_goals': Number of goals in the first branch
+        or None if extraction fails.
     
-    When a solution is found, the original goal stored during init contains
-    the bound variables. We extract those bindings.
+    Uses the toy_meta:extract_state_info/4 predicate to safely extract state
+    components from the serialized state string.
     """
     try:
-        # Extract the original goal which now has bound variables
         result = janus.query_once(
-            "toy_meta:original_goal(toy_program_graph_coloring:coloring(CA, CB, CC, CD))"
+            "toy_meta:extract_state_info(StateStr, NumBranches, GoalStrs, NumGoals)",
+            {"StateStr": state_str}
         )
         if result and result.get('truth', True):
             return {
-                'CA': str(result.get('CA', '?')),
-                'CB': str(result.get('CB', '?')),
-                'CC': str(result.get('CC', '?')),
-                'CD': str(result.get('CD', '?'))
+                'resolvents': result.get('GoalStrs', []),
+                'num_branches': result.get('NumBranches', 0),
+                'num_goals': result.get('NumGoals', 0)
             }
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Warning: Failed to extract state components: {e}", file=sys.stderr)
     
-    # Fallback: Since we know CA is always red (from the rule head), 
-    # and we've verified all constraints, we can report a solution was found
-    # even if we can't extract the exact values
-    return {'CA': 'red', 'CB': '?', 'CC': '?', 'CD': '?'}
+    return None
+
+
+def pretty_print_state(state_components: Dict[str, Any], bindings: Dict[str, str]) -> None:
+    """Format and display the interpreter state in a readable format.
+    
+    Args:
+        state_components: Dictionary with 'resolvents', 'num_branches', 'num_goals'
+        bindings: Dictionary with current variable bindings (CA, CB, CC, CD)
+    
+    Displays both the remaining resolvents and current variable substitutions
+    with clear section headers.
+    """
+    print("  " + "─" * 56)
+    
+    # Display variable bindings
+    print("  Variable Bindings:")
+    if any(v != '?' for v in bindings.values()):
+        vertex_names = {'CA': 'a', 'CB': 'b', 'CC': 'c', 'CD': 'd'}
+        for var in ['CA', 'CB', 'CC', 'CD']:
+            value = bindings.get(var, '?')
+            vertex = vertex_names[var]
+            print(f"    {vertex} ({var}): {value}")
+    else:
+        print("    (none yet)")
+    
+    # Display remaining goals
+    num_goals = state_components.get('num_goals', 0)
+    num_branches = state_components.get('num_branches', 0)
+    print(f"\n  Remaining Goals: {num_goals} goal(s) in current branch")
+    print(f"  Alternative Branches: {num_branches} total")
+    
+    if num_goals > 0 and num_goals <= 5:
+        resolvents = state_components.get('resolvents', [])
+        if resolvents:
+            print("  Next goals to resolve:")
+            for i, goal_str in enumerate(resolvents[:5], 1):
+                # Simplify goal display by removing module prefix
+                simplified = goal_str.replace('toy_program_graph_coloring:', '')
+                print(f"    {i}. {simplified}")
+    
+    print("  " + "─" * 56)
+
+
+def extract_solution_from_state(bindings: Dict[str, str]) -> Optional[Dict[str, str]]:
+    """Extract variable bindings from tracked substitutions.
+    
+    Args:
+        bindings: Dictionary with current variable bindings from tracked labels
+    
+    Returns:
+        Dictionary with variable bindings (CA, CB, CC, CD) or None if incomplete.
+    
+    Uses the bindings tracked during execution from suspension labels.
+    """
+    # Check if we have all bindings
+    if all(bindings.get(var, '?') != '?' for var in ['CA', 'CB', 'CC', 'CD']):
+        return bindings
+    
+    return None
 
 
 def format_solution(bindings: Dict[str, str]) -> str:
@@ -188,6 +247,7 @@ def run_demo() -> int:
     - done: The computation has completed
     
     State is managed in Python as serialized Prolog term strings.
+    Variable bindings are tracked from suspension labels.
     """
     # Load Prolog files
     if not load_prolog_files():
@@ -203,6 +263,8 @@ def run_demo() -> int:
     print("=" * 60 + "\n")
     
     step_count = 0
+    # Track variable bindings from suspension labels
+    bindings = {'CA': 'red', 'CB': '?', 'CC': '?', 'CD': '?'}  # CA is always red
     
     while True:
         step_count += 1
@@ -233,8 +295,24 @@ def run_demo() -> int:
                 label_end = event_str.rfind(')')
                 label = event_str[label_start:label_end] if label_start > 0 and label_end > label_start else event_str
                 
+                # Extract variable bindings from labels like chose_b(red), chose_c(green), etc.
+                if label.startswith('chose_b(') and label.endswith(')'):
+                    color = label[8:-1]  # Extract color from chose_b(color)
+                    bindings['CB'] = color
+                elif label.startswith('chose_c(') and label.endswith(')'):
+                    color = label[8:-1]  # Extract color from chose_c(color)
+                    bindings['CC'] = color
+                elif label.startswith('chose_d(') and label.endswith(')'):
+                    color = label[8:-1]  # Extract color from chose_d(color)
+                    bindings['CD'] = color
+                
                 print(f"Step {step_count}: Suspended at yield point")
                 print(f"  Label: {label}")
+                
+                # Extract and display full state
+                state_components = extract_state_components(new_state_str)
+                if state_components:
+                    pretty_print_state(state_components, bindings)
                 print()
                 
                 if not prompt_user_continue():
@@ -254,12 +332,13 @@ def run_demo() -> int:
                 print(f"\nStep {step_count}: Solution found!")
                 
                 # Extract and display the solution
-                bindings = extract_solution_from_state(new_state_str)
-                if bindings:
-                    solution_str = format_solution(bindings)
+                solution_bindings = extract_solution_from_state(bindings)
+                if solution_bindings:
+                    solution_str = format_solution(solution_bindings)
                     print(f"  Coloring: {solution_str}")
                 else:
                     print("  A valid coloring has been found for the 4-cycle graph!")
+                    print("  (Note: Could not extract all variable bindings)")
                 
                 print("\n✓ Demo completed successfully")
                 return 0
@@ -268,12 +347,6 @@ def run_demo() -> int:
                 # Unknown event
                 print(f"Step {step_count}: Event '{event_str}'")
                 state_str = new_state_str
-        
-        except Exception as e:
-            print(f"\nError during execution: {e}", file=sys.stderr)
-            import traceback
-            traceback.print_exc()
-            return 1
         
         except Exception as e:
             print(f"\nError during execution: {e}", file=sys.stderr)
