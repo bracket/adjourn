@@ -73,6 +73,8 @@ The issue is complete when all of the following are met:
 ## **Verification Checklist (for the Agent)**
 The agent must validate the following before closing the issue:
 
+- [ ] SWI-Prolog 9.1.12+ is installed and verified
+- [ ] janus-swi package installed successfully
 - [ ] All modified code compiles without errors
 - [ ] All unit/integration tests pass
 - [ ] All requirements are implemented as specified
