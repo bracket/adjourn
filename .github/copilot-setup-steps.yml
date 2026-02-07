@@ -1,37 +1,25 @@
-name: "Copilot Setup Steps"
+steps:
+  - name: Install SWI-Prolog from PPA
+    run: |
+      sudo apt-get update
+      sudo apt-add-repository -y ppa:swi-prolog/stable
+      sudo apt-get update
+      sudo apt-get install -y swi-prolog
 
-on:
-  workflow_dispatch:
-  push:
-    paths:
-      - .github/workflows/copilot-setup-steps.yml
-  pull_request:
-    paths:
-      - .github/workflows/copilot-setup-steps.yml
+  - name: Verify SWI-Prolog version
+    run: |
+      swipl --version
+      VERSION=$(swipl --version | grep -oP 'version \K[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+      REQUIRED="9.1.12"
+      if [ "$(printf '%s\n' "$REQUIRED" "$VERSION" | sort -V | head -n1)" != "$REQUIRED" ]; then
+        echo "ERROR: SWI-Prolog version $VERSION is too old. Minimum required: $REQUIRED"
+        echo "Cannot proceed without compatible SWI-Prolog for janus-swi integration"
+        exit 1
+      fi
+      echo "SWI-Prolog version $VERSION meets minimum requirement"
 
-jobs:
-  copilot-setup-steps:
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
-
-    steps:
-      - name: Set up SWI-Prolog
-        run: |
-          # Ubuntu's default SWI-Prolog is 9.0.4, but janus-swi requires 9.1.12+
-          # Try to install from PPA first, fall back to building from source if needed
-          sudo apt-get update
-          
-          # Try adding PPA (may not work in all environments)
-          sudo add-apt-repository -y ppa:swi-prolog/stable || true
-          sudo apt-get update || true
-          
-          # Install SWI-Prolog
-          sudo apt-get install -y swi-prolog
-          
-          # Check version
-          swipl --version
-          
-          echo "Note: If SWI-Prolog version is < 9.1.12, janus-swi will not install"
-          echo "In that case, you may need to build SWI-Prolog from source"
+  - name: Install Python package in editable mode
+    run: |
+      cd /home/runner/work/constraint/constraint
+      pip install -e .
+    description: "Install constraint package with janus-swi dependency"
