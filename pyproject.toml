@@ -40,3 +40,9 @@ addopts = "-q"
 [tool.coverage.run]
 source = ["constraint"]
 branch = true
+
+[tool.mypy]
+# Exclude parser.py due to lark transformer internal typing issues
+[[tool.mypy.overrides]]
+module = "constraint.parser.parser"
+ignore_errors = true

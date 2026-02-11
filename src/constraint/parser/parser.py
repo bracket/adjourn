@@ -17,7 +17,7 @@ from constraint.parser.ast import (
     Directive,
     Float,
     Integer,
-    List,
+    List as ASTList,
     Program,
     String,
     Variable,
@@ -25,7 +25,7 @@ from constraint.parser.ast import (
 from constraint.parser.grammar import PROLOG_GRAMMAR
 
 
-class PrologTransformer(Transformer):
+class PrologTransformer(Transformer):  # type: ignore[misc]
     """Lark transformer that converts parse trees to AST nodes."""
 
     # Atoms and variables  
@@ -78,31 +78,31 @@ class PrologTransformer(Transformer):
         return Compound(functor.value, args)
 
     # Lists
-    def empty_list(self, items: list[Any]) -> List:
+    def empty_list(self, items: list[Any]) -> ASTList:
         """Transform empty list."""
-        return List([])
+        return ASTList([])
 
-    def list_single(self, items: list[Any]) -> List:
+    def list_single(self, items: list[Any]) -> ASTList:
         """Transform single-element list."""
-        return List([items[0]])
+        return ASTList([items[0]])
 
-    def list_elements(self, items: list[Any]) -> List:
+    def list_elements(self, items: list[Any]) -> ASTList:
         """Transform list with multiple elements."""
-        return List(items)
+        return ASTList(items)
 
-    def list_with_tail(self, items: list[Any]) -> List:
+    def list_with_tail(self, items: list[Any]) -> ASTList:
         """Transform list with tail [H|T]."""
-        return List([items[0]], tail=items[1])
+        return ASTList([items[0]], tail=items[1])
 
-    def list_elements_with_tail(self, items: list[Any]) -> List:
+    def list_elements_with_tail(self, items: list[Any]) -> ASTList:
         """Transform list with elements and tail [H1, H2|T]."""
         # All but last item are elements, last is tail
-        return List(items[:-1], tail=items[-1])
+        return ASTList(items[:-1], tail=items[-1])
 
-    def list(self, items: list[Any]) -> List:
+    def list(self, items: list[Any]) -> ASTList:
         """Pass through list node."""
         if not items:
-            return List([])
+            return ASTList([])
         return items[0]
 
     # Curly braces
@@ -423,9 +423,9 @@ def parse_term(text: str) -> Any:
         lark.exceptions.LarkError: If parsing fails
     """
     # Add a period to make it a valid program item for parsing
-    result = _parser.parse(text.strip() + ".")
+    result = _parser.parse(text.strip() + ".")  # type: ignore[attr-defined]
     # Extract the term from the clause
-    if result.items and isinstance(result.items[0], Clause):
+    if result.items and isinstance(result.items[0], Clause):  # type: ignore[attr-defined]
         return result.items[0].head
     return result
 
@@ -442,8 +442,8 @@ def parse_clause(text: str) -> Clause | Directive:
     Raises:
         lark.exceptions.LarkError: If parsing fails
     """
-    result = _parser.parse(text.strip())
-    if result.items:
+    result = _parser.parse(text.strip())  # type: ignore[attr-defined]
+    if result.items:  # type: ignore[attr-defined]
         return result.items[0]
     raise ValueError("No clause found in input")
 
@@ -460,7 +460,7 @@ def parse_program(text: str) -> Program:
     Raises:
         lark.exceptions.LarkError: If parsing fails
     """
-    return _parser.parse(text.strip())
+    return _parser.parse(text.strip())  # type: ignore[return-value]
 
 
 def parse_file(filepath: str) -> Program:
