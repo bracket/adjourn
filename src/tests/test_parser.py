@@ -568,3 +568,371 @@ class TestParseErrors:
         """Test that missing clause terminator raises an error."""
         with pytest.raises(Exception):
             parse_clause("fact(a)")
+
+
+class TestJSONRoundTrip:
+    """Tests for JSON serialization and deserialization."""
+
+    def test_atom_json_roundtrip(self) -> None:
+        """Test JSON round-trip for atoms."""
+        from constraint.parser import from_dict
+        
+        original = Atom("hello")
+        json_dict = original.to_dict()
+        reconstructed = from_dict(json_dict)
+        
+        assert isinstance(reconstructed, Atom)
+        assert reconstructed.value == original.value
+        assert reconstructed == original
+
+    def test_variable_json_roundtrip(self) -> None:
+        """Test JSON round-trip for variables."""
+        from constraint.parser import from_dict
+        
+        original = Variable("X")
+        json_dict = original.to_dict()
+        reconstructed = from_dict(json_dict)
+        
+        assert isinstance(reconstructed, Variable)
+        assert reconstructed.name == original.name
+        assert reconstructed == original
+
+    def test_integer_json_roundtrip(self) -> None:
+        """Test JSON round-trip for integers."""
+        from constraint.parser import from_dict
+        
+        original = Integer(42)
+        json_dict = original.to_dict()
+        reconstructed = from_dict(json_dict)
+        
+        assert isinstance(reconstructed, Integer)
+        assert reconstructed.value == original.value
+        assert reconstructed == original
+
+    def test_float_json_roundtrip(self) -> None:
+        """Test JSON round-trip for floats."""
+        from constraint.parser import from_dict
+        
+        original = Float(3.14)
+        json_dict = original.to_dict()
+        reconstructed = from_dict(json_dict)
+        
+        assert isinstance(reconstructed, Float)
+        assert reconstructed.value == original.value
+        assert reconstructed == original
+
+    def test_string_json_roundtrip(self) -> None:
+        """Test JSON round-trip for strings."""
+        from constraint.parser import from_dict
+        
+        original = String("hello world")
+        json_dict = original.to_dict()
+        reconstructed = from_dict(json_dict)
+        
+        assert isinstance(reconstructed, String)
+        assert reconstructed.value == original.value
+        assert reconstructed == original
+
+    def test_simple_compound_json_roundtrip(self) -> None:
+        """Test JSON round-trip for simple compound terms."""
+        from constraint.parser import from_dict
+        
+        original = Compound("f", [Atom("a"), Atom("b")])
+        json_dict = original.to_dict()
+        reconstructed = from_dict(json_dict)
+        
+        assert isinstance(reconstructed, Compound)
+        assert reconstructed.functor == original.functor
+        assert len(reconstructed.args) == len(original.args)
+        assert reconstructed == original
+
+    def test_nested_compound_json_roundtrip(self) -> None:
+        """Test JSON round-trip for nested compound terms."""
+        from constraint.parser import from_dict
+        
+        original = Compound("f", [
+            Compound("g", [Atom("a")]),
+            Compound("h", [Integer(1), Variable("X")])
+        ])
+        json_dict = original.to_dict()
+        reconstructed = from_dict(json_dict)
+        
+        assert isinstance(reconstructed, Compound)
+        assert reconstructed == original
+
+    def test_simple_list_json_roundtrip(self) -> None:
+        """Test JSON round-trip for simple lists."""
+        from constraint.parser import from_dict
+        
+        original = List([Atom("a"), Atom("b"), Atom("c")])
+        json_dict = original.to_dict()
+        reconstructed = from_dict(json_dict)
+        
+        assert isinstance(reconstructed, List)
+        assert len(reconstructed.elements) == len(original.elements)
+        assert reconstructed.tail == original.tail
+        assert reconstructed == original
+
+    def test_list_with_tail_json_roundtrip(self) -> None:
+        """Test JSON round-trip for lists with tail."""
+        from constraint.parser import from_dict
+        
+        original = List([Atom("a"), Atom("b")], tail=Variable("T"))
+        json_dict = original.to_dict()
+        reconstructed = from_dict(json_dict)
+        
+        assert isinstance(reconstructed, List)
+        assert reconstructed == original
+        assert isinstance(reconstructed.tail, Variable)
+
+    def test_fact_clause_json_roundtrip(self) -> None:
+        """Test JSON round-trip for fact clauses."""
+        from constraint.parser import from_dict
+        
+        original = Clause(head=Compound("parent", [Atom("alice"), Atom("bob")]))
+        json_dict = original.to_dict()
+        reconstructed = from_dict(json_dict)
+        
+        assert isinstance(reconstructed, Clause)
+        assert reconstructed.body is None
+        assert reconstructed == original
+
+    def test_rule_clause_json_roundtrip(self) -> None:
+        """Test JSON round-trip for rule clauses."""
+        from constraint.parser import from_dict
+        
+        original = Clause(
+            head=Compound("ancestor", [Variable("X"), Variable("Y")]),
+            body=Compound("parent", [Variable("X"), Variable("Y")])
+        )
+        json_dict = original.to_dict()
+        reconstructed = from_dict(json_dict)
+        
+        assert isinstance(reconstructed, Clause)
+        assert reconstructed.body is not None
+        assert reconstructed == original
+
+    def test_directive_json_roundtrip(self) -> None:
+        """Test JSON round-trip for directives."""
+        from constraint.parser import from_dict
+        
+        original = Directive(term=Compound("module", [Atom("test")]))
+        json_dict = original.to_dict()
+        reconstructed = from_dict(json_dict)
+        
+        assert isinstance(reconstructed, Directive)
+        assert reconstructed == original
+
+    def test_program_json_roundtrip(self) -> None:
+        """Test JSON round-trip for programs."""
+        from constraint.parser import from_dict
+        
+        original = Program(items=[
+            Clause(head=Compound("fact", [Atom("a")])),
+            Directive(term=Compound("module", [Atom("test")])),
+        ])
+        json_dict = original.to_dict()
+        reconstructed = from_dict(json_dict)
+        
+        assert isinstance(reconstructed, Program)
+        assert len(reconstructed.items) == len(original.items)
+        assert reconstructed == original
+
+    def test_parsed_term_json_roundtrip(self) -> None:
+        """Test JSON round-trip for a parsed term."""
+        from constraint.parser import from_dict
+        
+        original = parse_term("f(g(a), h(1, X))")
+        json_dict = original.to_dict()
+        reconstructed = from_dict(json_dict)
+        
+        assert reconstructed == original
+
+    def test_parsed_clause_json_roundtrip(self) -> None:
+        """Test JSON round-trip for a parsed clause."""
+        from constraint.parser import from_dict
+        
+        original = parse_clause("ancestor(X, Y) :- parent(X, Y).")
+        json_dict = original.to_dict()
+        reconstructed = from_dict(json_dict)
+        
+        assert reconstructed == original
+
+    def test_json_dict_structure(self) -> None:
+        """Test that JSON dict has correct structure."""
+        term = Compound("f", [Atom("a"), Integer(1)])
+        json_dict = term.to_dict()
+        
+        assert json_dict["type"] == "Compound"
+        assert json_dict["functor"] == "f"
+        assert len(json_dict["args"]) == 2
+        assert json_dict["args"][0]["type"] == "Atom"
+        assert json_dict["args"][0]["value"] == "a"
+        assert json_dict["args"][1]["type"] == "Integer"
+        assert json_dict["args"][1]["value"] == 1
+
+
+class TestTermPrettyPrint:
+    """Tests for term pretty-printing."""
+
+    def test_format_atom(self) -> None:
+        """Test formatting an atom."""
+        from constraint.parser import format_term
+        
+        term = Atom("hello")
+        result = format_term(term)
+        assert result == "hello"
+
+    def test_format_variable(self) -> None:
+        """Test formatting a variable."""
+        from constraint.parser import format_term
+        
+        term = Variable("X")
+        result = format_term(term)
+        assert result == "X"
+
+    def test_format_integer(self) -> None:
+        """Test formatting an integer."""
+        from constraint.parser import format_term
+        
+        term = Integer(42)
+        result = format_term(term)
+        assert result == "42"
+
+    def test_format_float(self) -> None:
+        """Test formatting a float."""
+        from constraint.parser import format_term
+        
+        term = Float(3.14)
+        result = format_term(term)
+        assert result == "3.14"
+
+    def test_format_string(self) -> None:
+        """Test formatting a string."""
+        from constraint.parser import format_term
+        
+        term = String("hello")
+        result = format_term(term)
+        assert result == '"hello"'
+
+    def test_format_simple_compound(self) -> None:
+        """Test formatting a simple compound with one arg."""
+        from constraint.parser import format_term
+        
+        term = Compound("f", [Atom("a")])
+        result = format_term(term)
+        assert result == "f(a)"
+
+    def test_format_compound_no_args(self) -> None:
+        """Test formatting a compound with no args."""
+        from constraint.parser import format_term
+        
+        term = Compound("f", [])
+        result = format_term(term)
+        assert result == "f"
+
+    def test_format_multiarg_compound(self) -> None:
+        """Test formatting a compound with multiple args."""
+        from constraint.parser import format_term
+        
+        term = Compound("f", [Atom("a"), Atom("b"), Atom("c")])
+        result = format_term(term)
+        lines = result.split("\n")
+        
+        assert lines[0] == "f("
+        assert "  a," in lines[1]
+        assert "  b," in lines[2]
+        assert "  c" in lines[3]
+        assert lines[4] == ")"
+
+    def test_format_nested_compound(self) -> None:
+        """Test formatting nested compound terms."""
+        from constraint.parser import format_term
+        
+        term = Compound("f", [
+            Compound("g", [Atom("a")]),
+            Compound("h", [Atom("b")])
+        ])
+        result = format_term(term)
+        
+        # Should have proper indentation
+        assert "f(" in result
+        assert "  g(a)," in result
+        assert "  h(b)" in result
+        assert ")" in result
+
+    def test_format_empty_list(self) -> None:
+        """Test formatting an empty list."""
+        from constraint.parser import format_term
+        
+        term = List([])
+        result = format_term(term)
+        assert result == "[]"
+
+    def test_format_single_element_list(self) -> None:
+        """Test formatting a list with one element."""
+        from constraint.parser import format_term
+        
+        term = List([Atom("a")])
+        result = format_term(term)
+        assert result == "[a]"
+
+    def test_format_multielement_list(self) -> None:
+        """Test formatting a list with multiple elements."""
+        from constraint.parser import format_term
+        
+        term = List([Atom("a"), Atom("b"), Atom("c")])
+        result = format_term(term)
+        lines = result.split("\n")
+        
+        assert lines[0] == "["
+        assert "  a," in lines[1]
+        assert "  b," in lines[2]
+        assert "  c" in lines[3]
+        assert lines[4] == "]"
+
+    def test_format_list_with_tail(self) -> None:
+        """Test formatting a list with tail."""
+        from constraint.parser import format_term
+        
+        term = List([Atom("a"), Atom("b")], tail=Variable("T"))
+        result = format_term(term)
+        
+        assert "[" in result
+        assert "  a," in result
+        assert "  b," in result
+        assert "  |T" in result
+        assert "]" in result
+
+    def test_format_with_custom_indent(self) -> None:
+        """Test formatting with custom indentation."""
+        from constraint.parser import format_term
+        
+        term = Compound("f", [Atom("a"), Atom("b")])
+        result = format_term(term, indent=1, indent_size=4)
+        lines = result.split("\n")
+        
+        # Should start with 4 spaces (1 level * 4 spaces)
+        assert lines[0] == "    f("
+        # Args should have 8 spaces (2 levels * 4 spaces)
+        assert "        a," in lines[1]
+
+    def test_print_term_output(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Test that print_term outputs the formatted string."""
+        from constraint.parser import print_term
+        
+        term = Atom("hello")
+        print_term(term)
+        captured = capsys.readouterr()
+        assert captured.out == "hello\n"
+
+    def test_format_parsed_term(self) -> None:
+        """Test formatting a parsed term."""
+        from constraint.parser import format_term
+        
+        term = parse_term("f(a, b, c)")
+        result = format_term(term)
+        
+        # Should format with multiple lines
+        assert "f(" in result
+        assert ")" in result

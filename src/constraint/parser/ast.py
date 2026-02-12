@@ -7,7 +7,10 @@ parsed Prolog terms, clauses, and programs.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeAlias
+
+# Type alias for JSON-serializable data
+JSONDict: TypeAlias = dict[str, Any]
 
 
 @dataclass
@@ -19,6 +22,10 @@ class Atom:
     def __str__(self) -> str:
         return self.value
 
+    def to_dict(self) -> JSONDict:
+        """Convert to JSON-serializable dictionary."""
+        return {"type": "Atom", "value": self.value}
+
 
 @dataclass
 class Variable:
@@ -28,6 +35,10 @@ class Variable:
 
     def __str__(self) -> str:
         return self.name
+
+    def to_dict(self) -> JSONDict:
+        """Convert to JSON-serializable dictionary."""
+        return {"type": "Variable", "name": self.name}
 
 
 @dataclass
@@ -39,6 +50,10 @@ class Integer:
     def __str__(self) -> str:
         return str(self.value)
 
+    def to_dict(self) -> JSONDict:
+        """Convert to JSON-serializable dictionary."""
+        return {"type": "Integer", "value": self.value}
+
 
 @dataclass
 class Float:
@@ -49,6 +64,10 @@ class Float:
     def __str__(self) -> str:
         return str(self.value)
 
+    def to_dict(self) -> JSONDict:
+        """Convert to JSON-serializable dictionary."""
+        return {"type": "Float", "value": self.value}
+
 
 @dataclass
 class String:
@@ -58,6 +77,10 @@ class String:
 
     def __str__(self) -> str:
         return f'"{self.value}"'
+
+    def to_dict(self) -> JSONDict:
+        """Convert to JSON-serializable dictionary."""
+        return {"type": "String", "value": self.value}
 
 
 @dataclass
@@ -77,6 +100,14 @@ class Compound:
             return self.functor
         args_str = ", ".join(str(arg) for arg in self.args)
         return f"{self.functor}({args_str})"
+
+    def to_dict(self) -> JSONDict:
+        """Convert to JSON-serializable dictionary."""
+        return {
+            "type": "Compound",
+            "functor": self.functor,
+            "args": [_term_to_dict(arg) for arg in self.args],
+        }
 
 
 @dataclass
@@ -100,6 +131,16 @@ class List:
         elements_str = ", ".join(str(e) for e in self.elements)
         return f"[{elements_str}]"
 
+    def to_dict(self) -> JSONDict:
+        """Convert to JSON-serializable dictionary."""
+        result: JSONDict = {
+            "type": "List",
+            "elements": [_term_to_dict(e) for e in self.elements],
+        }
+        if self.tail is not None:
+            result["tail"] = _term_to_dict(self.tail)
+        return result
+
 
 @dataclass
 class Clause:
@@ -118,6 +159,16 @@ class Clause:
             return f"{self.head}."
         return f"{self.head} :- {self.body}."
 
+    def to_dict(self) -> JSONDict:
+        """Convert to JSON-serializable dictionary."""
+        result: JSONDict = {
+            "type": "Clause",
+            "head": _term_to_dict(self.head),
+        }
+        if self.body is not None:
+            result["body"] = _term_to_dict(self.body)
+        return result
+
 
 @dataclass
 class Directive:
@@ -132,6 +183,13 @@ class Directive:
     def __str__(self) -> str:
         return f":- {self.term}."
 
+    def to_dict(self) -> JSONDict:
+        """Convert to JSON-serializable dictionary."""
+        return {
+            "type": "Directive",
+            "term": _term_to_dict(self.term),
+        }
+
 
 @dataclass
 class Program:
@@ -145,3 +203,137 @@ class Program:
 
     def __str__(self) -> str:
         return "\n".join(str(item) for item in self.items)
+
+    def to_dict(self) -> JSONDict:
+        """Convert to JSON-serializable dictionary."""
+        return {
+            "type": "Program",
+            "items": [_term_to_dict(item) for item in self.items],
+        }
+
+
+def _term_to_dict(term: Any) -> JSONDict | Any:
+    """Convert a term to a JSON-serializable dictionary.
+    
+    Args:
+        term: An AST node or primitive value
+        
+    Returns:
+        JSON-serializable dictionary or primitive value
+    """
+    if hasattr(term, "to_dict"):
+        return term.to_dict()
+    return term
+
+
+def from_dict(data: JSONDict) -> Any:
+    """Reconstruct an AST node from a JSON-serializable dictionary.
+    
+    Args:
+        data: Dictionary representation of an AST node
+        
+    Returns:
+        Reconstructed AST node
+        
+    Raises:
+        ValueError: If the type is unknown or data is invalid
+    """
+    if not isinstance(data, dict) or "type" not in data:
+        return data
+    
+    node_type = data["type"]
+    
+    if node_type == "Atom":
+        return Atom(value=data["value"])
+    elif node_type == "Variable":
+        return Variable(name=data["name"])
+    elif node_type == "Integer":
+        return Integer(value=data["value"])
+    elif node_type == "Float":
+        return Float(value=data["value"])
+    elif node_type == "String":
+        return String(value=data["value"])
+    elif node_type == "Compound":
+        return Compound(
+            functor=data["functor"],
+            args=[from_dict(arg) for arg in data["args"]],
+        )
+    elif node_type == "List":
+        elements = [from_dict(e) for e in data["elements"]]
+        tail = from_dict(data["tail"]) if "tail" in data else None
+        return List(elements=elements, tail=tail)
+    elif node_type == "Clause":
+        head = from_dict(data["head"])
+        body = from_dict(data["body"]) if "body" in data else None
+        return Clause(head=head, body=body)
+    elif node_type == "Directive":
+        return Directive(term=from_dict(data["term"]))
+    elif node_type == "Program":
+        return Program(items=[from_dict(item) for item in data["items"]])
+    else:
+        raise ValueError(f"Unknown AST node type: {node_type}")
+
+
+def format_term(term: Any, indent: int = 0, indent_size: int = 2) -> str:
+    """Format a term as a pretty-printed string with indentation.
+    
+    Args:
+        term: The term to format (should be an AST node)
+        indent: Current indentation level (default: 0)
+        indent_size: Number of spaces per indentation level (default: 2)
+        
+    Returns:
+        Pretty-printed string representation of the term
+    """
+    prefix = " " * (indent * indent_size)
+    
+    if isinstance(term, (Atom, Variable, Integer, Float, String)):
+        return f"{prefix}{term}"
+    elif isinstance(term, Compound):
+        if not term.args:
+            return f"{prefix}{term.functor}"
+        if len(term.args) == 1:
+            # Single arg can be on same line
+            arg_str = format_term(term.args[0], 0, indent_size).strip()
+            return f"{prefix}{term.functor}({arg_str})"
+        # Multiple args: one per line
+        lines = [f"{prefix}{term.functor}("]
+        for i, arg in enumerate(term.args):
+            arg_str = format_term(arg, indent + 1, indent_size).strip()
+            separator = "," if i < len(term.args) - 1 else ""
+            lines.append(f"{' ' * ((indent + 1) * indent_size)}{arg_str}{separator}")
+        lines.append(f"{prefix})")
+        return "\n".join(lines)
+    elif isinstance(term, List):
+        if not term.elements and term.tail is None:
+            return f"{prefix}[]"
+        if len(term.elements) == 1 and term.tail is None:
+            # Single element can be on same line
+            elem_str = format_term(term.elements[0], 0, indent_size).strip()
+            return f"{prefix}[{elem_str}]"
+        # Multiple elements: one per line
+        lines = [f"{prefix}["]
+        for i, elem in enumerate(term.elements):
+            elem_str = format_term(elem, indent + 1, indent_size).strip()
+            separator = "," if i < len(term.elements) - 1 or term.tail is not None else ""
+            lines.append(f"{' ' * ((indent + 1) * indent_size)}{elem_str}{separator}")
+        if term.tail is not None:
+            tail_str = format_term(term.tail, indent + 1, indent_size).strip()
+            lines.append(f"{' ' * ((indent + 1) * indent_size)}|{tail_str}")
+        lines.append(f"{prefix}]")
+        return "\n".join(lines)
+    else:
+        # Fallback to string representation
+        return f"{prefix}{term}"
+
+
+def print_term(term: Any, indent: int = 0, indent_size: int = 2) -> None:
+    """Print a term with pretty-printing and indentation.
+    
+    Args:
+        term: The term to print (should be an AST node)
+        indent: Current indentation level (default: 0)
+        indent_size: Number of spaces per indentation level (default: 2)
+    """
+    print(format_term(term, indent, indent_size))
+
