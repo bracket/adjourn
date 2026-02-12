@@ -24,6 +24,43 @@ from constraint.parser import (
 )
 
 
+def find_git_root() -> Path | None:
+    """Find the git repository root by searching upward for .git directory.
+    
+    Returns:
+        Path to git root, or None if not found
+    """
+    current = Path.cwd()
+    while current != current.parent:
+        if (current / ".git").exists():
+            return current
+        current = current.parent
+    return None
+
+
+def get_example_file_path(relative_path: str) -> Path:
+    """Get absolute path to example file, handling different test execution contexts.
+    
+    Args:
+        relative_path: Path relative to git root (e.g., "examples/list_membership/list_member.pl")
+        
+    Returns:
+        Absolute Path to the file
+        
+    Raises:
+        pytest.skip: If git root not found or file doesn't exist
+    """
+    git_root = find_git_root()
+    if git_root is None:
+        pytest.skip("Git root not found - cannot locate example files")
+    
+    file_path = git_root / relative_path
+    if not file_path.exists():
+        pytest.skip(f"Example file not found: {file_path}")
+    
+    return file_path
+
+
 class TestAtoms:
     """Tests for parsing atoms."""
 
@@ -438,11 +475,8 @@ class TestExampleFiles:
 
     def test_list_member_file(self) -> None:
         """Test parsing list_member.pl example file."""
-        filepath = "examples/list_membership/list_member.pl"
-        if not Path(filepath).exists():
-            pytest.skip(f"Example file not found: {filepath}")
-
-        result = parse_file(filepath)
+        filepath = get_example_file_path("examples/list_membership/list_member.pl")
+        result = parse_file(str(filepath))
         assert isinstance(result, Program)
         assert len(result.items) == 2
         # Should have two clauses for member/2
@@ -450,21 +484,15 @@ class TestExampleFiles:
 
     def test_input_callback_file(self) -> None:
         """Test parsing input_loop.pl example file."""
-        filepath = "examples/input_callback/input_loop.pl"
-        if not Path(filepath).exists():
-            pytest.skip(f"Example file not found: {filepath}")
-
-        result = parse_file(filepath)
+        filepath = get_example_file_path("examples/input_callback/input_loop.pl")
+        result = parse_file(str(filepath))
         assert isinstance(result, Program)
         assert len(result.items) > 0
 
     def test_toy_graph_coloring_file(self) -> None:
         """Test parsing toy_graph_coloring.pl example file."""
-        filepath = "examples/graph_coloring/toy_graph_coloring.pl"
-        if not Path(filepath).exists():
-            pytest.skip(f"Example file not found: {filepath}")
-
-        result = parse_file(filepath)
+        filepath = get_example_file_path("examples/graph_coloring/toy_graph_coloring.pl")
+        result = parse_file(str(filepath))
         assert isinstance(result, Program)
         assert len(result.items) > 0
         # Should start with module directive
@@ -472,31 +500,22 @@ class TestExampleFiles:
 
     def test_toy_meta_file(self) -> None:
         """Test parsing toy_meta.pl example file."""
-        filepath = "examples/graph_coloring/toy_meta.pl"
-        if not Path(filepath).exists():
-            pytest.skip(f"Example file not found: {filepath}")
-
-        result = parse_file(filepath)
+        filepath = get_example_file_path("examples/graph_coloring/toy_meta.pl")
+        result = parse_file(str(filepath))
         assert isinstance(result, Program)
         assert len(result.items) > 0
 
     def test_spec_toy_graph_coloring_file(self) -> None:
         """Test parsing spec/toy_graph_coloring.pl example file."""
-        filepath = "examples/graph_coloring/spec/toy_graph_coloring.pl"
-        if not Path(filepath).exists():
-            pytest.skip(f"Example file not found: {filepath}")
-
-        result = parse_file(filepath)
+        filepath = get_example_file_path("examples/graph_coloring/spec/toy_graph_coloring.pl")
+        result = parse_file(str(filepath))
         assert isinstance(result, Program)
         assert len(result.items) > 0
 
     def test_spec_toy_meta_file(self) -> None:
         """Test parsing spec/toy_meta.pl example file."""
-        filepath = "examples/graph_coloring/spec/toy_meta.pl"
-        if not Path(filepath).exists():
-            pytest.skip(f"Example file not found: {filepath}")
-
-        result = parse_file(filepath)
+        filepath = get_example_file_path("examples/graph_coloring/spec/toy_meta.pl")
+        result = parse_file(str(filepath))
         assert isinstance(result, Program)
         assert len(result.items) > 0
 
@@ -512,12 +531,16 @@ class TestExampleFiles:
         ]
 
         parsed_count = 0
-        for filepath in example_files:
-            if Path(filepath).exists():
-                result = parse_file(filepath)
+        for relative_path in example_files:
+            try:
+                filepath = get_example_file_path(relative_path)
+                result = parse_file(str(filepath))
                 assert isinstance(result, Program)
                 assert len(result.items) > 0
                 parsed_count += 1
+            except pytest.skip.Exception:
+                # File not found, skip it
+                pass
 
         # At least some files should be parsed
         assert parsed_count > 0

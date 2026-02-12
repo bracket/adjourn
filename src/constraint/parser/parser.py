@@ -6,6 +6,7 @@ and programs into AST representations.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from lark import Lark, Transformer, Token
@@ -25,7 +26,7 @@ from constraint.parser.ast import (
 from constraint.parser.grammar import PROLOG_GRAMMAR
 
 
-class PrologTransformer(Transformer):  # type: ignore[misc]
+class PrologTransformer(Transformer):
     """Lark transformer that converts parse trees to AST nodes."""
 
     # Atoms and variables  
@@ -423,9 +424,9 @@ def parse_term(text: str) -> Any:
         lark.exceptions.LarkError: If parsing fails
     """
     # Add a period to make it a valid program item for parsing
-    result = _parser.parse(text.strip() + ".")  # type: ignore[attr-defined]
+    result = _parser.parse(text.strip() + ".")
     # Extract the term from the clause
-    if result.items and isinstance(result.items[0], Clause):  # type: ignore[attr-defined]
+    if result.items and isinstance(result.items[0], Clause):
         return result.items[0].head
     return result
 
@@ -442,8 +443,8 @@ def parse_clause(text: str) -> Clause | Directive:
     Raises:
         lark.exceptions.LarkError: If parsing fails
     """
-    result = _parser.parse(text.strip())  # type: ignore[attr-defined]
-    if result.items:  # type: ignore[attr-defined]
+    result = _parser.parse(text.strip())
+    if result.items:
         return result.items[0]
     raise ValueError("No clause found in input")
 
@@ -460,7 +461,7 @@ def parse_program(text: str) -> Program:
     Raises:
         lark.exceptions.LarkError: If parsing fails
     """
-    return _parser.parse(text.strip())  # type: ignore[return-value]
+    return _parser.parse(text.strip())
 
 
 def parse_file(filepath: str) -> Program:
@@ -476,6 +477,5 @@ def parse_file(filepath: str) -> Program:
         lark.exceptions.LarkError: If parsing fails
         IOError: If file cannot be read
     """
-    with open(filepath, encoding="utf-8") as f:
-        content = f.read()
+    content = Path(filepath).read_text(encoding="utf-8")
     return parse_program(content)
