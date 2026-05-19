@@ -11,6 +11,16 @@ from typing import Any, TypeAlias
 
 # Type alias for JSON-serializable data
 JSONDict: TypeAlias = dict[str, Any]
+_INFIX_OPS = frozenset(
+    {",", ";", "->", ":-", "=", "\\=", "is", "<", ">", "=<", ">=", "==", "\\=="}
+)
+
+
+def _format_infix(arg0: str, functor: str, arg1: str) -> str:
+    """Format a binary infix expression."""
+    if functor == ",":
+        return f"{arg0}, {arg1}"
+    return f"{arg0} {functor} {arg1}"
 
 
 @dataclass
@@ -96,6 +106,8 @@ class Compound:
     args: list[Any]
 
     def __str__(self) -> str:
+        if len(self.args) == 2 and self.functor in _INFIX_OPS:
+            return _format_infix(str(self.args[0]), self.functor, str(self.args[1]))
         if not self.args:
             return self.functor
         args_str = ", ".join(str(arg) for arg in self.args)
@@ -290,6 +302,10 @@ def format_term(term: Any, indent: int = 0, indent_size: int = 2) -> str:
     if isinstance(term, (Atom, Variable, Integer, Float, String)):
         return f"{prefix}{term}"
     elif isinstance(term, Compound):
+        if len(term.args) == 2 and term.functor in _INFIX_OPS:
+            arg0_str = format_term(term.args[0], 0, indent_size).strip()
+            arg1_str = format_term(term.args[1], 0, indent_size).strip()
+            return f"{prefix}{_format_infix(arg0_str, term.functor, arg1_str)}"
         if not term.args:
             return f"{prefix}{term.functor}"
         if len(term.args) == 1:
@@ -311,11 +327,15 @@ def format_term(term: Any, indent: int = 0, indent_size: int = 2) -> str:
             # Single element can be on same line
             elem_str = format_term(term.elements[0], 0, indent_size).strip()
             return f"{prefix}[{elem_str}]"
+        if len(term.elements) == 1 and term.tail is not None:
+            elem_str = format_term(term.elements[0], 0, indent_size).strip()
+            tail_str = format_term(term.tail, 0, indent_size).strip()
+            return f"{prefix}[{elem_str}|{tail_str}]"
         # Multiple elements: one per line
         lines = [f"{prefix}["]
         for i, elem in enumerate(term.elements):
             elem_str = format_term(elem, indent + 1, indent_size).strip()
-            separator = "," if i < len(term.elements) - 1 or term.tail is not None else ""
+            separator = "," if i < len(term.elements) - 1 else ""
             lines.append(f"{' ' * ((indent + 1) * indent_size)}{elem_str}{separator}")
         if term.tail is not None:
             tail_str = format_term(term.tail, indent + 1, indent_size).strip()
@@ -336,4 +356,3 @@ def print_term(term: Any, indent: int = 0, indent_size: int = 2) -> None:
         indent_size: Number of spaces per indentation level (default: 2)
     """
     print(format_term(term, indent, indent_size))
-

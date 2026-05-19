@@ -376,6 +376,11 @@ class TestClauses:
         assert isinstance(result.body, Compound)
         assert result.body.functor == ","
 
+    def test_rule_string_renders_infix_body(self) -> None:
+        """Test clause string rendering uses infix style in body."""
+        result = parse_clause("a :- b, c.")
+        assert str(result) == "a :- b, c."
+
     def test_fact_with_list(self) -> None:
         """Test parsing a fact with list."""
         result = parse_clause("member(X, [X|_]).")
@@ -900,9 +905,34 @@ class TestTermPrettyPrint:
         
         assert "[" in result
         assert "  a," in result
-        assert "  b," in result
+        assert "  b" in result
         assert "  |T" in result
         assert "]" in result
+
+    def test_format_parsed_list_with_tail_has_no_extra_comma(self) -> None:
+        """Test formatting parsed [H|T] list has no comma before tail bar."""
+        from constraint.parser import format_term
+
+        term = parse_term("[H|T]")
+        result = format_term(term)
+        assert result == "[H|T]"
+
+    def test_format_parsed_member_list_tail(self) -> None:
+        """Test formatting parsed member/2 renders list tail correctly."""
+        from constraint.parser import format_term
+
+        term = parse_term("member(X, [H|T])")
+        result = format_term(term)
+        assert "[H|T]" in result
+        assert ", |" not in result
+
+    def test_format_parsed_clause_with_infix_body(self) -> None:
+        """Test formatting parsed clause renders conjunction body as infix."""
+        from constraint.parser import format_term
+
+        clause = parse_clause("a :- b, c.")
+        result = format_term(clause)
+        assert result == "a :- b, c."
 
     def test_format_with_custom_indent(self) -> None:
         """Test formatting with custom indentation."""
