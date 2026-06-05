@@ -33,6 +33,9 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+constraint = ["meta.pl"]
+
 [tool.pytest.ini_options]
 testpaths = ["src/tests"]
 
