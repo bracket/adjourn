@@ -57,8 +57,12 @@ def init_state(goal: str) -> dict[str, Any]:
         goal: A Prolog term as a string, e.g. ``"color(X, Y)"``.
 
     Returns:
-        A v0 state dictionary with ``status`` set to ``"running"`` and one
-        branch containing the goal.
+        A v0 state dictionary with the following keys:
+
+        - ``version`` (int): schema version, always ``0``.
+        - ``original_goal`` (str): the *goal* string, unchanged.
+        - ``branches`` (list[dict]): one-element list ``[{"goals": [goal]}]``.
+        - ``status`` (str): always ``"running"``.
     """
     return {
         "version": 0,

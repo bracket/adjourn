@@ -17,7 +17,7 @@ import pytest
 
 def _write_rules(content: str) -> Path:
     """Write Prolog rules to a temporary file and return its Path."""
-    fd, path = tempfile.mkstemp(suffix=".pl", dir="/tmp", prefix="constraint_test_")
+    fd, path = tempfile.mkstemp(suffix=".pl", prefix="constraint_test_")
     os.close(fd)
     Path(path).write_text(content)
     return Path(path)

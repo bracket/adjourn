@@ -47,7 +47,7 @@ def cmd_init(query: str, state_file: Path) -> None:
         state = init_state(query)
         state_file.parent.mkdir(parents=True, exist_ok=True)
         state_file.write_text(json.dumps(state, indent=2) + "\n")
-    except Exception as exc:  # noqa: BLE001
+    except OSError as exc:
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)
 
@@ -82,20 +82,23 @@ def cmd_resume(
     try:
         raw = state_file.read_text()
         state = json.loads(raw)
-    except Exception as exc:  # noqa: BLE001
+    except OSError as exc:
         click.echo(f"Error reading {state_file}: {exc}", err=True)
+        sys.exit(1)
+    except json.JSONDecodeError as exc:
+        click.echo(f"Error parsing {state_file}: {exc}", err=True)
         sys.exit(1)
 
     try:
         new_state = resume_state(state, ruleset_file)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001  — Janus/Prolog errors are opaque
         click.echo(f"Error during resume: {exc}", err=True)
         sys.exit(1)
 
     try:
         output_file.parent.mkdir(parents=True, exist_ok=True)
         output_file.write_text(json.dumps(new_state, indent=2) + "\n")
-    except Exception as exc:  # noqa: BLE001
+    except OSError as exc:
         click.echo(f"Error writing {output_file}: {exc}", err=True)
         sys.exit(1)
 
@@ -103,7 +106,20 @@ def cmd_resume(
 
 
 def _print_status_summary(state: dict) -> None:
-    """Print a one-line human-readable summary of the state status."""
+    """Print a one-line human-readable summary of the state status.
+
+    Args:
+        state: A v0 state dictionary.  Recognised keys:
+
+            - ``status`` (str): one of ``"done"``, ``"solution"``,
+              ``"suspended"``, or ``"running"``.
+            - ``bindings`` (dict, optional): variable bindings present when
+              ``status`` is ``"solution"``.
+            - ``suspension`` (dict, optional): dict with a ``"label"`` key
+              present when ``status`` is ``"suspended"``.
+            - ``branches`` (list, optional): remaining branch list used when
+              ``status`` is ``"running"``.
+    """
     status = state.get("status", "unknown")
     if status == "done":
         click.echo("status: done")
