@@ -1,10 +1,13 @@
 """Main CLI entry point for the constraint checking system."""
 
+import json
 import sys
 from pathlib import Path
 from typing import Optional
 
 import click
+
+from constraint.meta import init_state, resume_state
 
 
 @click.group(invoke_without_command=True)
@@ -22,7 +25,121 @@ def main(ctx: click.Context) -> None:
         click.echo(ctx.get_help())
 
 
-@main.command()
+@main.command("init")
+@click.argument("query")
+@click.argument("state_file", type=click.Path(path_type=Path))
+def cmd_init(query: str, state_file: Path) -> None:
+    """Initialise a new resolution state and write it to STATE_FILE.
+
+    QUERY is a Prolog goal string (e.g. "color(X, Y)").
+    STATE_FILE is the path to write the initial JSON state to.
+
+    This command does not invoke Prolog; it simply constructs the initial
+    v0 state and writes it as pretty-printed JSON.  Use the ``resume``
+    command to drive the meta-interpreter forward.
+
+    Examples:
+
+        constraint init "color(X, Y)" state.json
+    """
+    try:
+        state = init_state(query)
+        state_file.parent.mkdir(parents=True, exist_ok=True)
+        state_file.write_text(json.dumps(state, indent=2) + "\n")
+    except OSError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+@main.command("resume")
+@click.argument("state_file", type=click.Path(exists=True, path_type=Path))
+@click.argument("ruleset_file", type=click.Path(exists=True, path_type=Path))
+@click.argument("output_file", type=click.Path(path_type=Path))
+def cmd_resume(
+    state_file: Path,
+    ruleset_file: Path,
+    output_file: Path,
+) -> None:
+    """Advance a resolution state by one step and write the result.
+
+    STATE_FILE  — path to the current state JSON (must exist).
+    RULESET_FILE — path to a Prolog .pl file with rule/2 facts (must exist).
+    OUTPUT_FILE  — path to write the updated state JSON (created or overwritten).
+
+    Reads STATE_FILE, consults RULESET_FILE, calls step/3 once, writes the
+    updated state to OUTPUT_FILE, and prints a one-line status summary to
+    stdout.
+
+    If the state is already ``done`` it is written unchanged and exits 0.
+
+    Examples:
+
+        constraint resume state.json rules.pl next_state.json
+        constraint resume state.json rules.pl state.json   # overwrite in place
+    """
+    try:
+        raw = state_file.read_text()
+        state = json.loads(raw)
+    except OSError as exc:
+        click.echo(f"Error reading {state_file}: {exc}", err=True)
+        sys.exit(1)
+    except json.JSONDecodeError as exc:
+        click.echo(f"Error parsing {state_file}: {exc}", err=True)
+        sys.exit(1)
+
+    try:
+        new_state = resume_state(state, ruleset_file)
+    except Exception as exc:  # noqa: BLE001  — Janus/Prolog errors are opaque
+        click.echo(f"Error during resume: {exc}", err=True)
+        sys.exit(1)
+
+    try:
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        output_file.write_text(json.dumps(new_state, indent=2) + "\n")
+    except OSError as exc:
+        click.echo(f"Error writing {output_file}: {exc}", err=True)
+        sys.exit(1)
+
+    _print_status_summary(new_state)
+
+
+def _print_status_summary(state: dict) -> None:
+    """Print a one-line human-readable summary of the state status.
+
+    Args:
+        state: A v0 state dictionary.  Recognised keys:
+
+            - ``status`` (str): one of ``"done"``, ``"solution"``,
+              ``"suspended"``, or ``"running"``.
+            - ``bindings`` (dict, optional): variable bindings present when
+              ``status`` is ``"solution"``.
+            - ``suspension`` (dict, optional): dict with a ``"label"`` key
+              present when ``status`` is ``"suspended"``.
+            - ``branches`` (list, optional): remaining branch list used when
+              ``status`` is ``"running"``.
+    """
+    status = state.get("status", "unknown")
+    if status == "done":
+        click.echo("status: done")
+    elif status == "solution":
+        bindings = state.get("bindings", {})
+        if bindings:
+            pairs = ", ".join(f"{k}={v}" for k, v in bindings.items())
+            click.echo(f"status: solution — bindings: {pairs}")
+        else:
+            click.echo("status: solution")
+    elif status == "suspended":
+        label = state.get("suspension", {}).get("label", "")
+        click.echo(f'status: suspended — label: "{label}"')
+    elif status == "running":
+        branches = len(state.get("branches", []))
+        click.echo(f"status: running — {branches} branch(es) remaining")
+    else:
+        click.echo(f"status: {status}")
+
+
+
+@main.command("complete")
 @click.option(
     "-o",
     "--output",
