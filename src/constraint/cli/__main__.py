@@ -141,6 +141,7 @@ def _print_status_summary(state: dict) -> None:
 
 
 
+@main.command("complete")
 @click.option(
     "-o",
     "--output",
