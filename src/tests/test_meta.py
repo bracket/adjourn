@@ -7,7 +7,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-import pytest
+from constraint.parser.ast import Clause
+from constraint.parser.parser import parse_file
 
 
 # ---------------------------------------------------------------------------
@@ -21,6 +22,16 @@ def _write_rules(content: str) -> Path:
     os.close(fd)
     Path(path).write_text(content)
     return Path(path)
+
+
+def _parse_rules(content: str) -> list[Clause]:
+    """Parse Prolog rules into a clause list."""
+    rules_path = _write_rules(content)
+    try:
+        program = parse_file(str(rules_path))
+        return [item for item in program.items if isinstance(item, Clause)]
+    finally:
+        rules_path.unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -93,10 +104,7 @@ class TestResumeStateTrueGoal:
     """Tests using the trivially-true goal ``true``."""
 
     def setup_method(self) -> None:
-        self.ruleset = _write_rules("% empty ruleset\n")
-
-    def teardown_method(self) -> None:
-        self.ruleset.unlink(missing_ok=True)
+        self.ruleset = _parse_rules("% empty ruleset\n")
 
     def test_true_goal_reaches_solution(self) -> None:
         from constraint.meta import init_state, resume_state
@@ -138,10 +146,7 @@ class TestResumeStateYield:
     """Tests using a goal that triggers yield(Label)."""
 
     def setup_method(self) -> None:
-        self.ruleset = _write_rules("rule(test_yield, yield(hello)).\n")
-
-    def teardown_method(self) -> None:
-        self.ruleset.unlink(missing_ok=True)
+        self.ruleset = _parse_rules("rule(test_yield, yield(hello)).\n")
 
     def test_yield_produces_suspended_status(self) -> None:
         from constraint.meta import init_state, resume_state
@@ -188,10 +193,7 @@ class TestResumeStateDone:
     """Tests for the 'done' (no solutions) terminal state."""
 
     def setup_method(self) -> None:
-        self.ruleset = _write_rules("% empty — no rules\n")
-
-    def teardown_method(self) -> None:
-        self.ruleset.unlink(missing_ok=True)
+        self.ruleset = _parse_rules("% empty — no rules\n")
 
     def test_unknown_goal_reaches_done(self) -> None:
         from constraint.meta import init_state, resume_state
@@ -223,13 +225,10 @@ class TestResumeStateMultipleRules:
     """Tests for goals with multiple matching rules (DFS branching)."""
 
     def setup_method(self) -> None:
-        self.ruleset = _write_rules(
+        self.ruleset = _parse_rules(
             "rule(choice, true).\n"
             "rule(choice, true).\n"
         )
-
-    def teardown_method(self) -> None:
-        self.ruleset.unlink(missing_ok=True)
 
     def test_first_rule_gives_solution(self) -> None:
         from constraint.meta import init_state, resume_state
@@ -256,10 +255,7 @@ class TestResumeStateSchemaConsistency:
     """The schema must be consistent across multiple resumes."""
 
     def setup_method(self) -> None:
-        self.ruleset = _write_rules("rule(step_goal, yield(step1)).\n")
-
-    def teardown_method(self) -> None:
-        self.ruleset.unlink(missing_ok=True)
+        self.ruleset = _parse_rules("rule(step_goal, yield(step1)).\n")
 
     def test_version_unchanged_across_resumes(self) -> None:
         from constraint.meta import init_state, resume_state

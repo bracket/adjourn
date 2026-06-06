@@ -5,8 +5,8 @@ Prolog meta-interpreter defined in ``meta.pl``.  Two public functions are
 exposed:
 
 - :func:`init_state` — pure-Python constructor; no Prolog invocation.
-- :func:`resume_state` — consult a ruleset, call ``step/3`` once, return the
-  updated state dict.
+- :func:`resume_state` — load a ruleset's clauses, call ``step/3`` once, return
+  the updated state dict.
 
 State file schema (v0)::
 
@@ -38,14 +38,19 @@ when a solution is produced in the same step where the packed atom's
 from __future__ import annotations
 
 from importlib.resources import as_file, files
-from pathlib import Path
+import tempfile
 from typing import Any
 
 import janus_swi as janus  # type: ignore[import-untyped]
 
+from constraint.parser.ast import Clause
+from constraint.store import hash_clauses
+
 # Track which files have already been consulted in this process to avoid
 # redundant reloading (SWI-Prolog is stateful within a process).
 _consulted: set[str] = set()
+_loaded_ruleset_hash: str | None = None
+_ruleset_file_path = tempfile.gettempdir() + "/constraint_runtime_ruleset.pl"
 
 
 def init_state(goal: str) -> dict[str, Any]:
@@ -72,19 +77,19 @@ def init_state(goal: str) -> dict[str, Any]:
     }
 
 
-def resume_state(state: dict[str, Any], ruleset_path: str | Path) -> dict[str, Any]:
-    """Consult *ruleset_path*, call ``step/3`` once, return the updated state dict.
+def resume_state(state: dict[str, Any], clauses: list[Clause]) -> dict[str, Any]:
+    """Load *clauses*, call ``step/3`` once, and return the updated state dict.
 
     Args:
         state: A v0 state dictionary as produced by :func:`init_state` or a
                previous call to :func:`resume_state`.
-        ruleset_path: Path to a Prolog ``.pl`` file containing ``rule/2``
-                      facts that define the interpreted program.
+        clauses: Parsed Prolog clauses that define the interpreted program.
 
     Returns:
         An updated v0 state dictionary reflecting the result of one ``step/3``
         call.  The returned dict always contains the same top-level keys as the
         input (``version``, ``original_goal``, ``branches``, ``status``).
+        ``ruleset_hash`` is preserved when present in the input state.
         ``suspension`` is added when ``status == "suspended"``.
         ``bindings`` is added when ``status == "solution"``.
 
@@ -98,7 +103,7 @@ def resume_state(state: dict[str, Any], ruleset_path: str | Path) -> dict[str, A
         return dict(state)
 
     _ensure_meta_loaded()
-    _ensure_ruleset_loaded(str(ruleset_path))
+    _ensure_ruleset_loaded(clauses)
 
     packed = _build_packed_atom(state)
     result = janus.query_once(
@@ -132,12 +137,24 @@ def _ensure_meta_loaded() -> None:
     _consulted.add(key)
 
 
-def _ensure_ruleset_loaded(ruleset_path: str) -> None:
-    """Consult the user's ruleset file if not already loaded."""
-    if ruleset_path in _consulted:
+def _ensure_ruleset_loaded(clauses: list[Clause]) -> None:
+    """Load the user's ruleset clauses if not already loaded."""
+    global _loaded_ruleset_hash
+
+    ruleset_hash = hash_clauses(clauses)
+    if _loaded_ruleset_hash == ruleset_hash:
         return
-    janus.consult(ruleset_path)
-    _consulted.add(ruleset_path)
+
+    _write_ruleset_file(clauses)
+    janus.consult(_ruleset_file_path)
+    _loaded_ruleset_hash = ruleset_hash
+
+
+def _write_ruleset_file(clauses: list[Clause]) -> None:
+    """Write the active ruleset clauses to the temp consult path."""
+    content = "".join(f"{clause}\n" for clause in clauses) or "% empty ruleset\n"
+    with open(_ruleset_file_path, "w", encoding="utf-8") as handle:
+        handle.write(content)
 
 
 def _build_packed_atom(state: dict[str, Any]) -> str:
@@ -265,6 +282,8 @@ def _build_new_state(
         "original_goal": old_state["original_goal"],
         "branches": new_branches,
     }
+    if "ruleset_hash" in old_state:
+        new_state["ruleset_hash"] = old_state["ruleset_hash"]
 
     if event_atom == "done":
         new_state["status"] = "done"
