@@ -40,7 +40,6 @@ def cmd_init(query: str, state_file: Path) -> None:
 
     Examples:
 
-    \\b
         constraint init "color(X, Y)" state.json
     """
     try:
@@ -75,7 +74,6 @@ def cmd_resume(
 
     Examples:
 
-    \\b
         constraint resume state.json rules.pl next_state.json
         constraint resume state.json rules.pl state.json   # overwrite in place
     """
