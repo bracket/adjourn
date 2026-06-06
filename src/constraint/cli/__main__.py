@@ -4,12 +4,12 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import click
 
 from constraint.meta import init_state, resume_state
-from constraint.store import Config, build_store_from_config
+from constraint.store import AggregateRuleSetStore, Config, build_store_from_config
 
 
 @click.group(invoke_without_command=True)
@@ -133,7 +133,7 @@ def cmd_resume(
     _print_status_summary(new_state)
 
 
-def _print_status_summary(state: dict) -> None:
+def _print_status_summary(state: dict[str, Any]) -> None:
     """Print a one-line human-readable summary of the state status.
 
     Args:
@@ -178,7 +178,7 @@ def _resolve_config_path(config_path: Optional[Path]) -> Path:
     return Path(".constraint/config.yaml")
 
 
-def _load_store(config_path: Optional[Path]):
+def _load_store(config_path: Optional[Path]) -> AggregateRuleSetStore:
     """Load the configured aggregate ruleset store."""
     config = Config(_resolve_config_path(config_path))
     return build_store_from_config(config)
@@ -199,7 +199,7 @@ def _resolve_ruleset_hash(ruleset_name: str, config_path: Optional[Path]) -> str
     return ruleset_hash
 
 
-def _state_ruleset_hash(state: dict) -> str:
+def _state_ruleset_hash(state: dict[str, Any]) -> str:
     """Return the pinned ruleset hash from a state dictionary."""
     ruleset_hash = state.get("ruleset_hash")
     if not isinstance(ruleset_hash, str) or not ruleset_hash:

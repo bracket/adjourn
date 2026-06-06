@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
 
-import yaml  # type: ignore[import-untyped]
+import yaml
 
 from constraint.parser.ast import Atom, Clause, Compound, Float, Integer, List, Program, String, Variable
 from constraint.parser.parser import parse_file

@@ -179,8 +179,6 @@ class TestInitCommand:
         self, runner: CliRunner, tmp_path: Path
     ) -> None:
         """init should create a JSON state file with status 'running'."""
-        import json
-
         state_file = tmp_path / "state.json"
         config_path = _write_config(tmp_path, {"test_rules": "% empty\n"})
         result = runner.invoke(
@@ -198,8 +196,6 @@ class TestInitCommand:
         self, runner: CliRunner, tmp_path: Path
     ) -> None:
         """The initial state file must preserve the original goal string."""
-        import json
-
         goal = "color(X, Y)"
         state_file = tmp_path / "state.json"
         config_path = _write_config(tmp_path, {"test_rules": "% empty\n"})
@@ -214,8 +210,6 @@ class TestInitCommand:
         self, runner: CliRunner, tmp_path: Path
     ) -> None:
         """The initial state must have exactly one branch containing the goal."""
-        import json
-
         goal = "foo(bar)"
         state_file = tmp_path / "state.json"
         config_path = _write_config(tmp_path, {"test_rules": "% empty\n"})

@@ -38,6 +38,7 @@ when a solution is produced in the same step where the packed atom's
 from __future__ import annotations
 
 from importlib.resources import as_file, files
+from pathlib import Path
 import tempfile
 from typing import Any
 
@@ -50,7 +51,7 @@ from constraint.store import hash_clauses
 # redundant reloading (SWI-Prolog is stateful within a process).
 _consulted: set[str] = set()
 _loaded_ruleset_hash: str | None = None
-_ruleset_file_path = tempfile.gettempdir() + "/constraint_runtime_ruleset.pl"
+_ruleset_file_path = Path(tempfile.gettempdir()) / "constraint_runtime_ruleset.pl"
 
 
 def init_state(goal: str) -> dict[str, Any]:
@@ -146,15 +147,14 @@ def _ensure_ruleset_loaded(clauses: list[Clause]) -> None:
         return
 
     _write_ruleset_file(clauses)
-    janus.consult(_ruleset_file_path)
+    janus.consult(str(_ruleset_file_path))
     _loaded_ruleset_hash = ruleset_hash
 
 
 def _write_ruleset_file(clauses: list[Clause]) -> None:
     """Write the active ruleset clauses to the temp consult path."""
     content = "".join(f"{clause}\n" for clause in clauses) or "% empty ruleset\n"
-    with open(_ruleset_file_path, "w", encoding="utf-8") as handle:
-        handle.write(content)
+    _ruleset_file_path.write_text(content, encoding="utf-8")
 
 
 def _build_packed_atom(state: dict[str, Any]) -> str:
