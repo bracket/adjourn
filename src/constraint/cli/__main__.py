@@ -9,7 +9,8 @@ from typing import Any, Optional
 import click
 
 from constraint.meta import init_state, resume_state
-from constraint.store import AggregateRuleSetStore, Config, build_store_from_config
+from constraint.config import Config
+from constraint.store import AggregateRuleSetStore, build_store_from_config
 
 
 @click.group(invoke_without_command=True)
@@ -177,6 +178,8 @@ def _resolve_config_path(config_path: Optional[Path]) -> Path:
         return Path(env_path)
     return Path(".constraint/config.yaml")
 
+
+# TODO: This will contain more than just the store at some point
 
 def _load_store(config_path: Optional[Path]) -> AggregateRuleSetStore:
     """Load the configured aggregate ruleset store."""

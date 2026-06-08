@@ -7,7 +7,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from constraint.store import AggregateRuleSetStore, Config, FileRuleSetStore, build_store_from_config
+from constraint.config import Config
+from constraint.store import AggregateRuleSetStore, FileRuleSetStore, build_store_from_config
 
 
 def _write_rules(tmp_path: Path, name: str, content: str) -> Path:
