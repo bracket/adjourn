@@ -234,7 +234,7 @@ def _resolve_ruleset_hash(ruleset_name: str, config_path: Optional[Path]) -> str
     config = Config(resolved_config_path)
     store = build_store_from_config(config)
     if ruleset_name.startswith("@"):
-        ruleset_hash = _resolve_system_alias(ruleset_name, store, config)
+        ruleset_hash = _resolve_system_alias(ruleset_name, store)
     elif (store_name_hash := _resolve_store_name_hash(ruleset_name, store)) is not None:
         ruleset_hash = store_name_hash
     elif ruleset_name in config.aliases:
@@ -251,10 +251,8 @@ def _resolve_ruleset_hash(ruleset_name: str, config_path: Optional[Path]) -> str
 def _resolve_system_alias(
     name: str,
     store: AggregateRuleSetStore,
-    config: Config,
 ) -> str:
     """Resolve a reserved system alias to a ruleset hash."""
-    del config
     if name != "@first":
         raise ValueError(f"Unknown system alias: {name}")
     store_info = store.store_info_list()
