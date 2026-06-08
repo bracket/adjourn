@@ -1,13 +1,16 @@
 """Main CLI entry point for the constraint checking system."""
 
 import json
+import os
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import click
 
 from constraint.meta import init_state, resume_state
+from constraint.config import Config
+from constraint.store import AggregateRuleSetStore, build_store_from_config
 
 
 @click.group(invoke_without_command=True)
@@ -28,7 +31,25 @@ def main(ctx: click.Context) -> None:
 @main.command("init")
 @click.argument("query")
 @click.argument("state_file", type=click.Path(path_type=Path))
-def cmd_init(query: str, state_file: Path) -> None:
+@click.option(
+    "--ruleset",
+    "ruleset_name",
+    required=True,
+    help="Ruleset alias or raw hash to pin into the state.",
+)
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Path to the project config file.",
+)
+def cmd_init(
+    query: str,
+    state_file: Path,
+    ruleset_name: str,
+    config_path: Optional[Path],
+) -> None:
     """Initialise a new resolution state and write it to STATE_FILE.
 
     QUERY is a Prolog goal string (e.g. "color(X, Y)").
@@ -40,42 +61,49 @@ def cmd_init(query: str, state_file: Path) -> None:
 
     Examples:
 
-        constraint init "color(X, Y)" state.json
+        constraint init "color(X, Y)" state.json --ruleset coloring
     """
     try:
         state = init_state(query)
+        ruleset_hash = _resolve_ruleset_hash(ruleset_name, config_path)
+        state["ruleset_hash"] = ruleset_hash
         state_file.parent.mkdir(parents=True, exist_ok=True)
         state_file.write_text(json.dumps(state, indent=2) + "\n")
-    except OSError as exc:
+    except (OSError, ValueError, KeyError) as exc:
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)
 
 
 @main.command("resume")
 @click.argument("state_file", type=click.Path(exists=True, path_type=Path))
-@click.argument("ruleset_file", type=click.Path(exists=True, path_type=Path))
 @click.argument("output_file", type=click.Path(path_type=Path))
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Path to the project config file.",
+)
 def cmd_resume(
     state_file: Path,
-    ruleset_file: Path,
     output_file: Path,
+    config_path: Optional[Path],
 ) -> None:
     """Advance a resolution state by one step and write the result.
 
     STATE_FILE  — path to the current state JSON (must exist).
-    RULESET_FILE — path to a Prolog .pl file with rule/2 facts (must exist).
     OUTPUT_FILE  — path to write the updated state JSON (created or overwritten).
 
-    Reads STATE_FILE, consults RULESET_FILE, calls step/3 once, writes the
-    updated state to OUTPUT_FILE, and prints a one-line status summary to
-    stdout.
+    Reads STATE_FILE, resolves the pinned ruleset hash from the project
+    config, calls step/3 once, writes the updated state to OUTPUT_FILE, and
+    prints a one-line status summary to stdout.
 
     If the state is already ``done`` it is written unchanged and exits 0.
 
     Examples:
 
-        constraint resume state.json rules.pl next_state.json
-        constraint resume state.json rules.pl state.json   # overwrite in place
+        constraint resume state.json next_state.json
+        constraint resume state.json state.json   # overwrite in place
     """
     try:
         raw = state_file.read_text()
@@ -88,7 +116,10 @@ def cmd_resume(
         sys.exit(1)
 
     try:
-        new_state = resume_state(state, ruleset_file)
+        ruleset_hash = _state_ruleset_hash(state)
+        store = _load_store(config_path)
+        clauses = store.clauses_for(ruleset_hash)
+        new_state = resume_state(state, clauses)
     except Exception as exc:  # noqa: BLE001  — Janus/Prolog errors are opaque
         click.echo(f"Error during resume: {exc}", err=True)
         sys.exit(1)
@@ -103,7 +134,7 @@ def cmd_resume(
     _print_status_summary(new_state)
 
 
-def _print_status_summary(state: dict) -> None:
+def _print_status_summary(state: dict[str, Any]) -> None:
     """Print a one-line human-readable summary of the state status.
 
     Args:
@@ -136,6 +167,47 @@ def _print_status_summary(state: dict) -> None:
         click.echo(f"status: running — {branches} branch(es) remaining")
     else:
         click.echo(f"status: {status}")
+
+
+def _resolve_config_path(config_path: Optional[Path]) -> Path:
+    """Resolve the config path from CLI flag, env var, or default."""
+    if config_path is not None:
+        return config_path
+    env_path = os.getenv("CONSTRAINT_CONFIG")
+    if env_path:
+        return Path(env_path)
+    return Path(".constraint/config.yaml")
+
+
+# TODO: This will contain more than just the store at some point
+
+def _load_store(config_path: Optional[Path]) -> AggregateRuleSetStore:
+    """Load the configured aggregate ruleset store."""
+    config = Config(_resolve_config_path(config_path))
+    return build_store_from_config(config)
+
+
+def _resolve_ruleset_hash(ruleset_name: str, config_path: Optional[Path]) -> str:
+    """Resolve a ruleset alias or raw hash to a known ruleset hash."""
+    store = _load_store(config_path)
+    config = Config(_resolve_config_path(config_path))
+    if ruleset_name in config.aliases:
+        ruleset_hash = config.alias_hash(ruleset_name)
+    else:
+        ruleset_hash = ruleset_name
+    if not store.owns(ruleset_hash):
+        raise ValueError(
+            f"Unknown ruleset '{ruleset_name}': not a configured alias or known hash"
+        )
+    return ruleset_hash
+
+
+def _state_ruleset_hash(state: dict[str, Any]) -> str:
+    """Return the pinned ruleset hash from a state dictionary."""
+    ruleset_hash = state.get("ruleset_hash")
+    if not isinstance(ruleset_hash, str) or not ruleset_hash:
+        raise ValueError("State is missing required 'ruleset_hash'")
+    return ruleset_hash
 
 
 
