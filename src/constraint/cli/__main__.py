@@ -10,7 +10,7 @@ import click
 
 from constraint.meta import init_state, resume_state
 from constraint.config import Config
-from constraint.store import AggregateRuleSetStore, build_store_from_config
+from constraint.store import AggregateRuleSetStore, StoreInfo, build_store_from_config
 
 
 @click.group(invoke_without_command=True)
@@ -134,6 +134,47 @@ def cmd_resume(
     _print_status_summary(new_state)
 
 
+@main.group("store")
+def store_group() -> None:
+    """Inspect configured ruleset stores."""
+
+
+@store_group.command("list")
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Path to the project config file.",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["raw", "json"], case_sensitive=False),
+    default="raw",
+    show_default=True,
+    help="Output format.",
+)
+@click.option(
+    "--pretty-print",
+    is_flag=True,
+    default=False,
+    help="Pretty-print JSON output.",
+)
+def cmd_store_list(
+    config_path: Optional[Path],
+    output_format: str,
+    pretty_print: bool,
+) -> None:
+    """List configured ruleset stores."""
+    store = _load_store(config_path)
+    store_info = store.store_info_list()
+    if output_format == "json":
+        click.echo(_format_store_info_json(store_info, pretty_print))
+        return
+    click.echo(_format_store_info_raw(store_info))
+
+
 def _print_status_summary(state: dict[str, Any]) -> None:
     """Print a one-line human-readable summary of the state status.
 
@@ -189,9 +230,14 @@ def _load_store(config_path: Optional[Path]) -> AggregateRuleSetStore:
 
 def _resolve_ruleset_hash(ruleset_name: str, config_path: Optional[Path]) -> str:
     """Resolve a ruleset alias or raw hash to a known ruleset hash."""
-    store = _load_store(config_path)
-    config = Config(_resolve_config_path(config_path))
-    if ruleset_name in config.aliases:
+    resolved_config_path = _resolve_config_path(config_path)
+    config = Config(resolved_config_path)
+    store = build_store_from_config(config)
+    if ruleset_name.startswith("@"):
+        ruleset_hash = _resolve_system_alias(ruleset_name, store, config)
+    elif (store_name_hash := _resolve_store_name_hash(ruleset_name, store)) is not None:
+        ruleset_hash = store_name_hash
+    elif ruleset_name in config.aliases:
         ruleset_hash = config.alias_hash(ruleset_name)
     else:
         ruleset_hash = ruleset_name
@@ -200,6 +246,84 @@ def _resolve_ruleset_hash(ruleset_name: str, config_path: Optional[Path]) -> str
             f"Unknown ruleset '{ruleset_name}': not a configured alias or known hash"
         )
     return ruleset_hash
+
+
+def _resolve_system_alias(
+    name: str,
+    store: AggregateRuleSetStore,
+    config: Config,
+) -> str:
+    """Resolve a reserved system alias to a ruleset hash."""
+    del config
+    if name != "@first":
+        raise ValueError(f"Unknown system alias: {name}")
+    store_info = store.store_info_list()
+    if not store_info:
+        raise ValueError("System alias '@first' requires at least one configured store")
+    return store_info[0].hash
+
+
+def _resolve_store_name_hash(
+    ruleset_name: str,
+    store: AggregateRuleSetStore,
+) -> str | None:
+    """Resolve a configured per-store name to its ruleset hash."""
+    for store_info in store.store_info_list():
+        if store_info.name == ruleset_name:
+            return store_info.hash
+    return None
+
+
+def _format_store_info_raw(store_info_list: list[StoreInfo]) -> str:
+    """Return raw aligned store metadata output."""
+    include_name = any(store_info.name is not None for store_info in store_info_list)
+    columns: list[tuple[str, list[str]]] = [
+        ("type", [store_info.type for store_info in store_info_list]),
+    ]
+    if include_name:
+        columns.append(("name", [store_info.name or "" for store_info in store_info_list]))
+    columns.extend(
+        [
+            ("path", [store_info.path for store_info in store_info_list]),
+            ("hash", [store_info.hash for store_info in store_info_list]),
+        ]
+    )
+    widths = [
+        max(len(header), *(len(value) for value in values))
+        for header, values in columns
+    ]
+    headers = [
+        header.ljust(width)
+        for width, (header, _) in zip(widths, columns, strict=False)
+    ]
+    lines = [" ".join(headers).rstrip()]
+    for index in range(len(store_info_list)):
+        row = [
+            values[index].ljust(width)
+            for width, (_, values) in zip(widths, columns, strict=False)
+        ]
+        lines.append(" ".join(row).rstrip())
+    return "\n".join(lines)
+
+
+def _format_store_info_json(
+    store_info_list: list[StoreInfo],
+    pretty_print: bool,
+) -> str:
+    """Return JSON store metadata output."""
+    payload = []
+    for store_info in store_info_list:
+        item = {
+            "type": store_info.type,
+            "path": store_info.path,
+            "hash": store_info.hash,
+        }
+        if store_info.name is not None:
+            item["name"] = store_info.name
+        payload.append(item)
+    if pretty_print:
+        return json.dumps(payload, indent=2)
+    return json.dumps(payload)
 
 
 def _state_ruleset_hash(state: dict[str, Any]) -> str:
