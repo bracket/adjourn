@@ -10,6 +10,8 @@ from click.testing import CliRunner
 from constraint.cli.__main__ import main
 from constraint.store import FileRuleSetStore
 
+NONEMPTY_RULESET = "rule(test_fixture_placeholder, true).\n"
+
 
 @pytest.fixture
 def runner() -> CliRunner:
@@ -192,7 +194,7 @@ class TestInitCommand:
     ) -> None:
         """init should create a JSON state file with status 'running'."""
         state_file = tmp_path / "state.json"
-        config_path = _write_config(tmp_path, {"test_rules": "% empty\n"})
+        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
         result = runner.invoke(
             main,
             ["init", "true", str(state_file), "--ruleset", "test_rules", "--config", str(config_path)],
@@ -210,7 +212,7 @@ class TestInitCommand:
         """The initial state file must preserve the original goal string."""
         goal = "color(X, Y)"
         state_file = tmp_path / "state.json"
-        config_path = _write_config(tmp_path, {"test_rules": "% empty\n"})
+        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
         runner.invoke(
             main,
             ["init", goal, str(state_file), "--ruleset", "test_rules", "--config", str(config_path)],
@@ -224,7 +226,7 @@ class TestInitCommand:
         """The initial state must have exactly one branch containing the goal."""
         goal = "foo(bar)"
         state_file = tmp_path / "state.json"
-        config_path = _write_config(tmp_path, {"test_rules": "% empty\n"})
+        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
         runner.invoke(
             main,
             ["init", goal, str(state_file), "--ruleset", "test_rules", "--config", str(config_path)],
@@ -238,7 +240,7 @@ class TestInitCommand:
     ) -> None:
         """init should create parent directories if they don't exist."""
         state_file = tmp_path / "sub" / "dir" / "state.json"
-        config_path = _write_config(tmp_path, {"test_rules": "% empty\n"})
+        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
         result = runner.invoke(
             main,
             ["init", "true", str(state_file), "--ruleset", "test_rules", "--config", str(config_path)],
@@ -250,7 +252,7 @@ class TestInitCommand:
         state_file = tmp_path / "state.json"
         config_path = _write_config(
             tmp_path,
-            {"test_rules": "% empty\n"},
+            {"test_rules": NONEMPTY_RULESET},
             aliases={},
             store_names={"test_rules": "named-rules"},
         )
@@ -351,7 +353,7 @@ class TestInitCommand:
         )
         rules_dir = tmp_path / "rules"
         rules_dir.mkdir()
-        (rules_dir / "test.pl").write_text("% empty\n")
+        (rules_dir / "test.pl").write_text(NONEMPTY_RULESET)
         state_file = tmp_path / "state.json"
 
         result = runner.invoke(
@@ -386,7 +388,7 @@ class TestResumeCommand:
         """Resuming a 'true' goal should produce a solution."""
         # Set up state
         state_file = tmp_path / "state.json"
-        config_path = _write_config(tmp_path, {"test_rules": "% empty\n"})
+        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
         runner.invoke(
             main,
             ["init", "true", str(state_file), "--ruleset", "test_rules", "--config", str(config_path)],
@@ -406,7 +408,7 @@ class TestResumeCommand:
     ) -> None:
         """resume should print a one-line status summary to stdout."""
         state_file = tmp_path / "state.json"
-        config_path = _write_config(tmp_path, {"test_rules": "% empty\n"})
+        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
         runner.invoke(
             main,
             ["init", "true", str(state_file), "--ruleset", "test_rules", "--config", str(config_path)],
@@ -464,7 +466,7 @@ class TestResumeCommand:
     ) -> None:
         """OUTPUT_FILE may be the same as STATE_FILE (overwrite in place)."""
         state_file = tmp_path / "state.json"
-        config_path = _write_config(tmp_path, {"test_rules": "% empty\n"})
+        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
         runner.invoke(
             main,
             ["init", "true", str(state_file), "--ruleset", "test_rules", "--config", str(config_path)],
@@ -482,7 +484,7 @@ class TestResumeCommand:
     ) -> None:
         """Resuming a 'done' state must write the same state unchanged."""
         state_file = tmp_path / "state.json"
-        config_path = _write_config(tmp_path, {"test_rules": "% empty\n"})
+        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
         runner.invoke(
             main,
             [
@@ -516,7 +518,7 @@ class TestResumeCommand:
         self, runner: CliRunner, tmp_path: Path
     ) -> None:
         """Passing a nonexistent state file should exit with non-zero."""
-        config_path = _write_config(tmp_path, {"test_rules": "% empty\n"})
+        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
         out_file = tmp_path / "out.json"
         result = runner.invoke(
             main,
@@ -534,7 +536,7 @@ class TestResumeCommand:
         self, runner: CliRunner, tmp_path: Path
     ) -> None:
         """An unknown init ruleset alias/hash should fail clearly."""
-        config_path = _write_config(tmp_path, {"test_rules": "% empty\n"})
+        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
         state_file = tmp_path / "state.json"
         result = runner.invoke(
             main,
@@ -555,7 +557,7 @@ class TestResumeCommand:
         self, runner: CliRunner, tmp_path: Path
     ) -> None:
         """resume should fail clearly when state lacks a pinned hash."""
-        config_path = _write_config(tmp_path, {"test_rules": "% empty\n"})
+        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
         state_file = tmp_path / "state.json"
         state_file.write_text(
             json.dumps(
@@ -573,6 +575,75 @@ class TestResumeCommand:
         )
         assert result.exit_code != 0
         assert "ruleset_hash" in result.output
+
+    def test_init_empty_ruleset_fails(self, runner: CliRunner, tmp_path: Path) -> None:
+        config_dir = tmp_path / ".constraint"
+        rules_dir = tmp_path / "rules"
+        config_dir.mkdir()
+        rules_dir.mkdir()
+        (rules_dir / "empty.pl").write_text("% empty\n")
+        config_path = config_dir / "config.yaml"
+        config_path.write_text(
+            yaml.safe_dump(
+                {
+                    "stores": [{"type": "file", "path": "rules/empty.pl"}],
+                    "aliases": {"empty_rules": "ignored"},
+                }
+            )
+        )
+        state_file = tmp_path / "state.json"
+
+        result = runner.invoke(
+            main,
+            [
+                "init",
+                "true",
+                str(state_file),
+                "--ruleset",
+                "empty_rules",
+                "--config",
+                str(config_path),
+            ],
+        )
+
+        assert result.exit_code != 0
+        assert "empty program" in result.output
+
+    def test_resume_empty_ruleset_fails(self, runner: CliRunner, tmp_path: Path) -> None:
+        config_dir = tmp_path / ".constraint"
+        rules_dir = tmp_path / "rules"
+        config_dir.mkdir()
+        rules_dir.mkdir()
+        (rules_dir / "empty.pl").write_text("% empty\n")
+        config_path = config_dir / "config.yaml"
+        config_path.write_text(
+            yaml.safe_dump(
+                {
+                    "stores": [{"type": "file", "path": "rules/empty.pl"}],
+                    "aliases": {},
+                }
+            )
+        )
+        state_file = tmp_path / "state.json"
+        state_file.write_text(
+            json.dumps(
+                {
+                    "version": 0,
+                    "original_goal": "true",
+                    "branches": [{"goals": ["true"]}],
+                    "status": "running",
+                    "ruleset_hash": "0" * 64,
+                }
+            )
+        )
+        out_file = tmp_path / "out.json"
+
+        result = runner.invoke(
+            main, ["resume", str(state_file), str(out_file), "--config", str(config_path)]
+        )
+
+        assert result.exit_code != 0
+        assert "empty program" in result.output
 
 
 class TestCLIRegistration:

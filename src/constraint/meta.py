@@ -103,6 +103,13 @@ def resume_state(state: dict[str, Any], clauses: list[Clause]) -> dict[str, Any]
         # Already exhausted — return unchanged.
         return dict(state)
 
+    if not clauses:
+        raise ValueError(
+            "Cannot resume against an empty ruleset: the interpreted program "
+            "has no clauses. An empty program cannot resolve any goal and is "
+            "not a meaningful input."
+        )
+
     _ensure_meta_loaded()
     _ensure_ruleset_loaded(clauses)
 

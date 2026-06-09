@@ -69,6 +69,12 @@ class FileRuleSetStore(RuleSetStore):
             return
         program = parse_file(str(self.path))
         clauses = _program_clauses(program)
+        if not clauses:
+            raise ValueError(
+                f"Ruleset file {self.path} parsed to an empty program: "
+                "the interpreted program has no clauses. An empty program "
+                "cannot resolve any goal and is not a meaningful input."
+            )
         self._clauses = clauses
         self._ruleset_hash = hash_clauses(clauses)
 

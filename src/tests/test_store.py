@@ -163,6 +163,13 @@ class TestStores:
 
         assert store.name == "rules"
 
+    def test_file_store_rejects_empty_ruleset(self, tmp_path: Path) -> None:
+        rules_path = _write_rules(tmp_path, "rules.pl", "% empty\n")
+        store = FileRuleSetStore(rules_path)
+
+        with pytest.raises(ValueError, match="empty program"):
+            store.known_rulesets()
+
     def test_aggregate_dispatches_to_child_store(self, tmp_path: Path) -> None:
         left = FileRuleSetStore(_write_rules(tmp_path, "left.pl", "p(a).\n"))
         right = FileRuleSetStore(_write_rules(tmp_path, "right.pl", "q(b).\n"))
