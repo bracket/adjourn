@@ -17,6 +17,11 @@ from constraint.config import Config
 class RuleSetStore(ABC):
     """Abstract base class for ruleset stores."""
 
+    @property
+    @abstractmethod
+    def ruleset_hash(self) -> str:
+        """Return the primary ruleset hash for this store."""
+
     @abstractmethod
     def known_rulesets(self) -> list[str]:
         """Return the content hashes known to this store."""
@@ -49,18 +54,22 @@ class FileRuleSetStore(RuleSetStore):
         self._ruleset_hash: str | None = None
         self._clauses: list[Clause] | None = None
 
-    def known_rulesets(self) -> list[str]:
-        """Return the single content hash owned by this file store."""
+    @property
+    def ruleset_hash(self) -> str:
+        """Return the file store's content hash."""
         self._load()
         assert self._ruleset_hash is not None
-        return [self._ruleset_hash]
+        return self._ruleset_hash
+
+    def known_rulesets(self) -> list[str]:
+        """Return the single content hash owned by this file store."""
+        return [self.ruleset_hash]
 
     def clauses_for(self, ruleset_hash: str) -> list[Clause]:
         """Return the file's clauses when *ruleset_hash* matches."""
         self._load()
-        assert self._ruleset_hash is not None
         assert self._clauses is not None
-        if ruleset_hash != self._ruleset_hash:
+        if ruleset_hash != self.ruleset_hash:
             raise KeyError(f"Unknown ruleset hash: {ruleset_hash}")
         return list(self._clauses)
 
@@ -80,45 +89,101 @@ class FileRuleSetStore(RuleSetStore):
 
     def store_info(self) -> StoreInfo:
         """Return display metadata for this file store."""
-        self._load()
-        assert self._ruleset_hash is not None
         return StoreInfo(
             type="file",
             name=self.name,
             path=str(self.path),
-            hash=self._ruleset_hash,
+            hash=self.ruleset_hash,
         )
 
 
 class AggregateRuleSetStore(RuleSetStore):
-    """Aggregate multiple child stores behind a hash index."""
+    """Aggregate multiple child stores as an ordered `chain`."""
 
     def __init__(self, stores: list[RuleSetStore]) -> None:
         self._stores = list(stores)
-        self._stores_by_hash: dict[str, RuleSetStore] = {}
-        for store in self._stores:
-            for ruleset_hash in store.known_rulesets():
-                self._stores_by_hash.setdefault(ruleset_hash, store)
+        self._member_stores = _dedupe_stores_by_ruleset_hash(self._stores)
+        self._ruleset_hash: str | None = None
+
+    @property
+    def ruleset_hash(self) -> str:
+        """Return the aggregate chain hash."""
+        ruleset_hash = self._composite_ruleset_hash()
+        if ruleset_hash is None:
+            raise ValueError(
+                "Aggregate ruleset resolved to an empty program: "
+                "the interpreted program has no clauses. An empty program "
+                "cannot resolve any goal and is not a meaningful input."
+            )
+        return ruleset_hash
 
     def known_rulesets(self) -> list[str]:
-        """Return the union of known child-store hashes."""
-        return list(self._stores_by_hash)
+        """Return the aggregate hash plus all owned child hashes."""
+        known_rulesets: list[str] = []
+        seen_hashes: set[str] = set()
+        composite_hash = self._composite_ruleset_hash()
+        if composite_hash is not None:
+            known_rulesets.append(composite_hash)
+            seen_hashes.add(composite_hash)
+        for store in self._member_stores:
+            for ruleset_hash in store.known_rulesets():
+                if ruleset_hash in seen_hashes:
+                    continue
+                seen_hashes.add(ruleset_hash)
+                known_rulesets.append(ruleset_hash)
+        return known_rulesets
 
     def clauses_for(self, ruleset_hash: str) -> list[Clause]:
-        """Dispatch clause lookup to the indexed owning store."""
-        try:
-            store = self._stores_by_hash[ruleset_hash]
-        except KeyError as exc:
-            raise KeyError(f"Unknown ruleset hash: {ruleset_hash}") from exc
-        return store.clauses_for(ruleset_hash)
+        """Return chained clauses for the aggregate hash or dispatch to a child."""
+        composite_hash = self._composite_ruleset_hash()
+        if composite_hash is not None and ruleset_hash == composite_hash:
+            clauses = [
+                clause
+                for store in self._member_stores
+                for clause in store.clauses_for(store.ruleset_hash)
+            ]
+            if not clauses:
+                raise ValueError(
+                    "Aggregate ruleset resolved to an empty program: "
+                    "the interpreted program has no clauses. An empty program "
+                    "cannot resolve any goal and is not a meaningful input."
+                )
+            return clauses
+        for store in self._member_stores:
+            if store.owns(ruleset_hash):
+                return store.clauses_for(ruleset_hash)
+        raise KeyError(f"Unknown ruleset hash: {ruleset_hash}")
 
     def owns(self, ruleset_hash: str) -> bool:
-        """Return whether any child store owns *ruleset_hash*."""
-        return ruleset_hash in self._stores_by_hash
+        """Return whether the aggregate or any child store owns *ruleset_hash*."""
+        composite_hash = self._composite_ruleset_hash()
+        if composite_hash is not None and ruleset_hash == composite_hash:
+            return True
+        return any(store.owns(ruleset_hash) for store in self._member_stores)
 
     def store_info_list(self) -> list[StoreInfo]:
-        """Return child-store metadata in configured order."""
-        return [store.store_info() for store in self._stores if isinstance(store, FileRuleSetStore)]
+        """Return the aggregate summary row plus child-store metadata."""
+        child_store_info = [
+            store.store_info() for store in self._stores if isinstance(store, FileRuleSetStore)
+        ]
+        if not child_store_info:
+            return []
+        return [
+            StoreInfo(type="system", name="@top", path="", hash=self.ruleset_hash),
+            *child_store_info,
+        ]
+
+    def _composite_ruleset_hash(self) -> str | None:
+        if self._ruleset_hash is not None:
+            return self._ruleset_hash
+        member_hashes = [store.ruleset_hash for store in self._member_stores]
+        if not member_hashes:
+            return None
+        if len(member_hashes) == 1:
+            self._ruleset_hash = member_hashes[0]
+            return self._ruleset_hash
+        self._ruleset_hash = _hash_chain(member_hashes)
+        return self._ruleset_hash
 
 
 def build_store_from_config(config: Config) -> AggregateRuleSetStore:
@@ -133,6 +198,25 @@ def build_store_from_config(config: Config) -> AggregateRuleSetStore:
             store_path = config.base_dir / store_path
         stores.append(FileRuleSetStore(store_path, name=store_config.get("name")))
     return AggregateRuleSetStore(stores)
+
+
+def _dedupe_stores_by_ruleset_hash(stores: list[RuleSetStore]) -> list[RuleSetStore]:
+    deduped_stores: list[RuleSetStore] = []
+    seen_hashes: set[str] = set()
+    for store in stores:
+        ruleset_hash = store.ruleset_hash
+        if ruleset_hash in seen_hashes:
+            continue
+        seen_hashes.add(ruleset_hash)
+        deduped_stores.append(store)
+    return deduped_stores
+
+
+def _hash_chain(ruleset_hashes: list[str]) -> str:
+    payload = b"chain\x00" + b"\x00".join(
+        ruleset_hash.encode("utf-8") for ruleset_hash in ruleset_hashes
+    )
+    return hashlib.sha256(payload).hexdigest()
 
 
 def hash_clauses(clauses: list[Clause]) -> str:

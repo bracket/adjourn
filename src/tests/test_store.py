@@ -2,19 +2,40 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import pytest
 import yaml
 
 from constraint.config import Config
-from constraint.store import AggregateRuleSetStore, FileRuleSetStore, build_store_from_config
+from constraint.parser.ast import Clause
+from constraint.store import (
+    AggregateRuleSetStore,
+    FileRuleSetStore,
+    RuleSetStore,
+    build_store_from_config,
+)
 
 
 def _write_rules(tmp_path: Path, name: str, content: str) -> Path:
     path = tmp_path / name
     path.write_text(content)
     return path
+
+
+class _EmptyRuleSetStore(RuleSetStore):
+    @property
+    def ruleset_hash(self) -> str:
+        return "f" * 64
+
+    def known_rulesets(self) -> list[str]:
+        return [self.ruleset_hash]
+
+    def clauses_for(self, ruleset_hash: str) -> list[Clause]:
+        if ruleset_hash != self.ruleset_hash:
+            raise KeyError(f"Unknown ruleset hash: {ruleset_hash}")
+        return []
 
 
 class TestHashing:
@@ -163,6 +184,12 @@ class TestStores:
 
         assert store.name == "rules"
 
+    def test_file_store_ruleset_hash_matches_known_ruleset(self, tmp_path: Path) -> None:
+        rules_path = _write_rules(tmp_path, "rules.pl", "p(a).\n")
+        store = FileRuleSetStore(rules_path)
+
+        assert store.ruleset_hash == store.known_rulesets()[0]
+
     def test_file_store_rejects_empty_ruleset(self, tmp_path: Path) -> None:
         rules_path = _write_rules(tmp_path, "rules.pl", "% empty\n")
         store = FileRuleSetStore(rules_path)
@@ -174,11 +201,66 @@ class TestStores:
         left = FileRuleSetStore(_write_rules(tmp_path, "left.pl", "p(a).\n"))
         right = FileRuleSetStore(_write_rules(tmp_path, "right.pl", "q(b).\n"))
         aggregate = AggregateRuleSetStore([left, right])
-        right_hash = right.known_rulesets()[0]
+        right_hash = right.ruleset_hash
 
         clauses = aggregate.clauses_for(right_hash)
 
         assert [str(clause) for clause in clauses] == ["q(b)."]
+
+    def test_aggregate_ruleset_hash_passthrough_single_member(
+        self, tmp_path: Path
+    ) -> None:
+        store = FileRuleSetStore(_write_rules(tmp_path, "rules.pl", "p(a).\n"))
+
+        aggregate = AggregateRuleSetStore([store])
+
+        assert aggregate.ruleset_hash == store.ruleset_hash
+
+    def test_aggregate_ruleset_hash_hashes_multiple_members(self, tmp_path: Path) -> None:
+        left = FileRuleSetStore(_write_rules(tmp_path, "left.pl", "p(a).\n"))
+        right = FileRuleSetStore(_write_rules(tmp_path, "right.pl", "q(b).\n"))
+
+        aggregate = AggregateRuleSetStore([left, right])
+
+        expected_hash = hashlib.sha256(
+            b"chain\x00"
+            + b"\x00".join(
+                ruleset_hash.encode("utf-8")
+                for ruleset_hash in [left.ruleset_hash, right.ruleset_hash]
+            )
+        ).hexdigest()
+
+        assert aggregate.ruleset_hash == expected_hash
+
+    def test_aggregate_dedupes_duplicate_member_stores(self, tmp_path: Path) -> None:
+        left = FileRuleSetStore(_write_rules(tmp_path, "left.pl", "p(a).\n"))
+        duplicate = FileRuleSetStore(_write_rules(tmp_path, "duplicate.pl", "p(a).\n"))
+
+        aggregate = AggregateRuleSetStore([left, duplicate])
+
+        assert aggregate.ruleset_hash == left.ruleset_hash
+        assert [str(clause) for clause in aggregate.clauses_for(aggregate.ruleset_hash)] == [
+            "p(a)."
+        ]
+
+    def test_aggregate_clauses_for_composite_hash_concatenates_in_config_order(
+        self, tmp_path: Path
+    ) -> None:
+        left = FileRuleSetStore(_write_rules(tmp_path, "left.pl", "p(a).\np(b).\n"))
+        right = FileRuleSetStore(_write_rules(tmp_path, "right.pl", "q(c).\n"))
+
+        aggregate = AggregateRuleSetStore([left, right])
+
+        clauses = aggregate.clauses_for(aggregate.ruleset_hash)
+
+        assert [str(clause) for clause in clauses] == ["p(a).", "p(b).", "q(c)."]
+
+    def test_aggregate_owns_composite_hash(self, tmp_path: Path) -> None:
+        store = FileRuleSetStore(_write_rules(tmp_path, "rules.pl", "p(a).\n"))
+
+        aggregate = AggregateRuleSetStore([store])
+
+        assert aggregate.owns(aggregate.ruleset_hash)
 
     def test_aggregate_raises_for_unknown_hash(self, tmp_path: Path) -> None:
         store = AggregateRuleSetStore(
@@ -231,7 +313,7 @@ class TestStores:
 
         aggregate = build_store_from_config(Config(config_path))
 
-        assert aggregate.store_info_list()[0].name == "named-rules"
+        assert aggregate.store_info_list()[1].name == "named-rules"
 
     def test_aggregate_store_info_list_preserves_config_order(self, tmp_path: Path) -> None:
         left_path = _write_rules(tmp_path, "left.pl", "p(a).\n")
@@ -242,10 +324,17 @@ class TestStores:
         aggregate = AggregateRuleSetStore([left, right])
         store_info = aggregate.store_info_list()
 
-        assert [info.type for info in store_info] == ["file", "file"]
-        assert [info.name for info in store_info] == ["left", None]
-        assert [info.path for info in store_info] == [str(left_path), str(right_path)]
+        assert [info.type for info in store_info] == ["system", "file", "file"]
+        assert [info.name for info in store_info] == ["@top", "left", None]
+        assert [info.path for info in store_info] == ["", str(left_path), str(right_path)]
         assert [info.hash for info in store_info] == [
-            left.known_rulesets()[0],
-            right.known_rulesets()[0],
+            aggregate.ruleset_hash,
+            left.ruleset_hash,
+            right.ruleset_hash,
         ]
+
+    def test_aggregate_rejects_empty_composite_hash(self) -> None:
+        aggregate = AggregateRuleSetStore([_EmptyRuleSetStore()])
+
+        with pytest.raises(ValueError, match="empty program"):
+            aggregate.clauses_for(aggregate.ruleset_hash)
