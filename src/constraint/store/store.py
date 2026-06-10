@@ -5,10 +5,9 @@ from __future__ import annotations
 import hashlib
 import json
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
-import yaml
 
 from constraint.parser.ast import Atom, Clause, Compound, Float, Integer, List, Program, String, Variable
 from constraint.parser.parser import parse_file
@@ -31,11 +30,22 @@ class RuleSetStore(ABC):
         return ruleset_hash in self.known_rulesets()
 
 
+@dataclass(frozen=True)
+class StoreInfo:
+    """Metadata for a configured ruleset store."""
+
+    type: str
+    path: str
+    hash: str
+    name: str | None = None
+
+
 class FileRuleSetStore(RuleSetStore):
     """Rule store backed by a single Prolog file."""
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path, name: str | None = None) -> None:
         self.path = Path(path)
+        self.name = name
         self._ruleset_hash: str | None = None
         self._clauses: list[Clause] | None = None
 
@@ -59,8 +69,25 @@ class FileRuleSetStore(RuleSetStore):
             return
         program = parse_file(str(self.path))
         clauses = _program_clauses(program)
+        if not clauses:
+            raise ValueError(
+                f"Ruleset file {self.path} parsed to an empty program: "
+                "the interpreted program has no clauses. An empty program "
+                "cannot resolve any goal and is not a meaningful input."
+            )
         self._clauses = clauses
         self._ruleset_hash = hash_clauses(clauses)
+
+    def store_info(self) -> StoreInfo:
+        """Return display metadata for this file store."""
+        self._load()
+        assert self._ruleset_hash is not None
+        return StoreInfo(
+            type="file",
+            name=self.name,
+            path=str(self.path),
+            hash=self._ruleset_hash,
+        )
 
 
 class AggregateRuleSetStore(RuleSetStore):
@@ -89,6 +116,10 @@ class AggregateRuleSetStore(RuleSetStore):
         """Return whether any child store owns *ruleset_hash*."""
         return ruleset_hash in self._stores_by_hash
 
+    def store_info_list(self) -> list[StoreInfo]:
+        """Return child-store metadata in configured order."""
+        return [store.store_info() for store in self._stores if isinstance(store, FileRuleSetStore)]
+
 
 def build_store_from_config(config: Config) -> AggregateRuleSetStore:
     """Build an aggregate rule store from *config*."""
@@ -100,7 +131,7 @@ def build_store_from_config(config: Config) -> AggregateRuleSetStore:
         store_path = Path(store_config["path"])
         if not store_path.is_absolute():
             store_path = config.base_dir / store_path
-        stores.append(FileRuleSetStore(store_path))
+        stores.append(FileRuleSetStore(store_path, name=store_config.get("name")))
     return AggregateRuleSetStore(stores)
 
 

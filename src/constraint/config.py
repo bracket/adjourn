@@ -57,7 +57,24 @@ class Config:
         if not isinstance(aliases, dict):
             raise ValueError(f"Invalid config file {self.path}: 'aliases' must be a mapping")
 
+        validated_aliases: dict[str, str] = {}
+        for alias_name, ruleset_hash in aliases.items():
+            if not isinstance(alias_name, str):
+                raise ValueError(
+                    f"Invalid config file {self.path}: alias names must be strings"
+                )
+            if alias_name.startswith("@"):
+                raise ValueError(
+                    f"Invalid config file {self.path}: alias '{alias_name}' cannot start with '@'"
+                )
+            if not isinstance(ruleset_hash, str):
+                raise ValueError(
+                    f"Invalid config file {self.path}: alias '{alias_name}' must map to a string hash"
+                )
+            validated_aliases[alias_name] = ruleset_hash
+
         validated_stores: list[dict[str, Any]] = []
+        store_names: set[str] = set()
         for index, store in enumerate(stores):
             if not isinstance(store, dict):
                 raise ValueError(
@@ -71,18 +88,27 @@ class Config:
                 raise ValueError(
                     f"Invalid config file {self.path}: store #{index} missing 'path'"
                 )
-            validated_stores.append({"type": store["type"], "path": store["path"]})
-
-        validated_aliases: dict[str, str] = {}
-        for alias_name, ruleset_hash in aliases.items():
-            if not isinstance(alias_name, str):
-                raise ValueError(
-                    f"Invalid config file {self.path}: alias names must be strings"
-                )
-            if not isinstance(ruleset_hash, str):
-                raise ValueError(
-                    f"Invalid config file {self.path}: alias '{alias_name}' must map to a string hash"
-                )
-            validated_aliases[alias_name] = ruleset_hash
+            validated_store = {"type": store["type"], "path": store["path"]}
+            if "name" in store:
+                store_name = store["name"]
+                if not isinstance(store_name, str):
+                    raise ValueError(
+                        f"Invalid config file {self.path}: store #{index} name must be a string"
+                    )
+                if store_name.startswith("@"):
+                    raise ValueError(
+                        f"Invalid config file {self.path}: store #{index} name cannot start with '@'"
+                    )
+                if store_name in store_names:
+                    raise ValueError(
+                        f"Invalid config file {self.path}: duplicate store name '{store_name}'"
+                    )
+                if store_name in validated_aliases:
+                    raise ValueError(
+                        f"Invalid config file {self.path}: store name '{store_name}' collides with alias"
+                    )
+                store_names.add(store_name)
+                validated_store["name"] = store_name
+            validated_stores.append(validated_store)
 
         return {"stores": validated_stores, "aliases": validated_aliases}

@@ -7,8 +7,12 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from constraint.parser.ast import Clause
 from constraint.parser.parser import parse_file
+
+NONEMPTY_RULESET = "rule(test_fixture_placeholder, true).\n"
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +108,7 @@ class TestResumeStateTrueGoal:
     """Tests using the trivially-true goal ``true``."""
 
     def setup_method(self) -> None:
-        self.ruleset = _parse_rules("% empty ruleset\n")
+        self.ruleset = _parse_rules(NONEMPTY_RULESET)
 
     def test_true_goal_reaches_solution(self) -> None:
         from constraint.meta import init_state, resume_state
@@ -193,7 +197,7 @@ class TestResumeStateDone:
     """Tests for the 'done' (no solutions) terminal state."""
 
     def setup_method(self) -> None:
-        self.ruleset = _parse_rules("% empty — no rules\n")
+        self.ruleset = _parse_rules(NONEMPTY_RULESET)
 
     def test_unknown_goal_reaches_done(self) -> None:
         from constraint.meta import init_state, resume_state
@@ -219,6 +223,30 @@ class TestResumeStateDone:
         state = init_state("no_rule_exists_for_this_goal")
         result = resume_state(state, self.ruleset)
         assert "suspension" not in result
+
+
+class TestResumeStateEmptyRuleset:
+    """Tests for rejecting empty interpreted programs."""
+
+    def test_empty_ruleset_raises_value_error(self) -> None:
+        from constraint.meta import init_state, resume_state
+
+        state = init_state("true")
+
+        with pytest.raises(ValueError, match="empty ruleset"):
+            resume_state(state, [])
+
+    def test_done_state_short_circuits_before_empty_ruleset_check(self) -> None:
+        from constraint.meta import resume_state
+
+        state = {
+            "version": 0,
+            "original_goal": "true",
+            "branches": [],
+            "status": "done",
+        }
+
+        assert resume_state(state, []) == state
 
 
 class TestResumeStateMultipleRules:

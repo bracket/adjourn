@@ -16,6 +16,16 @@ _INFIX_OPS = frozenset(
 )
 
 
+def _arg_str(arg: Any) -> str:
+    """Serialize a term for use as an argument, parenthesizing infix
+    operator compounds so they don't flatten into the enclosing functor's
+    argument list (e.g. rule(p, (a, b)) must not render as rule(p, a, b))."""
+
+    if isinstance(arg, Compound) and len(arg.args) == 2 and arg.functor in _INFIX_OPS:
+        return f"({arg})"
+
+    return str(arg)
+
 def _format_infix(arg0: str, functor: str, arg1: str) -> str:
     """Format a binary infix expression."""
     if functor == ",":
@@ -106,11 +116,13 @@ class Compound:
     args: list[Any]
 
     def __str__(self) -> str:
-        if len(self.args) == 2 and self.functor in _INFIX_OPS:
-            return _format_infix(str(self.args[0]), self.functor, str(self.args[1]))
         if not self.args:
             return self.functor
-        args_str = ", ".join(str(arg) for arg in self.args)
+
+        if len(self.args) == 2 and self.functor in _INFIX_OPS:
+            return _format_infix(_arg_str(self.args[0]), self.functor, str(self.args[1]))
+
+        args_str = ", ".join(_arg_str(arg) for arg in self.args)
         return f"{self.functor}({args_str})"
 
     def to_dict(self) -> JSONDict:
@@ -285,6 +297,13 @@ def from_dict(data: JSONDict) -> Any:
     else:
         raise ValueError(f"Unknown AST node type: {node_type}")
 
+def _paren_if_infix(arg: Any, rendered: str) -> str:
+    """Wrap an already-rendered arg string in parens if the term is an
+    infix operator compound."""
+    if isinstance(arg, Compound) and len(arg.args) == 2 and arg.functor in _INFIX_OPS:
+        return f"({rendered})"
+
+    return rendered
 
 def format_term(term: Any, indent: int = 0, indent_size: int = 2) -> str:
     """Format a term as a pretty-printed string with indentation.
@@ -305,17 +324,26 @@ def format_term(term: Any, indent: int = 0, indent_size: int = 2) -> str:
         if len(term.args) == 2 and term.functor in _INFIX_OPS:
             arg0_str = format_term(term.args[0], 0, indent_size).strip()
             arg1_str = format_term(term.args[1], 0, indent_size).strip()
+
+            arg0_str = _paren_if_infix(term.args[0], arg0_str)
+            arg1_str = _paren_if_infix(term.args[1], arg1_str)
+
             return f"{prefix}{_format_infix(arg0_str, term.functor, arg1_str)}"
+
         if not term.args:
             return f"{prefix}{term.functor}"
+
         if len(term.args) == 1:
             # Single arg can be on same line
             arg_str = format_term(term.args[0], 0, indent_size).strip()
             return f"{prefix}{term.functor}({arg_str})"
+
         # Multiple args: one per line
         lines = [f"{prefix}{term.functor}("]
         for i, arg in enumerate(term.args):
             arg_str = format_term(arg, indent + 1, indent_size).strip()
+            arg_str = _paren_if_infix(arg, arg_str)
+
             separator = "," if i < len(term.args) - 1 else ""
             lines.append(f"{' ' * ((indent + 1) * indent_size)}{arg_str}{separator}")
         lines.append(f"{prefix})")
