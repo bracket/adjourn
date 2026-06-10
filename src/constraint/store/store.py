@@ -103,6 +103,7 @@ class AggregateRuleSetStore(RuleSetStore):
     def __init__(self, stores: list[RuleSetStore]) -> None:
         self._stores = list(stores)
         self._member_stores = _dedupe_stores_by_ruleset_hash(self._stores)
+        self._member_hashes = [store.ruleset_hash for store in self._member_stores]
         self._ruleset_hash: str | None = None
 
     @property
@@ -139,8 +140,10 @@ class AggregateRuleSetStore(RuleSetStore):
         if composite_hash is not None and ruleset_hash == composite_hash:
             clauses = [
                 clause
-                for store in self._member_stores
-                for clause in store.clauses_for(store.ruleset_hash)
+                for store, member_hash in zip(
+                    self._member_stores, self._member_hashes, strict=False
+                )
+                for clause in store.clauses_for(member_hash)
             ]
             if not clauses:
                 raise ValueError(
@@ -176,13 +179,12 @@ class AggregateRuleSetStore(RuleSetStore):
     def _composite_ruleset_hash(self) -> str | None:
         if self._ruleset_hash is not None:
             return self._ruleset_hash
-        member_hashes = [store.ruleset_hash for store in self._member_stores]
-        if not member_hashes:
+        if not self._member_hashes:
             return None
-        if len(member_hashes) == 1:
-            self._ruleset_hash = member_hashes[0]
+        if len(self._member_hashes) == 1:
+            self._ruleset_hash = self._member_hashes[0]
             return self._ruleset_hash
-        self._ruleset_hash = _hash_chain(member_hashes)
+        self._ruleset_hash = _hash_chain(self._member_hashes)
         return self._ruleset_hash
 
 
