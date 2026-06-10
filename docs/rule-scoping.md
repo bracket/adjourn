@@ -5,6 +5,14 @@
 > with internal-order and canonical-hashing requirements respectively.
 > Mechanism design for clause dispatch and `reduce_goal` lives in
 > [`reduce-goal.md`](reduce-goal.md).
+>
+> **v1 narrowing (see [§v1 scope](#v1-scope)).** v1 implements
+> *per-resolution* scope, not per-branch: R3 (per-branch binding) and R5
+> (intentional redirect) are **deferred**. A resolution runs against a
+> single scope hash carried in the serialized session state; the kernel and
+> `reduce_goal` are unchanged. R7's `chain` is realized concretely *as* the
+> aggregate rule store (a single flat chain over the config's stores), and
+> the composite hash is exposed via the `@top` system alias.
 
 ## Framing
 
@@ -47,8 +55,13 @@ bound to must remain resolvable to its historical content.
 
 The content hash of an atomic rule set is computed over its clauses in
 authored order, after each clause has been **canonicalized**: variables
-renumbered by first occurrence (e.g. via `copy_term` + `numbervars`),
-then the resulting ground term serialized and hashed. Consequences:
+renumbered by first occurrence, then the resulting term serialized and
+hashed. **Canonicalization is defined Python-side and is authoritative**
+(`canonical_clause` / `hash_clauses` in `constraint.store`): a pure AST
+walk that renumbers variables by first occurrence (`_V0`, `_V1`, …) and
+emits a tagged serialization. A Prolog-side implementation (e.g.
+`copy_term` + `numbervars`) is permitted only if it reproduces the Python
+output byte-for-byte; none is required or present in v1. Consequences:
 
 - *Formatting-independent* — whitespace and presentation do not affect identity.
 - *Variable-rename stable* — `p(X) :- q(X)` and `p(Y) :- q(Y)` hash equal.
@@ -71,6 +84,24 @@ case (R5). Consequence: the meta-interpreter branch state gains a scope
 component (today `branch(Goals)` → `branch(Goals, ScopeBinding)`), and
 `reduce_goal` consults the branch's binding rather than a hardcoded
 module.
+### R3 — Per-branch scope binding
+ The active scope is a property of an individual resolution **branch**, not
+ of the resolution as a whole. Each branch carries a binding map from
+ rule-set names to pinned versions. This is required, not merely chosen: it
+ is the same mechanism that enables R4 and the intentional-redirect use
+ case (R5). Consequence: the meta-interpreter branch state gains a scope
+ component (today `branch(Goals)` → `branch(Goals, ScopeBinding)`), and
+ `reduce_goal` consults the branch's binding rather than a hardcoded
+ module.
+
+> **Deferred in v1.** Per-*branch* granularity is not implemented in v1.
+> The motivating v1 use cases — collision-free disjoint knowledge bases,
+> and explicit rule sets across suspend/resume — are satisfied by
+> *per-resolution* scope: one scope hash for the whole resolution, carried
+> in session state (R6). `branch(Goals)` is unchanged; `reduce_goal` is
+> unchanged. Per-branch binding (and the R5 redirect it enables) is
+> revisited when a use case genuinely needs different scopes on different
+> branches of the same resolution. See [§v1 scope](#v1-scope).
 
 ### R4 — Snapshot semantics on resume
 On resume, a resolution sees rule sets **as they were at suspension
@@ -84,12 +115,19 @@ pinned hash always resolves to identical clause content. See
 [`reduce-goal.md`](reduce-goal.md) for how the immutable `clauses_for`
 oracle realizes this without serializing the clauses themselves.
 
+
 ### R5 — Intentional redirection
-The user may deliberately change the rules in effect and re-run a
-resolution (or part of it): rebind a branch to a different rule-set
-version (or to a live name), then re-run from a chosen point. This must
-be an *explicit, intentional* act — it is the only way the snapshot
-guarantee of R4 is broken.
+> **Deferred in v1** (depends on R3 per-branch binding). In v1, the only
+> mechanism for changing the rules in effect across a suspend/resume is
+> editing the scope hash in the serialized state file by hand (e.g. swap a
+> store, recompute `@top`, resume against the new hash). There is no
+> in-resolution rebind.
+
+ The user may deliberately change the rules in effect and re-run a
+ resolution (or part of it): rebind a branch to a different rule-set
+ version (or to a live name), then re-run from a chosen point. This must
+ be an *explicit, intentional* act — it is the only way the snapshot
+ guarantee of R4 is broken.
 
 ### R6 — Scope in serialized session state
 The per-branch scope binding (R3) is part of the serialized session
@@ -136,6 +174,54 @@ composition monotonic (every visible member contributes; nothing is
 shadowed or subtracted) is essential for clear reasoning about
 per-branch scope (R3) and resume (R4).
 
+## v1 scope
+
+v1 implements **per-resolution scope** and realizes `chain` (R7) as the
+aggregate rule store. The kernel is untouched.
+
+### Per-resolution scope
+  resolution, carried in the serialized session state (R6).
+  ruleset loaded by the driver; it has no knowledge of scoping. The driver
+  resolves the state's scope hash to a flat clause list via the store and
+  loads it before stepping.
+  hash in the state file. Rebuilding a global program is: edit a store,
+  recompute `@top`, resume against the new `@top` hash. This is the only
+  scope-change mechanism in v1.
+
+### The aggregate store *is* `chain`
+The aggregate rule store is a single flat `chain` over the file stores in
+config order. It is a `RuleSetStore` in its own right:
+
+  resolve to the same ruleset hash, the first in config order is kept and
+  later duplicates contribute no clauses. Dedup is at the member/store hash
+  level only; clause-level dedup across members is **not** performed (see
+  D3).
+  - after dedup, if exactly one member remains, the composite hash **is**
+    that member's hash verbatim (`chain([h]) == h`);
+  - otherwise it is a Merkle roll-up over the ordered deduped member hashes,
+    tagged `chain` (see [`reduce-goal.md` §Immutability and hashing](reduce-goal.md)).
+  The single-member passthrough is applied *after* dedup, so
+  `chain(A, A) == chain(A) == A`. The intent is that distinct hashes never
+  refer to the same ruleset content.
+  each surviving member's full clause list. **`clauses_for(child_hash)`**
+  dispatches to the owning child. The aggregate `owns` both its composite
+  hash and every child hash.
+  resolves to zero clauses is a hard error, carrying forward the
+  empty-ruleset guard from bracket/constraint#30. An explicit empty-ruleset
+  constant may be added later if a real need appears.
+
+### `@top` system alias
+`@top` is a reserved system alias (joining `@first`) that resolves to the
+aggregate store's composite `ruleset_hash` — i.e. the whole configured
+program as one scope. It is surfaced as the top row of `store list`.
+
+### Signature note
+v1 keeps `clauses_for(Hash) -> OrderedClauses`; the goal-agnostic
+`(Hash, PI)` keying described in [`reduce-goal.md`](reduce-goal.md) is
+**deferred** along with the Prolog-side cache. The kernel loads the whole
+flat ruleset and filters internally exactly as it does today.
+
+
 ## Deferred
 
 ### D1 — Observed KB vs Expected KB distinction
@@ -151,6 +237,10 @@ change what `reduce_goal` sees. Easy to add later as a tag; no mechanism
 needs reserving now.
 
 ### D3 — Clause-level deduplication
+
+(v1: not performed. Aggregate dedup is at the member/store hash level only;
+see [§v1 scope](#v1-scope).)
+
 A composition that produces the same clause from two distinct rule sets
 currently yields a redundant (but correct) duplicate branch. Tightening
 to clause-level uniqueness is deferred; when added, identity is

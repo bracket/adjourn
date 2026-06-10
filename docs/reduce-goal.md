@@ -3,6 +3,18 @@
 > Status: v1 design decisions. Supersedes the SWIPL-modules-vs-namespacing
 > handoff question raised in [`rule-scoping.md`](rule-scoping.md).
 > Implementation in progress.
+>
+> **What v1 actually implements.** The scope-threaded `reduce_goal`, the
+> `clauses_for(Scope, PI)` oracle, the `unifiable/3` candidate filter, the
+> Prolog-side immutable cache façade, and the Janus clause-crossing
+> described below are the **forward design** and are **deferred**. v1 does
+> **not** modify the kernel: `reduce_goal`, `branch(Goals)`, and the
+> existing whole-ruleset consult path are unchanged. v1 scope is
+> *per-resolution* (a single scope hash in session state), and clause
+> dispatch is realized entirely in the Python store layer via the aggregate
+> `chain` store. See [`rule-scoping.md` §v1 scope](rule-scoping.md#v1-scope).
+> The sections below describe the eventual mechanism, retained as the
+> design target.
 
 ## What this doc covers
 
@@ -101,17 +113,30 @@ the same resolution behavior.
 
 ## Immutability and hashing
 
-Content hashes use canonical-parsed-term form: each clause is
-`copy_term`-ed and then `numbervars`-ed so variables are renumbered by
-first occurrence. The resulting ground term is serialized and hashed.
+Content hashes use canonical-parsed-term form, computed **Python-side and
+authoritatively** (`canonical_clause` / `hash_clauses` in
+`constraint.store`): a pure AST walk renumbers variables by first
+occurrence (`_V0`, `_V1`, …) and emits a tagged serialization, which is
+SHA-256 hashed. A Prolog-side implementation (`copy_term` + `numbervars`)
+is permitted only if byte-identical to the Python output; none exists in
+v1.
 
-- Variant clauses hash equal: `p(X) :- q(X)` and `p(Y) :- q(Y)` are
-  the same clause.
-- Cosmetic differences (whitespace, variable naming) are invisible.
-- Structural differences are preserved: `p(X, X)` and `p(Y, Z)` differ.
+ - Variant clauses hash equal: `p(X) :- q(X)` and `p(Y) :- q(Y)` are
+   the same clause.
+ - Cosmetic differences (whitespace, variable naming) are invisible.
+ - Structural differences are preserved: `p(X, X)` and `p(Y, Z)` differ.
 
-An atomic rule set's hash is over the ordered list of canonical
-clauses. A composite (`chain`) hash is the Merkle roll-up above.
+ An atomic rule set's hash is over the ordered list of canonical
+ clauses. A composite (`chain`) hash is the Merkle roll-up above.
+
+**Composite (`chain`) hash, concretely.** Over the ordered, keep-first
+member-hash-deduped member list `[h0, h1, …]`:
+  member's hash verbatim (`chain([h]) == h`);
+  hex-digested — same SHA-256 hex shape as an atomic `hash_clauses` result,
+  so a composite hash is indistinguishable in type from an atomic one and
+  usable anywhere a hash is. This is a roll-up over member **hashes**, not
+  over concatenated clause text. The single-member passthrough is applied
+  *after* dedup, so `chain(A, A) == chain(A) == A`.
 
 **Immutability is what makes the kernel's cache trivially correct.** A
 given `(Hash, PI)` resolves to a fixed clause list, forever. The cache
@@ -121,6 +146,11 @@ returns identical immutable content for the same hashes. The cache is
 **not** part of serialized session state — only hashes are.
 
 ## Kernel mechanics
+
+> **Deferred — forward design, not v1.** The kernel is unchanged in v1
+> (see the status banner). The scope-threaded `reduce_goal/6`,
+> `clauses_for(Scope, N/A, ...)`, and `unifiable/3` filter below are the
+> eventual target.
 
 `reduce_goal` for the general case, in spec form:
 
