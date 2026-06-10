@@ -257,13 +257,13 @@ def _resolve_system_alias(
         return store.ruleset_hash
     if name != "@first":
         raise ValueError(f"Unknown system alias: {name}")
-    first_store_hash = _first_configured_store_hash(store)
+    first_store_hash = _first_non_system_store_hash(store)
     if first_store_hash is None:
         raise ValueError("System alias '@first' requires at least one configured store")
     return first_store_hash
 
 
-def _first_configured_store_hash(store: AggregateRuleSetStore) -> str | None:
+def _first_non_system_store_hash(store: AggregateRuleSetStore) -> str | None:
     """Return the hash of the first configured non-system store."""
     for store_info in store.store_info_list():
         if store_info.type != "system":

@@ -141,7 +141,7 @@ class AggregateRuleSetStore(RuleSetStore):
             clauses = [
                 clause
                 for store, member_hash in zip(
-                    self._member_stores, self._member_hashes, strict=False
+                    self._member_stores, self._member_hashes, strict=True
                 )
                 for clause in store.clauses_for(member_hash)
             ]
