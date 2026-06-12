@@ -8,7 +8,7 @@ import yaml
 from click.testing import CliRunner
 
 from constraint.cli.__main__ import main
-from constraint.store import FileRuleSetStore
+from constraint.store import AggregateRuleSetStore, FileRuleSetStore
 
 NONEMPTY_RULESET = "rule(test_fixture_placeholder, true).\n"
 
@@ -305,6 +305,42 @@ class TestInitCommand:
         state = json.loads(state_file.read_text())
         first_hash = FileRuleSetStore(tmp_path / "rules" / "first_rules.pl").known_rulesets()[0]
         assert state["ruleset_hash"] == first_hash
+
+    def test_init_resolves_top_system_alias(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        state_file = tmp_path / "state.json"
+        config_path = _write_config(
+            tmp_path,
+            {
+                "first_rules": "p(a).\n",
+                "second_rules": "q(b).\n",
+            },
+            aliases={},
+        )
+
+        result = runner.invoke(
+            main,
+            [
+                "init",
+                "true",
+                str(state_file),
+                "--ruleset",
+                "@top",
+                "--config",
+                str(config_path),
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        state = json.loads(state_file.read_text())
+        store = AggregateRuleSetStore(
+            [
+                FileRuleSetStore(tmp_path / "rules" / "first_rules.pl"),
+                FileRuleSetStore(tmp_path / "rules" / "second_rules.pl"),
+            ]
+        )
+        assert state["ruleset_hash"] == store.ruleset_hash
 
     def test_init_first_system_alias_requires_store(
         self, runner: CliRunner, tmp_path: Path
@@ -683,8 +719,9 @@ class TestStoreCommand:
         assert result.exit_code == 0, result.output
         lines = result.output.strip().splitlines()
         assert lines[0].split() == ["type", "name", "path", "hash"]
-        assert "named-rules" in lines[1]
-        assert str(tmp_path / "rules" / "test_rules.pl") in lines[1]
+        assert "@top" in lines[1]
+        assert "named-rules" in lines[2]
+        assert str(tmp_path / "rules" / "test_rules.pl") in lines[2]
 
     def test_store_list_omits_name_column_for_anonymous_stores(
         self, runner: CliRunner, tmp_path: Path
@@ -694,7 +731,26 @@ class TestStoreCommand:
         result = runner.invoke(main, ["store", "list", "--config", str(config_path)])
 
         assert result.exit_code == 0, result.output
-        assert result.output.strip().splitlines()[0].split() == ["type", "path", "hash"]
+        assert result.output.strip().splitlines()[0].split() == ["type", "name", "path", "hash"]
+
+    def test_store_list_raw_output_starts_with_top_row(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        config_path = _write_config(
+            tmp_path,
+            {
+                "first_rules": "p(a).\n",
+                "second_rules": "q(b).\n",
+            },
+            aliases={},
+        )
+
+        result = runner.invoke(main, ["store", "list", "--config", str(config_path)])
+
+        assert result.exit_code == 0, result.output
+        lines = result.output.strip().splitlines()
+        assert lines[1].split()[0:2] == ["system", "@top"]
+        assert lines[2].split()[0] == "file"
 
     def test_store_list_json_output(self, runner: CliRunner, tmp_path: Path) -> None:
         config_path = _write_config(
@@ -711,7 +767,15 @@ class TestStoreCommand:
 
         assert result.exit_code == 0, result.output
         payload = json.loads(result.output)
+        aggregate = AggregateRuleSetStore(
+            [FileRuleSetStore(tmp_path / "rules" / "test_rules.pl", name="named-rules")]
+        )
         assert payload == [
+            {
+                "type": "system",
+                "name": "@top",
+                "hash": aggregate.ruleset_hash,
+            },
             {
                 "type": "file",
                 "name": "named-rules",
@@ -719,6 +783,29 @@ class TestStoreCommand:
                 "hash": FileRuleSetStore(tmp_path / "rules" / "test_rules.pl").known_rulesets()[0],
             }
         ]
+
+    def test_store_list_json_output_starts_with_top_entry(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        config_path = _write_config(
+            tmp_path,
+            {
+                "first_rules": "p(a).\n",
+                "second_rules": "q(b).\n",
+            },
+            aliases={},
+        )
+
+        result = runner.invoke(
+            main,
+            ["store", "list", "--config", str(config_path), "--format", "json"],
+        )
+
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert payload[0]["type"] == "system"
+        assert payload[0]["name"] == "@top"
+        assert "path" not in payload[0]
 
     def test_store_list_json_pretty_print(
         self, runner: CliRunner, tmp_path: Path

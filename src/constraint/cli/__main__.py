@@ -253,12 +253,22 @@ def _resolve_system_alias(
     store: AggregateRuleSetStore,
 ) -> str:
     """Resolve a reserved system alias to a ruleset hash."""
+    if name == "@top":
+        return store.ruleset_hash
     if name != "@first":
         raise ValueError(f"Unknown system alias: {name}")
-    store_info = store.store_info_list()
-    if not store_info:
+    first_store_hash = _first_non_system_store_hash(store)
+    if first_store_hash is None:
         raise ValueError("System alias '@first' requires at least one configured store")
-    return store_info[0].hash
+    return first_store_hash
+
+
+def _first_non_system_store_hash(store: AggregateRuleSetStore) -> str | None:
+    """Return the hash of the first configured non-system store."""
+    for store_info in store.store_info_list():
+        if store_info.type != "system":
+            return store_info.hash
+    return None
 
 
 def _resolve_store_name_hash(
@@ -313,9 +323,10 @@ def _format_store_info_json(
     for store_info in store_info_list:
         item = {
             "type": store_info.type,
-            "path": store_info.path,
             "hash": store_info.hash,
         }
+        if store_info.path:
+            item["path"] = store_info.path
         if store_info.name is not None:
             item["name"] = store_info.name
         payload.append(item)

@@ -46,11 +46,9 @@ class Config:
             raise ValueError(f"Invalid config file {self.path}: expected a mapping")
         if "stores" not in raw_data:
             raise ValueError(f"Invalid config file {self.path}: missing 'stores'")
-        if "aliases" not in raw_data:
-            raise ValueError(f"Invalid config file {self.path}: missing 'aliases'")
 
         stores = raw_data["stores"]
-        aliases = raw_data["aliases"]
+        aliases = raw_data.get("aliases", { })
 
         if not isinstance(stores, list):
             raise ValueError(f"Invalid config file {self.path}: 'stores' must be a list")
