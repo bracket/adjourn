@@ -5,6 +5,7 @@ import os
 import sys
 from pathlib import Path
 from typing import Any, Optional
+import subprocess
 
 import click
 
@@ -385,11 +386,7 @@ def complete(output: Optional[Path], shell: str) -> None:
     
     # Get the completion script from Click
     if shell_lower == "bash":
-        completion_script = _generate_bash_completion()
-    elif shell_lower == "zsh":
-        completion_script = _generate_zsh_completion()
-    elif shell_lower == "fish":
-        completion_script = _generate_fish_completion()
+        completion_script = generate_bash_completion()
     else:
         click.echo(f"Error: Unsupported shell type: {shell}", err=True)
         sys.exit(1)
@@ -459,30 +456,38 @@ def _get_completion_header(shell: str) -> str:
         return f"# Completion script for {shell}"
 
 
-def _generate_bash_completion() -> str:
-    """Generate bash completion script using Click's internal support."""
-    # Click provides completion support through the shell_complete module
-    # We need to generate the appropriate script for bash
-    prog_name = "constraint"
-    
-    return f"""_{prog_name.upper()}_COMPLETE=bash_source constraint"""
+def generate_bash_completion() -> str:
+    """Generate bash completion script for the central CLI.
 
+    Returns:
+        The bash completion script as a string.
+    """
+    # Use Click's built-in completion generation by invoking the CLI
+    # with the appropriate environment variable
+    env = os.environ.copy()
+    env['_CONSTRAINT_COMPLETE'] = 'bash_source'
 
-def _generate_zsh_completion() -> str:
-    """Generate zsh completion script using Click's internal support."""
-    prog_name = "constraint"
-    
-    return f"""#compdef constraint
+    try:
+        # Run the central command with completion environment variable
+        result = subprocess.run(
+            ['constraint'],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
 
-_{prog_name.upper()}_COMPLETE=zsh_source constraint"""
+        # Click's completion generation may exit with non-zero code,
+        # but it still produces the completion script on stdout
+        if not result.stdout:
+            raise RuntimeError(f"Failed to generate completion script: {result.stderr}")
 
-
-def _generate_fish_completion() -> str:
-    """Generate fish completion script using Click's internal support."""
-    prog_name = "constraint"
-    
-    return f"""_{prog_name.upper()}_COMPLETE=fish_source constraint"""
-
+        return result.stdout
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("Timeout while generating completion script")
+    except FileNotFoundError:
+        # Fallback if constraint is not in PATH - shouldn't happen in normal usage
+        raise RuntimeError("Could not find 'constraint' command in PATH")
 
 if __name__ == "__main__":
     main()
