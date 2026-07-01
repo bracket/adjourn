@@ -293,9 +293,16 @@ class TestStores:
 
         assert clauses == [Clause(head=Compound("rule", [Atom("foo"), Atom("true")]))]
 
-    def test_constraint_mode_keeps_directives_rejected(self, tmp_path: Path) -> None:
+    def test_constraint_mode_rejects_directives(self, tmp_path: Path) -> None:
         rules_path = _write_rules(tmp_path, "rules.pl", ":- dynamic foo/0.\nfoo.\n")
         store = FileRuleSetStore(rules_path)
+
+        with pytest.raises(ValueError, match="unsupported item"):
+            store.known_rulesets()
+
+    def test_strict_mode_rejects_directives(self, tmp_path: Path) -> None:
+        rules_path = _write_rules(tmp_path, "rules.pl", ":- dynamic foo/0.\nrule(foo, true).\n")
+        store = FileRuleSetStore(rules_path, prolog="strict")
 
         with pytest.raises(ValueError, match="unsupported item"):
             store.known_rulesets()

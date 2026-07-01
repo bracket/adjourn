@@ -260,6 +260,11 @@ def _program_clauses(program: Program) -> list[Clause]:
 
 
 def _wrap_constraint_clause(clause: Clause) -> Clause:
+    """Wrap clause as a `rule/2` fact for constraint-mode hashing/loading.
+
+    Facts become ``rule(Head, true)`` and rules become ``rule(Head, Body)``.
+    The returned wrapper clause is always a fact (``body=None``).
+    """
     body = clause.body if clause.body is not None else Atom("true")
     return Clause(head=Compound("rule", [clause.head, body]), body=None)
 
