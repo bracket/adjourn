@@ -264,6 +264,7 @@ def _wrap_constraint_clause(clause: Clause) -> Clause:
 
     Facts become ``rule(Head, true)`` and rules become ``rule(Head, Body)``.
     The returned wrapper clause is always a fact (``body=None``).
+    This helper assumes `_program_clauses` has already filtered non-clause items.
     """
     body = clause.body if clause.body is not None else Atom("true")
     return Clause(head=Compound("rule", [clause.head, body]), body=None)

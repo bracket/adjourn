@@ -301,7 +301,13 @@ class TestStores:
             store.known_rulesets()
 
     def test_strict_mode_rejects_directives(self, tmp_path: Path) -> None:
-        rules_path = _write_rules(tmp_path, "rules.pl", ":- dynamic foo/0.\nrule(foo, true).\n")
+        rules_path = _write_rules(
+            tmp_path,
+            "rules.pl",
+            """:- dynamic foo/0.
+rule(foo, true).
+""",
+        )
         store = FileRuleSetStore(rules_path, prolog="strict")
 
         with pytest.raises(ValueError, match="unsupported item"):
