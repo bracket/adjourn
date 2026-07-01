@@ -86,7 +86,16 @@ class Config:
                 raise ValueError(
                     f"Invalid config file {self.path}: store #{index} missing 'path'"
                 )
-            validated_store = {"type": store["type"], "path": store["path"]}
+            prolog_mode = store.get("prolog", "constraint")
+            if prolog_mode not in {"constraint", "strict"}:
+                raise ValueError(
+                    f"Invalid config file {self.path}: store #{index} 'prolog' must be 'constraint' or 'strict'"
+                )
+            validated_store = {
+                "type": store["type"],
+                "path": store["path"],
+                "prolog": prolog_mode,
+            }
             if "name" in store:
                 store_name = store["name"]
                 if not isinstance(store_name, str):

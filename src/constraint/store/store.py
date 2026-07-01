@@ -48,9 +48,15 @@ class StoreInfo:
 class FileRuleSetStore(RuleSetStore):
     """Rule store backed by a single Prolog file."""
 
-    def __init__(self, path: str | Path, name: str | None = None) -> None:
+    def __init__(
+        self,
+        path: str | Path,
+        name: str | None = None,
+        prolog: str = "constraint",
+    ) -> None:
         self.path = Path(path)
         self.name = name
+        self.prolog = prolog
         self._ruleset_hash: str | None = None
         self._clauses: list[Clause] | None = None
 
@@ -78,6 +84,8 @@ class FileRuleSetStore(RuleSetStore):
             return
         program = parse_file(str(self.path))
         clauses = _program_clauses(program)
+        if self.prolog == "constraint":
+            clauses = [_wrap_constraint_clause(clause) for clause in clauses]
         if not clauses:
             raise ValueError(
                 f"Ruleset file {self.path} parsed to an empty program: "
@@ -198,7 +206,13 @@ def build_store_from_config(config: Config) -> AggregateRuleSetStore:
         store_path = Path(store_config["path"])
         if not store_path.is_absolute():
             store_path = config.base_dir / store_path
-        stores.append(FileRuleSetStore(store_path, name=store_config.get("name")))
+        stores.append(
+            FileRuleSetStore(
+                store_path,
+                name=store_config.get("name"),
+                prolog=store_config["prolog"],
+            )
+        )
     return AggregateRuleSetStore(stores)
 
 
@@ -243,6 +257,11 @@ def _program_clauses(program: Program) -> list[Clause]:
             raise ValueError(f"Ruleset file contains unsupported item: {item}")
         clauses.append(item)
     return clauses
+
+
+def _wrap_constraint_clause(clause: Clause) -> Clause:
+    body = clause.body if clause.body is not None else Atom("true")
+    return Clause(head=Compound("rule", [clause.head, body]), body=None)
 
 
 def _canonical_term(

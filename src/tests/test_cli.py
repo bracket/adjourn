@@ -25,6 +25,7 @@ def _write_config(
     *,
     aliases: dict[str, str] | None = None,
     store_names: dict[str, str] | None = None,
+    prolog_modes: dict[str, str] | None = None,
 ) -> Path:
     """Create rules files plus a matching config file."""
     config_dir = tmp_path / ".constraint"
@@ -37,11 +38,16 @@ def _write_config(
     for name, content in rules.items():
         rules_path = rules_dir / f"{name}.pl"
         rules_path.write_text(content)
-        store = FileRuleSetStore(rules_path)
+        prolog_mode = "constraint"
+        if prolog_modes is not None and name in prolog_modes:
+            prolog_mode = prolog_modes[name]
+        store = FileRuleSetStore(rules_path, prolog=prolog_mode)
         ruleset_hash = store.known_rulesets()[0]
         store_config = {"type": "file", "path": str(Path("rules") / rules_path.name)}
         if store_names is not None and name in store_names:
             store_config["name"] = store_names[name]
+        if prolog_modes is not None and name in prolog_modes:
+            store_config["prolog"] = prolog_mode
         stores.append(store_config)
         computed_aliases[name] = ruleset_hash
 
@@ -462,7 +468,9 @@ class TestResumeCommand:
         """Resuming a goal with yield should produce suspended status."""
         state_file = tmp_path / "state.json"
         config_path = _write_config(
-            tmp_path, {"test_rules": "rule(my_yield_goal, yield(checkpoint)).\n"}
+            tmp_path,
+            {"test_rules": "rule(my_yield_goal, yield(checkpoint)).\n"},
+            prolog_modes={"test_rules": "strict"},
         )
         runner.invoke(
             main,
@@ -485,7 +493,9 @@ class TestResumeCommand:
         """The stdout summary for suspended must include the label."""
         state_file = tmp_path / "state.json"
         config_path = _write_config(
-            tmp_path, {"test_rules": "rule(my_yield_goal2, yield(my_label)).\n"}
+            tmp_path,
+            {"test_rules": "rule(my_yield_goal2, yield(my_label)).\n"},
+            prolog_modes={"test_rules": "strict"},
         )
         runner.invoke(
             main,
