@@ -38,16 +38,13 @@ def _write_config(
     for name, content in rules.items():
         rules_path = rules_dir / f"{name}.pl"
         rules_path.write_text(content)
-        prolog_mode = "constraint"
-        if prolog_modes is not None and name in prolog_modes:
-            prolog_mode = prolog_modes[name]
+        prolog_mode = prolog_modes.get(name, "constraint") if prolog_modes else "constraint"
         store = FileRuleSetStore(rules_path, prolog=prolog_mode)
         ruleset_hash = store.known_rulesets()[0]
         store_config = {"type": "file", "path": str(Path("rules") / rules_path.name)}
         if store_names is not None and name in store_names:
             store_config["name"] = store_names[name]
-        if prolog_modes is not None and name in prolog_modes:
-            store_config["prolog"] = prolog_mode
+        store_config["prolog"] = prolog_mode
         stores.append(store_config)
         computed_aliases[name] = ruleset_hash
 
