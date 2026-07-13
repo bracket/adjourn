@@ -383,13 +383,7 @@ def complete(output: Optional[Path], shell: str) -> None:
     """
     # Generate completion script using Click's built-in support
     shell_lower = shell.lower()
-    
-    # Get the completion script from Click
-    if shell_lower == "bash":
-        completion_script = generate_bash_completion()
-    else:
-        click.echo(f"Error: Unsupported shell type: {shell}", err=True)
-        sys.exit(1)
+    completion_script = generate_completion(shell_lower)
     
     # Add header with usage instructions
     header = _get_completion_header(shell_lower)
@@ -456,38 +450,29 @@ def _get_completion_header(shell: str) -> str:
         return f"# Completion script for {shell}"
 
 
-def generate_bash_completion() -> str:
-    """Generate bash completion script for the central CLI.
+def generate_completion(shell: str) -> str:
+    """Generate the completion script body for SHELL.
+
+    Emits the source-able eval form rather than the rendered completion
+    function, so the emitted script stays valid across CLI versions and does
+    not require a `constraint` binary on PATH at generation time.
+
+    Args:
+        shell: One of "bash", "zsh", or "fish".
 
     Returns:
-        The bash completion script as a string.
+        The completion script body as a string.
     """
-    # Use Click's built-in completion generation by invoking the CLI
-    # with the appropriate environment variable
-    env = os.environ.copy()
-    env['_CONSTRAINT_COMPLETE'] = 'bash_source'
-
-    try:
-        # Run the central command with completion environment variable
-        result = subprocess.run(
-            ['constraint'],
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=5
+    if shell == "zsh":
+        return (
+            "#compdef constraint\n"
+            "\n"
+            'eval "$(_CONSTRAINT_COMPLETE=zsh_source constraint)"\n'
         )
+    if shell == "fish":
+        return "_CONSTRAINT_COMPLETE=fish_source constraint | source\n"
+    return 'eval "$(_CONSTRAINT_COMPLETE=bash_source constraint)"\n'
 
-        # Click's completion generation may exit with non-zero code,
-        # but it still produces the completion script on stdout
-        if not result.stdout:
-            raise RuntimeError(f"Failed to generate completion script: {result.stderr}")
-
-        return result.stdout
-    except subprocess.TimeoutExpired:
-        raise RuntimeError("Timeout while generating completion script")
-    except FileNotFoundError:
-        # Fallback if constraint is not in PATH - shouldn't happen in normal usage
-        raise RuntimeError("Could not find 'constraint' command in PATH")
 
 if __name__ == "__main__":
     main()
