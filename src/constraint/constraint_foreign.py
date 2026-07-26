@@ -65,6 +65,13 @@ def dispatch(fn_name: str, arg: Any) -> Any:
 
 
 # ---------------------------------------------------------------------------
+# Additional callout subpackages — imported here so their @register decorators
+# fire at module load time and populate the registry.
+# ---------------------------------------------------------------------------
+
+import constraint.mini_swe.mini_swe as _mini_swe_module  # noqa: F401
+
+# ---------------------------------------------------------------------------
 # Built-in POC callout: git rev-parse
 # ---------------------------------------------------------------------------
 
