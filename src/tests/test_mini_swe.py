@@ -13,7 +13,6 @@ import pytest
 from constraint.parser.ast import Clause
 from constraint.parser.parser import parse_file
 
-
 # ---------------------------------------------------------------------------
 # Helpers (mirrored from test_meta.py)
 # ---------------------------------------------------------------------------
@@ -35,6 +34,10 @@ def _parse_rules(content: str) -> list[Clause]:
         return [item for item in program.items if isinstance(item, Clause)]
     finally:
         rules_path.unlink(missing_ok=True)
+
+
+def _noop(*args: Any, **kwargs: Any) -> None:
+    """No-op stub for use in monkeypatching side-effect functions."""
 
 
 # ---------------------------------------------------------------------------
@@ -189,84 +192,61 @@ class TestRunMiniSweForeignGoal:
 
         return _fake_run
 
-    def test_run_mini_swe_foreign_resolves_to_solution(
-        self, tmp_path: Path, monkeypatch: Any
-    ) -> None:
-        """A foreign(run_mini_swe, ...) goal must reduce and reach solution."""
-        from constraint.meta import init_state, resume_state
-
-        issue = tmp_path / "issue.md"
-        issue.write_text("task")
-
+    def _apply_callout_patches(self, monkeypatch: Any) -> None:
+        """Apply common monkeypatches needed to stub out the callout side effects."""
         monkeypatch.setattr(
             "constraint.mini_swe.mini_swe.subprocess.run",
             self._make_fake_run(),
         )
-        # Patch path validation so /repo and /issue.md are accepted.
-        monkeypatch.setattr(
-            "constraint.mini_swe.mini_swe.Path.is_dir",
-            lambda self: True,
-        )
-        monkeypatch.setattr(
-            "constraint.mini_swe.mini_swe.Path.is_file",
-            lambda self: True,
-        )
-        # Patch shutil.copy2 so no real file copy is attempted.
-        monkeypatch.setattr("constraint.mini_swe.mini_swe.shutil.copy2", lambda *a, **kw: None)
+        # Accept any path as valid directory / file so the test doesn't need real paths.
+        monkeypatch.setattr("constraint.mini_swe.mini_swe.Path.is_dir", lambda self: True)
+        monkeypatch.setattr("constraint.mini_swe.mini_swe.Path.is_file", lambda self: True)
+        # Skip the actual file copy into the temp task directory.
+        monkeypatch.setattr("constraint.mini_swe.mini_swe.shutil.copy2", _noop)
+
+    def test_run_mini_swe_foreign_resolves_to_solution(
+        self, monkeypatch: Any
+    ) -> None:
+        """A foreign(run_mini_swe, ...) goal must reduce and reach solution."""
+        from constraint.meta import init_state, resume_state
+
+        self._apply_callout_patches(monkeypatch)
 
         state = init_state("test_run_mini_swe")
         result = resume_state(state, self.ruleset)
         assert result["status"] == "solution"
 
     def test_run_mini_swe_foreign_solution_has_bindings(
-        self, tmp_path: Path, monkeypatch: Any
+        self, monkeypatch: Any
     ) -> None:
         """Solution after foreign(run_mini_swe) reduction must include bindings key."""
         from constraint.meta import init_state, resume_state
 
-        monkeypatch.setattr(
-            "constraint.mini_swe.mini_swe.subprocess.run",
-            self._make_fake_run(),
-        )
-        monkeypatch.setattr("constraint.mini_swe.mini_swe.Path.is_dir", lambda self: True)
-        monkeypatch.setattr("constraint.mini_swe.mini_swe.Path.is_file", lambda self: True)
-        monkeypatch.setattr("constraint.mini_swe.mini_swe.shutil.copy2", lambda *a, **kw: None)
+        self._apply_callout_patches(monkeypatch)
 
         state = init_state("test_run_mini_swe")
         result = resume_state(state, self.ruleset)
         assert "bindings" in result
 
     def test_run_mini_swe_foreign_no_suspension(
-        self, tmp_path: Path, monkeypatch: Any
+        self, monkeypatch: Any
     ) -> None:
         """A foreign(run_mini_swe) reduction must not produce a suspended event."""
         from constraint.meta import init_state, resume_state
 
-        monkeypatch.setattr(
-            "constraint.mini_swe.mini_swe.subprocess.run",
-            self._make_fake_run(),
-        )
-        monkeypatch.setattr("constraint.mini_swe.mini_swe.Path.is_dir", lambda self: True)
-        monkeypatch.setattr("constraint.mini_swe.mini_swe.Path.is_file", lambda self: True)
-        monkeypatch.setattr("constraint.mini_swe.mini_swe.shutil.copy2", lambda *a, **kw: None)
+        self._apply_callout_patches(monkeypatch)
 
         state = init_state("test_run_mini_swe")
         result = resume_state(state, self.ruleset)
         assert "suspension" not in result
 
     def test_run_mini_swe_foreign_original_goal_preserved(
-        self, tmp_path: Path, monkeypatch: Any
+        self, monkeypatch: Any
     ) -> None:
         """original_goal must be unchanged after foreign(run_mini_swe) reduction."""
         from constraint.meta import init_state, resume_state
 
-        monkeypatch.setattr(
-            "constraint.mini_swe.mini_swe.subprocess.run",
-            self._make_fake_run(),
-        )
-        monkeypatch.setattr("constraint.mini_swe.mini_swe.Path.is_dir", lambda self: True)
-        monkeypatch.setattr("constraint.mini_swe.mini_swe.Path.is_file", lambda self: True)
-        monkeypatch.setattr("constraint.mini_swe.mini_swe.shutil.copy2", lambda *a, **kw: None)
+        self._apply_callout_patches(monkeypatch)
 
         goal = "test_run_mini_swe"
         state = init_state(goal)
