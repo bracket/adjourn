@@ -301,3 +301,99 @@ class TestResumeStateSchemaConsistency:
         for _ in range(3):
             state = resume_state(state, self.ruleset)
             assert state["original_goal"] == goal
+
+
+# ---------------------------------------------------------------------------
+# Tests for foreign/3 callout
+# ---------------------------------------------------------------------------
+
+
+class TestForeignGoal:
+    """Tests for the foreign/3 callout special form."""
+
+    def setup_method(self) -> None:
+        # A rule whose body is a single foreign/3 goal (git rev-parse HEAD).
+        self.ruleset = _parse_rules(
+            "rule(test_foreign_call, foreign(git_rev_parse, 'HEAD', _Out)).\n"
+        )
+
+    def test_foreign_goal_resolves_to_solution(self) -> None:
+        """A foreign/3 goal must reduce via py_call and reach solution."""
+        from constraint.meta import init_state, resume_state
+
+        state = init_state("test_foreign_call")
+        result = resume_state(state, self.ruleset)
+        assert result["status"] == "solution"
+
+    def test_foreign_goal_solution_has_bindings_key(self) -> None:
+        """Solution after foreign/3 reduction must include the bindings key."""
+        from constraint.meta import init_state, resume_state
+
+        state = init_state("test_foreign_call")
+        result = resume_state(state, self.ruleset)
+        assert "bindings" in result
+
+    def test_foreign_goal_no_suspension_key(self) -> None:
+        """A foreign/3 reduction must not produce a suspended event."""
+        from constraint.meta import init_state, resume_state
+
+        state = init_state("test_foreign_call")
+        result = resume_state(state, self.ruleset)
+        assert "suspension" not in result
+
+    def test_foreign_goal_original_goal_preserved(self) -> None:
+        """original_goal must be unchanged after a foreign/3 reduction."""
+        from constraint.meta import init_state, resume_state
+
+        goal = "test_foreign_call"
+        state = init_state(goal)
+        result = resume_state(state, self.ruleset)
+        assert result["original_goal"] == goal
+
+
+class TestForeignGoalPackedRoundTrip:
+    """A foreign/3 goal later in the resolvent must survive serialisation.
+
+    When a ``foreign/3`` goal is NOT the goal being reduced this step, it
+    sits in the packed atom and must survive a ``term_to_atom`` /
+    ``read_term_from_atom`` round-trip intact so that subsequent steps can
+    still reduce it.
+    """
+
+    def setup_method(self) -> None:
+        # yield/1 suspends first; the foreign goal is left in the resolvent.
+        self.ruleset = _parse_rules(
+            "rule(test_foreign_later,"
+            " (yield(pause), foreign(git_rev_parse, 'HEAD', _Out))).\n"
+        )
+
+    def test_suspended_after_yield_with_foreign_in_resolvent(self) -> None:
+        """First step yields; foreign/3 remains in the pending resolvent."""
+        from constraint.meta import init_state, resume_state
+
+        state = init_state("test_foreign_later")
+        result = resume_state(state, self.ruleset)
+        assert result["status"] == "suspended"
+
+    def test_foreign_goal_present_after_packed_round_trip(self) -> None:
+        """foreign/3 goal must be recoverable from the packed state."""
+        from constraint.meta import init_state, resume_state
+
+        state = init_state("test_foreign_later")
+        result = resume_state(state, self.ruleset)
+        assert result["status"] == "suspended"
+        # The branches must contain a goal whose string form includes 'foreign'.
+        branches = result["branches"]
+        assert len(branches) == 1
+        goals = branches[0]["goals"]
+        assert any("foreign" in goal for goal in goals)
+
+    def test_foreign_goal_resolves_after_resume_from_suspension(self) -> None:
+        """Resuming from the suspension must reduce the foreign/3 goal."""
+        from constraint.meta import init_state, resume_state
+
+        state = init_state("test_foreign_later")
+        state = resume_state(state, self.ruleset)
+        assert state["status"] == "suspended"
+        state = resume_state(state, self.ruleset)
+        assert state["status"] == "solution"

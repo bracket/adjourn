@@ -6,11 +6,18 @@ parsed Prolog terms, clauses, and programs.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, TypeAlias
 
 # Type alias for JSON-serializable data
 JSONDict: TypeAlias = dict[str, Any]
+
+# Atoms that match [a-z][a-zA-Z0-9_]* are safe to write unquoted.
+# Any other atom (uppercase initial, special characters, etc.) must be
+# single-quoted so that SWI-Prolog does not misread it as a variable.
+_SIMPLE_ATOM = re.compile(r"^[a-z][a-zA-Z0-9_]*$")
+
 _INFIX_OPS = frozenset(
     {",", ";", "->", ":-", "=", "\\=", "is", "<", ">", "=<", ">=", "==", "\\=="}
 )
@@ -40,7 +47,13 @@ class Atom:
     value: str
 
     def __str__(self) -> str:
-        return self.value
+        if _SIMPLE_ATOM.match(self.value):
+            return self.value
+        # Atoms that need quoting: escape backslashes first, then single quotes,
+        # then wrap in single quotes so SWI-Prolog reads them as atoms rather
+        # than variables or operators.
+        escaped = self.value.replace("\\", "\\\\").replace("'", "\\'")
+        return f"'{escaped}'"
 
     def to_dict(self) -> JSONDict:
         """Convert to JSON-serializable dictionary."""
