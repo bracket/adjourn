@@ -16,6 +16,8 @@
     extract_bindings_str/4
 ]).
 
+:- use_module(library(janus)).
+
 % rule/2 is multifile in the user module so that any consulted ruleset can
 % add rule/2 facts without module qualification.
 :- multifile user:rule/2.
@@ -67,6 +69,12 @@ reduce_goal((X=Y), Gs, Rest, Event, State1) :-
 % suspended(Label).  The yield/1 goal has already been removed from
 % the resolvent, so resuming from this state continues "after" it.
 reduce_goal(yield(Label), Gs, Rest, suspended(Label), state([branch(Gs)|Rest])) :- !.
+
+% foreign callout: invoke a registered Python function synchronously.
+% py_call/2 is provided by library(janus) and calls into the Python runtime.
+reduce_goal(foreign(Fn, In, Out), Gs, Rest, Event, State1) :-
+    py_call(constraint_foreign:dispatch(Fn, In), Out),
+    step(state([branch(Gs)|Rest]), Event, State1).
 
 % general case: interpret via user:rule/2.
 % Collect ALL matching rules for G, then create one branch per alternative.

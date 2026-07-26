@@ -37,9 +37,10 @@ when a solution is produced in the same step where the packed atom's
 
 from __future__ import annotations
 
+import sys
+import tempfile
 from importlib.resources import as_file, files
 from pathlib import Path
-import tempfile
 from typing import Any
 
 import janus_swi as janus  # type: ignore[import-untyped]
@@ -112,6 +113,7 @@ def resume_state(state: dict[str, Any], clauses: list[Clause]) -> dict[str, Any]
 
     _ensure_meta_loaded()
     _ensure_ruleset_loaded(clauses)
+    _ensure_foreign_loaded()
 
     packed = _build_packed_atom(state)
     result = janus.query_once(
@@ -143,6 +145,20 @@ def _ensure_meta_loaded() -> None:
     with as_file(ref) as pl_path:
         janus.consult(str(pl_path))
     _consulted.add(key)
+
+
+def _ensure_foreign_loaded() -> None:
+    """Register ``constraint_foreign`` in ``sys.modules`` for janus ``py_call``.
+
+    The Prolog clause ``py_call(constraint_foreign:dispatch(Fn, In), Out)``
+    resolves the module named ``constraint_foreign`` via Python's import
+    machinery.  This function ensures the module is importable under that
+    short name by registering it in ``sys.modules`` the first time it is
+    needed.
+    """
+    if "constraint_foreign" not in sys.modules:
+        import constraint.constraint_foreign as _cf
+        sys.modules["constraint_foreign"] = _cf  # type: ignore[assignment]
 
 
 def _ensure_ruleset_loaded(clauses: list[Clause]) -> None:
