@@ -60,9 +60,10 @@ def _run_mini_swe(arg: Any) -> str:
             exits with a non-zero status.
     """
     # Unpack the 2-element list argument.
-    if not (hasattr(arg, "__len__") or hasattr(arg, "__iter__")):
+    try:
+        items = list(arg)
+    except TypeError:
         raise ValueError(f"run_mini_swe: expected a 2-element list, got {arg!r}")
-    items = list(arg)
     if len(items) != 2:
         raise ValueError(
             f"run_mini_swe: expected exactly 2 arguments [repo_root, issue_file],"
@@ -93,9 +94,10 @@ def _run_mini_swe(arg: Any) -> str:
         issue_basename = issue_file.name
         container_issue_path = f"/work/task/{issue_basename}"
 
-        # Build the compose environment mapping.
-        env = {
-            **os.environ,
+        # Build the compose variable substitution mapping (only the vars referenced
+        # in the vendored compose file, so we control every value written to the
+        # env file and avoid escaping issues with arbitrary env values).
+        compose_vars: dict[str, str] = {
             "HOST_UID": uid,
             "HOST_GID": gid,
             "MSWEA_REPO_ROOT": str(repo_root),
@@ -111,10 +113,8 @@ def _run_mini_swe(arg: Any) -> str:
         try:
             os.chmod(env_file_path, stat.S_IRUSR | stat.S_IWUSR)
             with os.fdopen(env_fd, "w") as env_fp:
-                for key, value in env.items():
-                    # Encode value: escape newlines so the env file remains valid.
-                    safe_value = value.replace("\n", "\\n")
-                    env_fp.write(f"{key}={safe_value}\n")
+                for key, value in compose_vars.items():
+                    env_fp.write(f"{key}={value}\n")
 
             # Run docker compose.
             subprocess.run(

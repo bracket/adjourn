@@ -46,11 +46,11 @@ class TestRunMiniSweCallout:
     """Unit tests for _run_mini_swe argument validation and dispatch."""
 
     def test_raises_on_non_list_arg(self) -> None:
-        """A non-sequence argument must raise ValueError."""
+        """A non-iterable argument must raise ValueError."""
         from constraint.mini_swe.mini_swe import _run_mini_swe
 
-        with pytest.raises((ValueError, TypeError)):
-            _run_mini_swe("not-a-list")
+        with pytest.raises(ValueError):
+            _run_mini_swe(42)  # int is not iterable
 
     def test_raises_on_wrong_length(self, tmp_path: Path) -> None:
         """A list with != 2 elements must raise ValueError."""
@@ -109,27 +109,22 @@ class TestRunMiniSweCallout:
         issue = tmp_path / "task.md"
         issue.write_text("do something")
 
-        created_env_files: list[str] = []
-
-        original_mkstemp = tempfile.mkstemp
-
-        def spy_mkstemp(*args: Any, **kwargs: Any) -> tuple[int, str]:
-            fd, path = original_mkstemp(*args, **kwargs)
-            if "mini_swe_env_" in path:
-                created_env_files.append(path)
-            return fd, path
+        fake_env_path = str(tmp_path / "fake_env.env")
+        fake_fd = os.open(fake_env_path, os.O_CREAT | os.O_WRONLY, 0o600)
 
         mock_completed = MagicMock()
         mock_completed.stdout = "deadbeef\n"
 
         with (
             patch("constraint.mini_swe.mini_swe.subprocess.run", return_value=mock_completed),
-            patch("constraint.mini_swe.mini_swe.tempfile.mkstemp", side_effect=spy_mkstemp),
+            patch(
+                "constraint.mini_swe.mini_swe.tempfile.mkstemp",
+                return_value=(fake_fd, fake_env_path),
+            ),
         ):
             _run_mini_swe([str(tmp_path), str(issue)])
 
-        for env_file in created_env_files:
-            assert not Path(env_file).exists(), f"env file was not cleaned up: {env_file}"
+        assert not Path(fake_env_path).exists(), "env file was not cleaned up"
 
     def test_task_dir_cleaned_up_on_success(self, tmp_path: Path) -> None:
         """The temporary task directory must be removed after a successful run."""
@@ -138,27 +133,23 @@ class TestRunMiniSweCallout:
         issue = tmp_path / "task.md"
         issue.write_text("do something")
 
-        created_task_dirs: list[str] = []
-
-        original_mkdtemp = tempfile.mkdtemp
-
-        def spy_mkdtemp(*args: Any, **kwargs: Any) -> str:
-            path = original_mkdtemp(*args, **kwargs)
-            if "mini_swe_task_" in path:
-                created_task_dirs.append(path)
-            return path
+        fake_task_dir = str(tmp_path / "fake_task_dir")
+        os.makedirs(fake_task_dir, exist_ok=True)
 
         mock_completed = MagicMock()
         mock_completed.stdout = "deadbeef\n"
 
         with (
             patch("constraint.mini_swe.mini_swe.subprocess.run", return_value=mock_completed),
-            patch("constraint.mini_swe.mini_swe.tempfile.mkdtemp", side_effect=spy_mkdtemp),
+            patch(
+                "constraint.mini_swe.mini_swe.tempfile.mkdtemp",
+                return_value=fake_task_dir,
+            ),
+            patch("constraint.mini_swe.mini_swe.shutil.copy2"),
         ):
             _run_mini_swe([str(tmp_path), str(issue)])
 
-        for task_dir in created_task_dirs:
-            assert not Path(task_dir).exists(), f"task dir was not cleaned up: {task_dir}"
+        assert not Path(fake_task_dir).exists(), "task dir was not cleaned up"
 
 
 # ---------------------------------------------------------------------------
