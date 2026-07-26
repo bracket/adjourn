@@ -62,7 +62,9 @@ def _run_mini_swe(arg: Any) -> str:
     try:
         items = list(arg)
     except TypeError:
-        raise ValueError(f"run_mini_swe: expected a 2-element list, got {arg!r}")
+        raise ValueError(
+            f"run_mini_swe: expected an iterable 2-element sequence, got {arg!r}"
+        )
     if len(items) != 2:
         raise ValueError(
             f"run_mini_swe: expected exactly 2 arguments [repo_root, issue_file],"
@@ -82,7 +84,9 @@ def _run_mini_swe(arg: Any) -> str:
             f"run_mini_swe: issue_file is not an existing file: {issue_file}"
         )
 
-    # Determine HOST_UID / HOST_GID with fallbacks for platforms without getuid/getgid.
+    # Determine HOST_UID / HOST_GID.  os.getuid/os.getgid are unavailable on
+    # Windows; the fallback values (501/20) are macOS default user/staff IDs,
+    # chosen as a reasonable convention for developer workstations.
     uid = str(os.getuid()) if hasattr(os, "getuid") else _FALLBACK_UID
     gid = str(os.getgid()) if hasattr(os, "getgid") else _FALLBACK_GID
 

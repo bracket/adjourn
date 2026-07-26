@@ -37,7 +37,7 @@ def _parse_rules(content: str) -> list[Clause]:
 
 
 def _noop(*args: Any, **kwargs: Any) -> None:
-    """No-op stub for use in monkeypatching side-effect functions."""
+    """No-op stub for monkeypatching side-effect functions that return nothing."""
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +48,7 @@ def _noop(*args: Any, **kwargs: Any) -> None:
 class TestRunMiniSweCallout:
     """Unit tests for _run_mini_swe argument validation and dispatch."""
 
-    def test_raises_on_non_list_arg(self) -> None:
+    def test_raises_on_non_iterable_arg(self) -> None:
         """A non-iterable argument must raise ValueError."""
         from constraint.mini_swe.mini_swe import _run_mini_swe
 

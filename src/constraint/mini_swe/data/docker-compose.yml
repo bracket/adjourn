@@ -34,6 +34,8 @@ services:
       OPENAI_API_BASE: 'http://host.docker.internal:${MSWEA_ARBITER_PORT:-27248}/v1'
       OPENAI_API_KEY: 'arbiter-local-unused'
       MSWEA_COST_TRACKING: 'ignore_errors'
+    # host.docker.internal resolves to the host IP via host-gateway.
+    # Requires Docker Engine >= 20.10 on Linux; macOS/Windows have it natively.
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
