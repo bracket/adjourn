@@ -49,7 +49,9 @@ class Atom:
     def __str__(self) -> str:
         if _SIMPLE_ATOM.match(self.value):
             return self.value
-        # Needs single-quote quoting; escape backslashes and single quotes.
+        # Atoms that need quoting: escape backslashes first, then single quotes,
+        # then wrap in single quotes so SWI-Prolog reads them as atoms rather
+        # than variables or operators.
         escaped = self.value.replace("\\", "\\\\").replace("'", "\\'")
         return f"'{escaped}'"
 

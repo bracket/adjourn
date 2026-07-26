@@ -158,7 +158,7 @@ def _ensure_foreign_loaded() -> None:
     """
     if "constraint_foreign" not in sys.modules:
         import constraint.constraint_foreign as _cf
-        sys.modules["constraint_foreign"] = _cf  # type: ignore[assignment]
+        sys.modules["constraint_foreign"] = _cf
 
 
 def _ensure_ruleset_loaded(clauses: list[Clause]) -> None:

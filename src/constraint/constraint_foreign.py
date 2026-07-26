@@ -78,6 +78,10 @@ def _git_rev_parse(arg: Any) -> str:
 
     Returns:
         The stripped stdout output of the subprocess.
+
+    Raises:
+        subprocess.CalledProcessError: If ``git rev-parse`` exits with a
+            non-zero status (e.g. the argument is not a valid ref).
     """
     result = subprocess.run(
         ["git", "rev-parse", str(arg)],
