@@ -110,19 +110,30 @@ class TestRunMiniSweCallout:
         issue.write_text("do something")
 
         fake_env_path = str(tmp_path / "fake_env.env")
-        fake_fd = os.open(fake_env_path, os.O_CREAT | os.O_WRONLY, 0o600)
+        # Open with O_RDWR so os.fdopen("w") in the implementation can write.
+        # The fd is transferred to os.fdopen which closes it; if the test fails
+        # before that point, the explicit close in the except guards against leaks.
+        fake_fd = os.open(fake_env_path, os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            mock_completed = MagicMock()
+            mock_completed.stdout = "deadbeef\n"
 
-        mock_completed = MagicMock()
-        mock_completed.stdout = "deadbeef\n"
-
-        with (
-            patch("constraint.mini_swe.mini_swe.subprocess.run", return_value=mock_completed),
-            patch(
-                "constraint.mini_swe.mini_swe.tempfile.mkstemp",
-                return_value=(fake_fd, fake_env_path),
-            ),
-        ):
-            _run_mini_swe([str(tmp_path), str(issue)])
+            with (
+                patch("constraint.mini_swe.mini_swe.subprocess.run", return_value=mock_completed),
+                patch(
+                    "constraint.mini_swe.mini_swe.tempfile.mkstemp",
+                    return_value=(fake_fd, fake_env_path),
+                ),
+            ):
+                _run_mini_swe([str(tmp_path), str(issue)])
+            # If we reach here, os.fdopen took ownership and closed fake_fd already.
+        except Exception:
+            # Guard against fd leaks if the implementation raised before os.fdopen.
+            try:
+                os.close(fake_fd)
+            except OSError:
+                pass
+            raise
 
         assert not Path(fake_env_path).exists(), "env file was not cleaned up"
 

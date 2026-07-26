@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import os
 import shutil
-import stat
 import subprocess
 import tempfile
 from pathlib import Path
@@ -108,10 +107,10 @@ def _run_mini_swe(arg: Any) -> str:
             "MSWEA_MODEL_ALIAS": _DEFAULT_MODEL_ALIAS,
         }
 
-        # Write the environment to a temporary env file with mode 0600.
+        # Write the environment to a temporary env file.
+        # mkstemp creates files with mode 0600 (readable/writable by owner only).
         env_fd, env_file_path = tempfile.mkstemp(prefix="mini_swe_env_", suffix=".env")
         try:
-            os.chmod(env_file_path, stat.S_IRUSR | stat.S_IWUSR)
             with os.fdopen(env_fd, "w") as env_fp:
                 for key, value in compose_vars.items():
                     env_fp.write(f"{key}={value}\n")
