@@ -70,6 +70,7 @@ def dispatch(fn_name: str, arg: Any) -> Any:
 # ---------------------------------------------------------------------------
 
 import constraint.mini_swe.mini_swe as _mini_swe_module  # noqa: F401
+import constraint.subprocess.subprocess as _subprocess_module  # noqa: F401
 
 # ---------------------------------------------------------------------------
 # Built-in POC callout: git rev-parse
