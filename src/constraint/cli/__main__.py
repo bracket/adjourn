@@ -67,7 +67,6 @@ def cmd_init(
     """
     try:
         store = _load_store(config_path)
-        runner = Runner(store, force_new=True)
         state = init_state(query)
         ruleset_hash = _resolve_ruleset_hash(ruleset_name, config_path)
         state["ruleset_hash"] = ruleset_hash
@@ -121,8 +120,7 @@ def cmd_resume(
 
     try:
         store = _load_store(config_path)
-        runner = Runner(store, force_new=True)
-        ruleset_hash = _state_ruleset_hash(state)
+        runner = Runner(store)
         new_state = runner.drive(state)
     except Exception as exc:  # noqa: BLE001  — Janus/Prolog errors are opaque
         click.echo(f"Error during resume: {exc}", err=True)
