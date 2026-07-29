@@ -10,6 +10,7 @@ import subprocess
 import click
 
 from constraint.meta import init_state, resume_state
+from constraint.runner import Runner
 from constraint.config import Config
 from constraint.store import AggregateRuleSetStore, StoreInfo, build_store_from_config
 
@@ -65,6 +66,8 @@ def cmd_init(
         constraint init "color(X, Y)" state.json --ruleset coloring
     """
     try:
+        store = _load_store(config_path)
+        runner = Runner(store, force_new=True)
         state = init_state(query)
         ruleset_hash = _resolve_ruleset_hash(ruleset_name, config_path)
         state["ruleset_hash"] = ruleset_hash
@@ -117,10 +120,10 @@ def cmd_resume(
         sys.exit(1)
 
     try:
-        ruleset_hash = _state_ruleset_hash(state)
         store = _load_store(config_path)
-        clauses = store.clauses_for(ruleset_hash)
-        new_state = resume_state(state, clauses)
+        runner = Runner(store, force_new=True)
+        ruleset_hash = _state_ruleset_hash(state)
+        new_state = runner.drive(state)
     except Exception as exc:  # noqa: BLE001  — Janus/Prolog errors are opaque
         click.echo(f"Error during resume: {exc}", err=True)
         sys.exit(1)
