@@ -121,7 +121,7 @@ def cmd_resume(
     try:
         store = _load_store(config_path)
         runner = Runner(store)
-        new_state = runner.drive(state)
+        new_state = runner.step(state)
     except Exception as exc:  # noqa: BLE001  — Janus/Prolog errors are opaque
         click.echo(f"Error during resume: {exc}", err=True)
         sys.exit(1)

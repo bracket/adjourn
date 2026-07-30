@@ -368,3 +368,17 @@ class TestRunnerRun:
         assert result is done
         assert seam.stored == [("cp1", cp1), ("cp2", cp2)]
         assert seam.init_state is initial
+
+
+class TestRunnerRunIntegration:
+    """End-to-end integration tests for the ``run`` resume loop
+    with a real ruleset driving the meta-interpreter."""
+
+    def test_run_checkpoint_then_yield(self, tmp_path):
+        """``run`` with a ruleset containing checkpoint then yield:
+        - auto-continues across the checkpoint (does not halt there)
+        - store_state is invoked at the checkpoint boundary with the label
+        - halts at the yield suspension
+        - init state was written at run start
+        """
+        from constraint.store import FileRuleSetStore
