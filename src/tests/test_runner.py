@@ -189,20 +189,6 @@ class TestRunnerStateStore:
 class TestRunnerRun:
     """Tests for the ``run`` resume loop."""
 
-    def test_run_writes_init_state(self) -> None:
-        """``run`` writes the initial state to the init file via the seam."""
-        runner = Runner(STORE_A)
-        seam = _RecordingSeam()
-        runner.set_state_store(seam)
-
-        initial = {"ruleset_hash": "abc", "status": "running"}
-        # This will raise ValueError because the stub store returns []
-        # clauses, but the init state should still be written.
-        with pytest.raises(ValueError, match="empty ruleset"):
-            runner.run(initial)
-
-        assert seam.init_state is initial
-
     def test_run_continues_on_checkpoint(self) -> None:
         """``run`` continues the loop on a checkpoint boundary and
         stores the state with the checkpoint label."""
@@ -236,7 +222,6 @@ class TestRunnerRun:
 
         assert result is solution_state
         assert seam.stored == [("cp1", checkpoint_state)]
-        assert seam.init_state is initial
 
     def test_run_halts_on_suspend(self) -> None:
         """``run`` halts on a suspend boundary, stores the state,
@@ -262,7 +247,6 @@ class TestRunnerRun:
 
         assert result is suspended_state
         assert seam.stored == [("sus1", suspended_state)]
-        assert seam.init_state is initial
 
     def test_run_stops_on_solution(self) -> None:
         """``run`` stops and returns the solution state."""
@@ -286,7 +270,6 @@ class TestRunnerRun:
 
         assert result is solution_state
         assert seam.stored == []  # No checkpoint/suspend to store
-        assert seam.init_state is initial
 
     def test_run_stops_on_done(self) -> None:
         """``run`` stops and returns the done state."""
@@ -309,7 +292,6 @@ class TestRunnerRun:
 
         assert result is done_state
         assert seam.stored == []
-        assert seam.init_state is initial
 
     def test_run_propagates_exception(self) -> None:
         """``run`` lets exceptions propagate without serializing."""
@@ -327,7 +309,6 @@ class TestRunnerRun:
             runner.run(initial)
 
         # Init state should still have been written.
-        assert seam.init_state is initial
         # No checkpoint/suspend stores should have happened.
         assert seam.stored == []
 
@@ -367,7 +348,6 @@ class TestRunnerRun:
 
         assert result is done
         assert seam.stored == [("cp1", cp1), ("cp2", cp2)]
-        assert seam.init_state is initial
 
 
 class TestRunnerRunIntegration:

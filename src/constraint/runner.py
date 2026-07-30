@@ -138,8 +138,7 @@ class Runner:
     def run(self, state: dict[str, Any]) -> dict[str, Any]:
         """Drive the resume loop from *state* until a terminal or suspend.
 
-        Writes the initial state to the segregated init file via the seam,
-        then loops calling :meth:`step`:
+        Loops calling :meth:`step`:
 
         - On a **checkpoint** boundary (``resume_kind == "checkpoint"``):
           stores the state via ``store_state(label, state)`` and continues.
@@ -154,8 +153,6 @@ class Runner:
         Returns:
             The final state dict (solution, done, or suspended).
         """
-        # Write the initial state to the segregated init file.
-        self._state_store.store_init_state(state)
 
         while True:
             next_state = self.step(state)
