@@ -397,3 +397,127 @@ class TestForeignGoalPackedRoundTrip:
         assert state["status"] == "suspended"
         state = resume_state(state, self.ruleset)
         assert state["status"] == "solution"
+
+
+
+class TestResumeStateCheckpoint:
+    """Tests for the checkpoint/1 primitive."""
+
+    def setup_method(self) -> None:
+        self.ruleset = _parse_rules(
+            "rule(test_checkpoint, (checkpoint(foo), true)).\n"
+        )
+
+    def test_checkpoint_produces_suspended_status(self) -> None:
+        from constraint.meta import init_state, resume_state
+
+        state = init_state("test_checkpoint")
+        result = resume_state(state, self.ruleset)
+        assert result["status"] == "suspended"
+
+    def test_checkpoint_has_resume_kind(self) -> None:
+        from constraint.meta import init_state, resume_state
+
+        state = init_state("test_checkpoint")
+        result = resume_state(state, self.ruleset)
+        assert result["resume_kind"] == "checkpoint"
+
+    def test_checkpoint_has_label(self) -> None:
+        from constraint.meta import init_state, resume_state
+
+        state = init_state("test_checkpoint")
+        result = resume_state(state, self.ruleset)
+        assert result["suspension"]["label"] == "foo"
+
+    def test_checkpoint_has_no_bindings_key(self) -> None:
+        from constraint.meta import init_state, resume_state
+
+        state = init_state("test_checkpoint")
+        result = resume_state(state, self.ruleset)
+        assert "bindings" not in result
+
+    def test_resume_from_checkpoint_continues_past(self) -> None:
+        """Resuming from a checkpoint must continue past it (not re-encounter it)."""
+        from constraint.meta import init_state, resume_state
+
+        state = init_state("test_checkpoint")
+        state = resume_state(state, self.ruleset)
+        assert state["status"] == "suspended"
+        assert state["resume_kind"] == "checkpoint"
+        # Resuming again should reduce the remaining 'true' goal and reach solution.
+        state = resume_state(state, self.ruleset)
+        assert state["status"] in {"solution", "done"}
+
+    def test_checkpoint_state_structure_is_valid(self) -> None:
+        """The checkpoint state must have the required schema keys."""
+        from constraint.meta import init_state, resume_state
+
+        state = init_state("test_checkpoint")
+        result = resume_state(state, self.ruleset)
+        required_keys = {"version", "original_goal", "branches", "status", "suspension", "resume_kind"}
+        assert required_keys.issubset(result.keys())
+
+
+class TestResumeStateCheckpointMultiple:
+    """Tests for checkpoint with multiple rules and complex bodies."""
+
+    def setup_method(self) -> None:
+        self.ruleset = _parse_rules(
+            "rule(test_multi, (checkpoint(mid), true)).\n"
+        )
+
+    def test_checkpoint_does_not_reduce_checkpoint_again(self) -> None:
+        """The checkpoint goal must not appear in the continuation."""
+        from constraint.meta import init_state, resume_state
+
+        state = init_state("test_multi")
+        state = resume_state(state, self.ruleset)
+        assert state["status"] == "suspended"
+        # The branches should contain 'true' but not 'checkpoint(mid)'.
+        for branch in state["branches"]:
+            for goal in branch["goals"]:
+                assert "checkpoint" not in goal, f"checkpoint goal still present: {goal}"
+
+    def test_checkpoint_then_yield(self) -> None:
+        """A rule with checkpoint then yield should suspend twice."""
+        ruleset = _parse_rules(
+            "rule(test_ck_yield, (checkpoint(ck), yield(yd))).\n"
+        )
+        from constraint.meta import init_state, resume_state
+
+        state = init_state("test_ck_yield")
+        # First step: checkpoint
+        state = resume_state(state, ruleset)
+        assert state["status"] == "suspended"
+        assert state["resume_kind"] == "checkpoint"
+        assert state["suspension"]["label"] == "ck"
+        # Second step: yield
+        state = resume_state(state, ruleset)
+        assert state["status"] == "suspended"
+        assert state["resume_kind"] == "suspended"
+        assert state["suspension"]["label"] == "yd"
+        # Third step: done
+        state = resume_state(state, ruleset)
+        assert state["status"] in {"solution", "done"}
+
+
+class TestResumeStateYieldResumeKind:
+    """Tests that yield/1 now also carries resume_kind == 'suspended'."""
+
+    def setup_method(self) -> None:
+        self.ruleset = _parse_rules("rule(test_yield_rk, yield(bar)).\n")
+
+    def test_yield_has_resume_kind_suspended(self) -> None:
+        from constraint.meta import init_state, resume_state
+
+        state = init_state("test_yield_rk")
+        result = resume_state(state, self.ruleset)
+        assert result["status"] == "suspended"
+        assert result["resume_kind"] == "suspended"
+
+    def test_yield_still_has_label(self) -> None:
+        from constraint.meta import init_state, resume_state
+
+        state = init_state("test_yield_rk")
+        result = resume_state(state, self.ruleset)
+        assert result["suspension"]["label"] == "bar"

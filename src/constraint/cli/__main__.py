@@ -13,6 +13,7 @@ from constraint.meta import init_state, resume_state
 from constraint.runner import Runner
 from constraint.config import Config
 from constraint.store import AggregateRuleSetStore, StoreInfo, build_store_from_config
+from constraint.state_store import JsonFileStateStore
 
 
 @click.group(invoke_without_command=True)
@@ -68,10 +69,17 @@ def cmd_init(
     try:
         store = _load_store(config_path)
         state = init_state(query)
+
         ruleset_hash = _resolve_ruleset_hash(ruleset_name, config_path)
         state["ruleset_hash"] = ruleset_hash
+
         state_file.parent.mkdir(parents=True, exist_ok=True)
         state_file.write_text(json.dumps(state, indent=2) + "\n")
+
+        # Also persist through the state seam (writes .constraint/state_init.json).
+        JsonFileStateStore().store_init_state(state)
+
+
     except (OSError, ValueError, KeyError) as exc:
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)
@@ -97,9 +105,10 @@ def cmd_resume(
     STATE_FILE  — path to the current state JSON (must exist).
     OUTPUT_FILE  — path to write the updated state JSON (created or overwritten).
 
-    Reads STATE_FILE, resolves the pinned ruleset hash from the project
-    config, calls step/3 once, writes the updated state to OUTPUT_FILE, and
-    prints a one-line status summary to stdout.
+    Reads STATE_FILE, resolves the pinned ruleset hash from the project config,
+    drives the resume loop (auto-continuing across checkpoints and halting at
+    the next yield/solution/done via Runner.run), writes the resulting state to
+    OUTPUT_FILE, and prints a one-line status summary to stdout.
 
     If the state is already ``done`` it is written unchanged and exits 0.
 
@@ -121,7 +130,7 @@ def cmd_resume(
     try:
         store = _load_store(config_path)
         runner = Runner(store)
-        new_state = runner.drive(state)
+        new_state = runner.run(state)
     except Exception as exc:  # noqa: BLE001  — Janus/Prolog errors are opaque
         click.echo(f"Error during resume: {exc}", err=True)
         sys.exit(1)

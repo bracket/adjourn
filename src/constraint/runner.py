@@ -1,7 +1,7 @@
 """Runner class for driving the constraint meta-interpreter.
 
 The :class:`Runner` encapsulates a :class:`~constraint.store.RuleSetStore`
-and provides a drive-one-step method that reads a pinned ruleset hash from
+and provides a step-one-step method that reads a pinned ruleset hash from
 a state dictionary, resolves clauses via the store, and calls
 :func:`~constraint.meta.resume_state` to produce the next state.
 
@@ -16,6 +16,7 @@ import logging
 from typing import Any
 
 from constraint.meta import resume_state
+from constraint.state_store import JsonFileStateStore
 from constraint.store import RuleSetStore
 
 _logger = logging.getLogger(__name__)
@@ -33,7 +34,7 @@ class Runner:
     """Drive one step of the constraint meta-interpreter through a store.
 
     Holds a :class:`~constraint.store.RuleSetStore` and provides a
-    :meth:`drive` method that reads the pinned ruleset hash from a state
+    :meth:`step` method that reads the pinned ruleset hash from a state
     dict, resolves clauses via the store, calls ``resume_state``, and
     returns the next state dict.
 
@@ -81,6 +82,7 @@ class Runner:
             return
 
         self._store = store
+        self._state_store = JsonFileStateStore()
         # Retain construction arguments for the differing-args warning.
         self._construction_args: dict[str, Any] = {
             "args": (store,),
@@ -99,7 +101,7 @@ class Runner:
         global instance_
         instance_ = None
 
-    def drive(self, state: dict[str, Any]) -> dict[str, Any]:
+    def step(self, state: dict[str, Any]) -> dict[str, Any]:
         """Drive one meta-interpreter step using the held store.
 
         Reads the pinned ruleset hash from *state* (under the key
@@ -120,3 +122,55 @@ class Runner:
         ruleset_hash: str = state["ruleset_hash"]
         clauses = self._store.clauses_for(ruleset_hash)
         return resume_state(state, clauses)
+
+    def set_state_store(self, seam: Any) -> None:
+        """Install a state-storage seam.
+
+        The *seam* must provide both ``store_state`` and ``load_state``
+        methods (and ``store_init_state``) so the store and load halves
+        can never be set independently.
+
+        Args:
+            seam: An object implementing the state-store interface.
+        """
+        self._state_store = seam
+
+    def run(self, state: dict[str, Any]) -> dict[str, Any]:
+        """Drive the resume loop from *state* until a terminal or suspend.
+
+        Loops calling :meth:`step`:
+
+        - On a **checkpoint** boundary (``resume_kind == "checkpoint"``):
+          stores the state via ``store_state(label, state)`` and continues.
+        - On a **suspend** boundary (``resume_kind == "suspended"``):
+          stores the state via ``store_state(label, state)`` and returns it.
+        - On ``"solution"`` or ``"done"``: returns the final state.
+        - On any exception: lets it propagate (no serialization on failure).
+
+        Args:
+            state: A v0 state dictionary.
+
+        Returns:
+            The final state dict (solution, done, or suspended).
+        """
+
+        while True:
+            next_state = self.step(state)
+            status = next_state.get("status")
+            resume_kind = next_state.get("resume_kind")
+
+            if resume_kind == "checkpoint":
+                label = next_state["suspension"]["label"]
+                self._state_store.store_state(label, next_state)
+                state = next_state
+                continue
+
+            if resume_kind == "suspended":
+                label = next_state["suspension"]["label"]
+                self._state_store.store_state(label, next_state)
+                return next_state
+
+            if status in ("solution", "done"):
+                return next_state
+
+            state = next_state
