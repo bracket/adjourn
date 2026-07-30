@@ -1,6 +1,7 @@
 """Tests for the Runner singleton semantics."""
 
 import logging
+from typing import Any
 
 import pytest
 
@@ -18,6 +19,23 @@ class _StubStore:
 
     def clauses_for(self, hash_val: str) -> list:
         return []
+
+
+class _RecordingSeam:
+    """Recording seam that captures calls for test assertions."""
+
+    def __init__(self) -> None:
+        self.stored: list[tuple[str, dict]] = []
+        self.init_state: dict | None = None
+
+    def store_state(self, name: str, state: dict) -> None:
+        self.stored.append((name, state))
+
+    def load_state(self, name: str) -> dict:
+        return {}
+
+    def store_init_state(self, state: dict) -> None:
+        self.init_state = state
 
 
 STORE_A = _StubStore("A")
@@ -113,3 +131,240 @@ class TestRunnerSingleton:
         assert warning_record.levelno == logging.WARNING
         assert "differ" in warning_record.message.lower()
         assert "Runner" in warning_record.message
+
+    def test_state_store_survives_cached_construction(
+        self, cached_behavior: None
+    ) -> None:
+        """The ``_state_store`` attribute set on first init survives
+        a cached-instance construction (re-init guard)."""
+        r1 = Runner(STORE_A)
+        original_state_store = r1._state_store
+
+        # Second construction returns the cached instance.
+        r2 = Runner(STORE_B)
+
+        assert r2 is r1
+        assert r2._state_store is original_state_store
+
+
+class TestRunnerStep:
+    """Tests for the ``step`` method (renamed from ``drive``)."""
+
+    def test_step_raises_on_empty_ruleset(self) -> None:
+        """``step`` with a stub store (empty clauses) raises
+        ``ValueError``, matching the old ``drive`` behaviour."""
+        runner = Runner(STORE_A)
+        state = {"ruleset_hash": "abc", "status": "running"}
+        with pytest.raises(ValueError, match="empty ruleset"):
+            runner.step(state)
+
+
+class TestRunnerStateStore:
+    """Tests for state-seam injection."""
+
+    def test_default_state_store_is_json(self) -> None:
+        """A freshly constructed Runner has a ``JsonFileStateStore``
+        as its default state store."""
+        runner = Runner(STORE_A)
+        from constraint.state_store import JsonFileStateStore
+        assert isinstance(runner._state_store, JsonFileStateStore)
+
+    def test_set_state_store_replaces_seam(self) -> None:
+        """``set_state_store`` replaces the state-storage seam."""
+        runner = Runner(STORE_A)
+        seam = _RecordingSeam()
+        runner.set_state_store(seam)
+        assert runner._state_store is seam
+
+    def test_seam_injectable_at_construction(self) -> None:
+        """The seam can be injected after construction via
+        ``set_state_store``."""
+        runner = Runner(STORE_A)
+        seam = _RecordingSeam()
+        runner.set_state_store(seam)
+        runner._state_store.store_state("test", {"key": "val"})
+        assert seam.stored == [("test", {"key": "val"})]
+
+
+class TestRunnerRun:
+    """Tests for the ``run`` resume loop."""
+
+    def test_run_writes_init_state(self) -> None:
+        """``run`` writes the initial state to the init file via the seam."""
+        runner = Runner(STORE_A)
+        seam = _RecordingSeam()
+        runner.set_state_store(seam)
+
+        initial = {"ruleset_hash": "abc", "status": "running"}
+        # This will raise ValueError because the stub store returns []
+        # clauses, but the init state should still be written.
+        with pytest.raises(ValueError, match="empty ruleset"):
+            runner.run(initial)
+
+        assert seam.init_state is initial
+
+    def test_run_continues_on_checkpoint(self) -> None:
+        """``run`` continues the loop on a checkpoint boundary and
+        stores the state with the checkpoint label."""
+        runner = Runner(STORE_A)
+        seam = _RecordingSeam()
+        runner.set_state_store(seam)
+
+        # We need to mock step to return a checkpoint state first,
+        # then a solution.  We'll monkey-patch step on the runner.
+        checkpoint_state = {
+            "ruleset_hash": "abc",
+            "status": "suspended",
+            "resume_kind": "checkpoint",
+            "suspension": {"label": "cp1"},
+        }
+        solution_state = {
+            "ruleset_hash": "abc",
+            "status": "solution",
+            "bindings": {},
+        }
+
+        calls = iter([checkpoint_state, solution_state])
+
+        def mock_step(state):
+            return next(calls)
+
+        runner.step = mock_step  # type: ignore[assignment]
+
+        initial = {"ruleset_hash": "abc", "status": "running"}
+        result = runner.run(initial)
+
+        assert result is solution_state
+        assert seam.stored == [("cp1", checkpoint_state)]
+        assert seam.init_state is initial
+
+    def test_run_halts_on_suspend(self) -> None:
+        """``run`` halts on a suspend boundary, stores the state,
+        and returns the suspended state."""
+        runner = Runner(STORE_A)
+        seam = _RecordingSeam()
+        runner.set_state_store(seam)
+
+        suspended_state = {
+            "ruleset_hash": "abc",
+            "status": "suspended",
+            "resume_kind": "suspended",
+            "suspension": {"label": "sus1"},
+        }
+
+        def mock_step(state):
+            return suspended_state
+
+        runner.step = mock_step  # type: ignore[assignment]
+
+        initial = {"ruleset_hash": "abc", "status": "running"}
+        result = runner.run(initial)
+
+        assert result is suspended_state
+        assert seam.stored == [("sus1", suspended_state)]
+        assert seam.init_state is initial
+
+    def test_run_stops_on_solution(self) -> None:
+        """``run`` stops and returns the solution state."""
+        runner = Runner(STORE_A)
+        seam = _RecordingSeam()
+        runner.set_state_store(seam)
+
+        solution_state = {
+            "ruleset_hash": "abc",
+            "status": "solution",
+            "bindings": {},
+        }
+
+        def mock_step(state):
+            return solution_state
+
+        runner.step = mock_step  # type: ignore[assignment]
+
+        initial = {"ruleset_hash": "abc", "status": "running"}
+        result = runner.run(initial)
+
+        assert result is solution_state
+        assert seam.stored == []  # No checkpoint/suspend to store
+        assert seam.init_state is initial
+
+    def test_run_stops_on_done(self) -> None:
+        """``run`` stops and returns the done state."""
+        runner = Runner(STORE_A)
+        seam = _RecordingSeam()
+        runner.set_state_store(seam)
+
+        done_state = {
+            "ruleset_hash": "abc",
+            "status": "done",
+        }
+
+        def mock_step(state):
+            return done_state
+
+        runner.step = mock_step  # type: ignore[assignment]
+
+        initial = {"ruleset_hash": "abc", "status": "running"}
+        result = runner.run(initial)
+
+        assert result is done_state
+        assert seam.stored == []
+        assert seam.init_state is initial
+
+    def test_run_propagates_exception(self) -> None:
+        """``run`` lets exceptions propagate without serializing."""
+        runner = Runner(STORE_A)
+        seam = _RecordingSeam()
+        runner.set_state_store(seam)
+
+        def mock_step(state):
+            raise RuntimeError("step failed")
+
+        runner.step = mock_step  # type: ignore[assignment]
+
+        initial = {"ruleset_hash": "abc", "status": "running"}
+        with pytest.raises(RuntimeError, match="step failed"):
+            runner.run(initial)
+
+        # Init state should still have been written.
+        assert seam.init_state is initial
+        # No checkpoint/suspend stores should have happened.
+        assert seam.stored == []
+
+    def test_run_multiple_checkpoints(self) -> None:
+        """``run`` handles multiple consecutive checkpoints before
+        reaching a terminal state."""
+        runner = Runner(STORE_A)
+        seam = _RecordingSeam()
+        runner.set_state_store(seam)
+
+        cp1 = {
+            "ruleset_hash": "abc",
+            "status": "suspended",
+            "resume_kind": "checkpoint",
+            "suspension": {"label": "cp1"},
+        }
+        cp2 = {
+            "ruleset_hash": "abc",
+            "status": "suspended",
+            "resume_kind": "checkpoint",
+            "suspension": {"label": "cp2"},
+        }
+        done = {
+            "ruleset_hash": "abc",
+            "status": "done",
+        }
+
+        calls = iter([cp1, cp2, done])
+
+        def mock_step(state):
+            return next(calls)
+
+        runner.step = mock_step  # type: ignore[assignment]
+
+        initial = {"ruleset_hash": "abc", "status": "running"}
+        result = runner.run(initial)
+
+        assert result is done
+        assert seam.stored == [("cp1", cp1), ("cp2", cp2)]
+        assert seam.init_state is initial

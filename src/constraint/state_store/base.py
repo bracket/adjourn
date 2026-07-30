@@ -27,3 +27,16 @@ class StateStore(ABC):
         Returns:
             The deserialized state dict.
         """
+
+    @abstractmethod
+    def store_init_state(self, state: dict) -> None:
+        """Persist the initial state to the segregated init file.
+
+        The init file lives directly under the store root (e.g.
+        ``.constraint/state_init.json``), NOT under the ``states/``
+        subdirectory, so it cannot collide with a checkpoint-named file.
+
+        Args:
+            state: JSON-serializable dict representing the initial
+                   meta-interpreter state.
+        """

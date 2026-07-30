@@ -38,3 +38,13 @@ class JsonFileStateStore(StateStore):
         """
         path = self._root / "states" / f"state_{name}.json"
         return json.loads(path.read_text(encoding="utf-8"))
+
+    def store_init_state(self, state: dict) -> None:
+        """Write *state* as JSON to ``<root>/state_init.json``.
+
+        Creates the ``<root>/`` directory if it does not exist.
+        Overwrites any existing file (last-write-wins).
+        """
+        self._root.mkdir(parents=True, exist_ok=True)
+        path = self._root / "state_init.json"
+        path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
