@@ -9,7 +9,7 @@ description = "A Python-based constraint checking system for validating code rep
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [
-    { name = "TODO: Your Name" }
+    { name = "Bracket" }
 ]
 dependencies = [
     "click>=8.1.0",
