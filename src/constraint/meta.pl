@@ -79,6 +79,10 @@ reduce_goal(foreign(Fn, In, Out), Gs, Rest, Event, State1) :-
 % general case: interpret via user:rule/2.
 % Collect ALL matching rules for G, then create one branch per alternative.
 % This makes choice points explicit and resumable.
+% checkpoint(Label): persist the continuation and continue.
+% Emits checkpoint(Label) event; the checkpoint goal is removed from the
+% resolvent so resuming continues past it.
+reduce_goal(checkpoint(Label), Gs, Rest, checkpoint(Label), state([branch(Gs)|Rest])) :- !.
 reduce_goal(G, Gs, Rest, Event, State1) :-
     % Strip module qualification if present.
     (G = _Module:Goal -> UnqualifiedGoal = Goal ; UnqualifiedGoal = G),
@@ -132,6 +136,7 @@ step_packed(PackedAtom, EventAtom, PackedOutAtom, BindingFlatList) :-
     read_term_from_atom(PackedAtom,
                         constraint_meta_pack(OrigGoal, State),
                         [variable_names(VarNames)]),
+    nb_setval(constraint_orig_goal, OrigGoal),
     step(State, Event, StateOut),
     term_to_atom(Event, EventAtom),
     term_to_atom(constraint_meta_pack(OrigGoal, StateOut), PackedOutAtom),

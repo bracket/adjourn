@@ -332,6 +332,12 @@ def _build_new_state(
 
     elif event_atom.startswith("suspended("):
         new_state["status"] = "suspended"
+        new_state["resume_kind"] = "suspended"
+        new_state["suspension"] = {"label": _get_suspension_label(event_atom)}
+
+    elif event_atom.startswith("checkpoint("):
+        new_state["status"] = "suspended"
+        new_state["resume_kind"] = "checkpoint"
         new_state["suspension"] = {"label": _get_suspension_label(event_atom)}
 
     else:
@@ -342,23 +348,28 @@ def _build_new_state(
 
 
 def _get_suspension_label(event_atom: str) -> str:
-    """Extract the label string from a ``suspended(Label)`` event atom.
+    """Extract the label string from a ``suspended(Label)`` or ``checkpoint(Label)`` event atom.
 
     Uses Prolog to parse the label so arbitrary Prolog terms are handled.
 
     Args:
-        event_atom: e.g. ``"suspended(hello)"``.
+        event_atom: e.g. ``"suspended(hello)"`` or ``"checkpoint(foo)"``.
 
     Returns:
-        The label as a string, e.g. ``"hello"``.
+        The label as a string, e.g. ``"hello"`` or ``"foo"``.
     """
-    result = janus.query_once(
-        "term_to_atom(suspended(L), EA), term_to_atom(L, LA)",
-        {"EA": event_atom},
-    )
-    if result and result.get("truth") is not False:
-        return str(result["LA"])
-    # Fallback: simple string slicing for simple atom labels.
-    if event_atom.startswith("suspended(") and event_atom.endswith(")"):
-        return event_atom[len("suspended("):-1]
+    # Determine the wrapper functor name.
+    for prefix in ("suspended(", "checkpoint("):
+        if event_atom.startswith(prefix):
+            wrapper = prefix[:-1]  # e.g. "suspended" or "checkpoint"
+            result = janus.query_once(
+                f"term_to_atom({wrapper}(L), EA), term_to_atom(L, LA)",
+                {"EA": event_atom},
+            )
+            if result and result.get("truth") is not False:
+                return str(result["LA"])
+            # Fallback: simple string slicing for simple atom labels.
+            if event_atom.endswith(")"):
+                return event_atom[len(prefix):-1]
+            return event_atom
     return event_atom
