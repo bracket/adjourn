@@ -38,6 +38,7 @@ def main(ctx: click.Context) -> None:
     "--ruleset",
     "ruleset_name",
     required=True,
+    default="@top",
     help="Ruleset alias or raw hash to pin into the state.",
 )
 @click.option(
