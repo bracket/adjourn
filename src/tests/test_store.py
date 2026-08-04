@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import shutil
 from pathlib import Path
 
 import pytest
@@ -458,3 +459,235 @@ rule(foo, true).
 
         with pytest.raises(ValueError, match="empty program"):
             aggregate.clauses_for(aggregate.ruleset_hash)
+
+# ---------------------------------------------------------------------------
+# Mnestic (CozoDB) store tests
+# ---------------------------------------------------------------------------
+
+
+from constraint.store import (
+    MnesticAdapter,
+    MnesticRuleSetStore,
+    ColumnDescriptor,
+    RelationDescriptor,
+)
+from constraint.parser.ast import Variable
+
+
+def _create_mnestic_db(path: str, relation_script: str) -> None:
+    """Create and populate a mnestic rocksdb database with the given relation.
+
+    Args:
+        path: Filesystem path for the database.
+        relation_script: CozoScript to create the relation (e.g.
+            ``:create node { ... }``).
+    """
+    from mnestic import CozoDbPy
+
+    db = CozoDbPy("rocksdb", path, "")
+    db.run_script(relation_script, {}, immutable=False)
+    db.close()
+
+
+class TestMnesticStore:
+    """Tests for the MnesticRuleSetStore and its integration."""
+
+    def test_mnestic_store_loads_node_relation(self, tmp_path: Path) -> None:
+        """End-to-end: build a mnestic db with the node relation,
+        load through build_store_from_config, and verify the generated
+        base predicate."""
+        db_path = tmp_path / "nodes.db"
+        _create_mnestic_db(
+            str(db_path),
+            (
+                ":create node {"
+                "    id: Int"
+                "    =>"
+                "    kind: String,"
+                "    parent_id: Int?,"
+                "    start_byte: Int,"
+                "    end_byte: Int,"
+                "    start_row: Int,"
+                "    start_col: Int,"
+                "    end_row: Int,"
+                "    end_col: Int,"
+                "    is_named: Bool,"
+                "    text: String,"
+                "}"
+            ),
+        )
+
+        # Write a config pointing at the mnestic database
+        config_dir = tmp_path / ".constraint"
+        config_dir.mkdir()
+        config_path = config_dir / "config.yaml"
+        config_path.write_text(
+            yaml.safe_dump(
+                {
+                    "stores": [{"type": "mnestic", "path": str(db_path)}],
+                    "aliases": {},
+                }
+            )
+        )
+
+        aggregate = build_store_from_config(Config(config_path))
+        clauses = aggregate.clauses_for(aggregate.ruleset_hash)
+
+        # There should be exactly one clause (the node/11 base predicate)
+        assert len(clauses) == 1
+        clause = clauses[0]
+        assert clause.body is None  # it's a fact
+
+        # The head should be node(Id, Kind, ParentId, StartByte, EndByte,
+        # StartRow, StartCol, EndRow, EndCol, IsNamed, Text)
+        head = clause.head
+        assert isinstance(head, Compound)
+        assert head.functor == "node"
+        assert len(head.args) == 11
+
+        # Check variable names match the expected CamelCase order
+        expected_var_names = [
+            "Id",
+            "Kind",
+            "ParentId",
+            "StartByte",
+            "EndByte",
+            "StartRow",
+            "StartCol",
+            "EndRow",
+            "EndCol",
+            "IsNamed",
+            "Text",
+        ]
+        for arg, expected_name in zip(head.args, expected_var_names, strict=True):
+            assert isinstance(arg, Variable)
+            assert arg.name == expected_name
+
+        # The aggregate owns the mnestic store's generated clauses
+        assert aggregate.owns(aggregate.ruleset_hash)
+
+    def test_mnestic_store_generic_discovery(self, tmp_path: Path) -> None:
+        """Prove schema discovery is generic: create a different relation
+        shape and verify the generated base predicate matches."""
+        db_path = tmp_path / "people.db"
+        _create_mnestic_db(
+            str(db_path),
+            (
+                ":create person {"
+                "    ssn: Int"
+                "    =>"
+                "    name: String,"
+                "    age: Int,"
+                "    email: String?,"
+                "}"
+            ),
+        )
+
+        # Build the store directly (not through config) for simplicity
+        store = MnesticRuleSetStore(db_path)
+        clauses = store.clauses_for(store.ruleset_hash)
+
+        assert len(clauses) == 1
+        clause = clauses[0]
+        assert clause.body is None
+
+        head = clause.head
+        assert isinstance(head, Compound)
+        assert head.functor == "person"
+        assert len(head.args) == 4  # ssn + name + age + email
+
+        expected_var_names = ["Ssn", "Name", "Age", "Email"]
+        for arg, expected_name in zip(head.args, expected_var_names, strict=True):
+            assert isinstance(arg, Variable)
+            assert arg.name == expected_name
+
+    def test_mnestic_config_validates_without_prolog(self, tmp_path: Path) -> None:
+        """A mnestic config entry must validate without a 'prolog' key."""
+        config_dir = tmp_path / ".constraint"
+        config_dir.mkdir()
+        config_path = config_dir / "config.yaml"
+
+        # Create a dummy mnestic database so the store path exists
+        db_path = tmp_path / "dummy.db"
+        _create_mnestic_db(
+            str(db_path),
+            ":create dummy { x: Int => y: Int }",
+        )
+
+        config_path.write_text(
+            yaml.safe_dump(
+                {
+                    "stores": [{"type": "mnestic", "path": str(db_path)}],
+                    "aliases": {},
+                }
+            )
+        )
+
+        config = Config(config_path)
+        # The mnestic store should not have a 'prolog' key
+        assert "prolog" not in config.store_configs[0]
+        assert config.store_configs[0]["type"] == "mnestic"
+        assert config.store_configs[0]["path"] == str(db_path)
+
+    def test_mnestic_config_carries_optional_support(self, tmp_path: Path) -> None:
+        """A mnestic config entry with an optional 'support' field carries
+        it through onto the validated store dict."""
+        config_dir = tmp_path / ".constraint"
+        config_dir.mkdir()
+        config_path = config_dir / "config.yaml"
+
+        db_path = tmp_path / "dummy2.db"
+        _create_mnestic_db(
+            str(db_path),
+            ":create dummy { x: Int => y: Int }",
+        )
+
+        config_path.write_text(
+            yaml.safe_dump(
+                {
+                    "stores": [
+                        {
+                            "type": "mnestic",
+                            "path": str(db_path),
+                            "support": "support_file.pl",
+                        }
+                    ],
+                    "aliases": {},
+                }
+            )
+        )
+
+        config = Config(config_path)
+        assert config.store_configs[0]["support"] == "support_file.pl"
+        assert "prolog" not in config.store_configs[0]
+
+    def test_mnestic_hash_stability(self, tmp_path: Path) -> None:
+        """Two stores opened against the same database produce the same
+        ruleset_hash."""
+        db_path = tmp_path / "stable.db"
+        _create_mnestic_db(
+            str(db_path),
+            (
+                ":create item {"
+                "    code: String"
+                "    =>"
+                "    description: String,"
+                "    price: Float,"
+                "}"
+            ),
+        )
+
+        # RocksDB holds an exclusive lock per database path within a process,
+        # so open the second store against an identical copy of the database
+        # (same content) to prove hash stability.
+        db_copy = tmp_path / "stable_copy.db"
+        shutil.copytree(db_path, db_copy)
+
+        store1 = MnesticRuleSetStore(str(db_path))
+        store2 = MnesticRuleSetStore(str(db_copy))
+
+        assert store1.ruleset_hash == store2.ruleset_hash
+        # Also verify the clauses are identical
+        clauses1 = store1.clauses_for(store1.ruleset_hash)
+        clauses2 = store2.clauses_for(store2.ruleset_hash)
+        assert [str(c) for c in clauses1] == [str(c) for c in clauses2]

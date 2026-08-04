@@ -201,18 +201,27 @@ def build_store_from_config(config: Config) -> AggregateRuleSetStore:
     stores: list[RuleSetStore] = []
     for store_config in config.store_configs:
         store_type = store_config["type"]
-        if store_type != "file":
-            raise ValueError(f"Unsupported store type: {store_type}")
         store_path = Path(store_config["path"])
         if not store_path.is_absolute():
             store_path = config.base_dir / store_path
-        stores.append(
-            FileRuleSetStore(
-                store_path,
-                name=store_config.get("name"),
-                prolog=store_config["prolog"],
+        if store_type == "file":
+            stores.append(
+                FileRuleSetStore(
+                    store_path,
+                    name=store_config.get("name"),
+                    prolog=store_config["prolog"],
+                )
             )
-        )
+        elif store_type == "mnestic":
+            from constraint.store.mnestic_store import MnesticRuleSetStore
+            stores.append(
+                MnesticRuleSetStore(
+                    store_path,
+                    name=store_config.get("name"),
+                )
+            )
+        else:
+            raise ValueError(f"Unsupported store type: {store_type}")
     return AggregateRuleSetStore(stores)
 
 
