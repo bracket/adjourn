@@ -1,298 +1,182 @@
 # constraint
 
-**A Python-based constraint checking system for validating code repositories against logical rules**
+**A suspendable, resumable Prolog meta-interpreter with content-addressed
+rulesets and a Python orchestration layer, for long-running queries that
+interleave machine and human/LLM resolution.**
 
 ## Overview
 
-`constraint` is a framework that combines Python 3.11+ with SWI-Prolog (via Janus integration) to validate code repositories against user-defined logical constraints. This system enables LLM-assisted coding workflows with formal verification, ensuring that code changes comply with project-specific requirements and conventions.
+`constraint` runs logic-programming queries that are not expected to finish in
+a single sitting. A query can pause mid-resolution, persist its exact state to
+disk, and resume later — possibly in a different process, possibly after a
+human or an LLM has supplied an answer that the program could not derive on its
+own. This makes it a substrate for building long-lived problem-solving agents
+whose reasoning is a mix of automated deduction and external intervention.
 
-### What It Does
+Concretely, the system provides:
 
-The constraint system:
-- **Extracts facts** from code repositories (file structure, Git metadata, code patterns, documentation)
-- **Defines constraints** using Prolog's declarative logic programming
-- **Validates repositories** by comparing observed facts against expected constraints
-- **Reports violations** with actionable feedback for developers or AI coding agents
+- A **continuation-style meta-interpreter** over ordinary Prolog clauses, whose
+  entire resolution state (the set of open branches and their remaining goals)
+  is an explicit, serializable value rather than hidden in the Prolog engine's
+  stack.
+- **Explicit suspension and resumption**: a running query can yield control at
+  declared points, be written to disk, and be picked back up exactly where it
+  left off.
+- **Content-addressed rulesets**: the interpreted program is identified by a
+  hash of its clauses, so a persisted query pins the precise ruleset it was
+  running against and rulesets can be composed and versioned deterministically.
 
-### Use Cases
-
-- Enforce coding standards and architectural patterns
-- Validate documentation completeness and consistency
-- Check test coverage and code organization requirements
-- Ensure compliance with project-specific conventions
-- Gate task completion in AI-assisted development workflows
+> **Note:** `constraint` is a general meta-interpreter with tracking and
+> suspension. Earlier revisions of this project were aimed at a narrower
+> repository-validation use case; that framing is obsolete and does not
+> describe the current system.
 
 ## Architecture
 
-### Two-Layer Design
+`constraint` deliberately splits responsibilities between a Prolog kernel and a
+Python orchestration layer. It is **not** intended to run as a standalone
+Prolog program — Python is an integral part of the design, owning I/O,
+persistence, ruleset dispatch, and the driver loop.
 
-1. **Python Layer** (Orchestration & Extraction)
-   - CLI interface using Click framework
-   - Knowledge extractors that scan repositories
-   - Integration with SWI-Prolog via Janus
-   - Package structure: `constraint` with `constraint.cli` submodule
+**Prolog kernel.** Owns unification, the resolvent and branch machinery, the
+single-step reducer, and the suspend/resume events. Its resolution state is a
+plain Prolog term — a list of branches, each holding its remaining goals — so
+the whole state serializes cleanly and carries no dependence on the engine's
+implicit choice-point stack.
 
-2. **Prolog Layer** (Constraint Logic)
-   - Constraint definitions in declarative logic
-   - Query engine for validation
-   - Composable rule sets ("spec packs")
+**Python orchestration.** Owns the driver loop, ruleset storage and dispatch,
+content hashing and composition, state persistence, and the interface to
+external actors. Python steps the kernel forward, decides what to do at each
+event, and mediates every side-effecting or externally-answered goal.
 
-### Core Workflow
+The two communicate through an embedded SWI-Prolog runtime. Kernel-to-Python
+callouts (for example, resolving a goal whose answer lives in a database or is
+produced by generated code) happen inline and automatically; they are **not**
+suspensions. Suspension is reserved for genuine external-intervention points.
 
-```
-Repository → [Python Extractors] → Observed Facts
-                                         ↓
-User Constraints → [Prolog Rules] → Expected Facts
-                                         ↓
-                            [Prolog Query Engine]
-                                         ↓
-                        Compliance Report / Violations
-```
+## Core concepts
 
-## Core Concepts
+### State, branches, and stepping
 
-### Knowledge Bases
+A query's state is a set of **branches**, each of which is a list of goals still
+to be resolved (its resolvent). The interpreter advances one reduction at a
+time. Because branches are explicit data, choice points that a conventional
+Prolog engine would keep on its internal stack are instead first-class,
+inspectable, and serializable — which is what makes pausing and resuming
+possible.
 
-The system works with two types of knowledge:
+### Events
 
-1. **Observed KB**: Facts automatically extracted from the repository
-   - File paths and types
-   - Git history and branch context
-   - Code structure and patterns
-   - Documentation sections
+Each step produces one of a small set of events:
 
-2. **Expected KB**: Human-authored constraints defining requirements
-   - Naming conventions
-   - Required files or patterns
-   - Documentation requirements
-   - Test coverage expectations
+- **solution** — a branch resolved completely; a result (with any variable
+  bindings) is available.
+- **suspended** — resolution reached a declared external-intervention point and
+  cannot proceed without outside input. The state is persisted and control
+  returns to the caller.
+- **checkpoint** — a declared save point. The state is persisted, but
+  resolution continues automatically; checkpoints exist so long runs can be
+  durably snapshotted without stopping.
+- **done** — all branches are exhausted.
 
-### Fact Schema
+The distinction between **suspend** and **checkpoint** is the distinction
+between "stop and wait for someone" and "save your place and keep going." A
+callout into Python is neither: it resolves immediately and the interpreter
+proceeds without emitting either event.
 
-Repository information is represented as structured Prolog ground terms:
+### Rulesets and content addressing
 
-```prolog
-fact(file(path("src/constraint/cli.py")))
-fact(doc_section(file("README.md"), heading("Installation")))
-fact(function(module("constraint.cli"), name("validate")))
-fact(test_exists(module("constraint.extractors")))
-```
+The interpreted program is a set of clauses identified by a content hash. The
+hash is computed over a canonical form of the clauses — variables are
+renumbered by first occurrence and cosmetic differences (whitespace, variable
+names) are ignored — so clauses that differ only in naming hash identically,
+while structural differences are preserved.
 
-### Extractors (Observation)
+Content addressing gives two properties the persistence model depends on: a
+persisted query can pin the exact ruleset it ran against, and the same hash
+always denotes the same clauses, forever. That immutability is what lets a cold
+resume in a fresh process reconstruct precisely the program the query was using.
 
-Python modules that scan repositories and generate observed facts:
+### Composition and aliases
 
-- **File System Extractor**: Enumerates files and classifies types
-- **Git Extractor**: Analyzes commit history and branch context
-- **Code Extractor**: Parses source code structure
-- **Documentation Extractor**: Processes markdown and docstrings
+Rulesets compose into ordered **chains**. A chain concatenates its members'
+clauses in order, suppresses repeated members, and takes a composite hash over
+its member hashes — associative and deterministic, so the same composition
+always yields the same identifier. Chains can nest, and their members can live
+in different storage backends.
 
-Extractors are composable and can be extended for project-specific needs.
-
-### Spec Packs (Expected Constraints)
-
-Reusable Prolog modules encoding validation rules:
-
-- Define expected repository properties
-- Compare observed vs. expected facts
-- Generate `violation/1` terms for non-compliance
-- Implement a `compliant/0` predicate that succeeds only when all constraints pass
-
-Example constraint:
-```prolog
-% Every Python module must have a corresponding test file
-violation(missing_test(Module)) :-
-    fact(file(path(ModulePath))),
-    python_module(ModulePath, Module),
-    \+ fact(test_file(Module)).
-```
+Configuration can attach human-readable **aliases** to rulesets, and a small
+set of reserved names (such as an alias for the top-level aggregate) make the
+common rulesets convenient to refer to from the command line.
 
 ## Installation
 
-### Prerequisites
-
-- Python 3.11 or higher
-- pip (Python package manager)
-- SWI-Prolog 9.2.9+ (for Janus Python integration)
-
-### Installing from Source
+Requires Python 3.11+ and an embedded SWI-Prolog runtime (via Janus).
 
 ```bash
-# Clone the repository
 git clone https://github.com/bracket/constraint.git
 cd constraint
-
-# Install in development mode with all dependencies
 pip install -e ".[dev]"
 ```
 
-This will install:
-- The `constraint` package in editable mode
-- Click framework for the CLI
-- Development tools (mypy, ruff, pytest)
-- The `constraint` command-line tool
+This installs the `constraint` package and its command-line tool.
 
 ## Usage
 
-### Command-Line Interface
-
-The constraint CLI provides commands for validating repositories against constraints:
-
-```bash
-# Display help and available commands
-constraint --help
-
-# Display version information
-constraint --version
-```
-
-### Shell Completion
-
-The CLI supports shell completion for bash, zsh, and fish. This enables tab-completion of commands and options.
-
-#### Installing Bash Completion
+The command-line interface drives the interpreter through persisted state
+files. The essential workflow is *initialise a query*, then *resume it* one
+externally-observable step at a time.
 
 ```bash
-# Generate and save the completion script
-constraint complete -o ~/.local/share/bash-completion/completions/constraint
+# Create an initial state for a query, pinned to a ruleset, written to disk.
+constraint init "<goal>" state.json --ruleset <alias-or-hash>
 
-# Source it in your ~/.bashrc
-echo 'source ~/.local/share/bash-completion/completions/constraint' >> ~/.bashrc
-
-# Or enable it immediately for the current session
-eval "$(constraint complete)"
+# Advance the query: auto-continues across checkpoints and halts at the next
+# solution, suspension, or exhaustion. Writes the resulting state out.
+constraint resume state.json next_state.json
 ```
 
-#### Installing Zsh Completion
+`init` is pure bookkeeping — it constructs and writes the starting state
+without invoking Prolog. `resume` drives the kernel forward, persisting state at
+checkpoints and suspensions, and prints a one-line status summary (solution with
+bindings, suspended with a label, still running, or done). Persisted state is
+JSON, so a suspended query can be inspected, hand-edited, or resolved by an
+external actor between resume calls.
+
+Configured rulesets can be inspected with:
 
 ```bash
-# Create completions directory if it doesn't exist
-mkdir -p ~/.zsh/completions
-
-# Generate and save the completion script
-constraint complete --shell zsh -o ~/.zsh/completions/_constraint
-
-# Add to your ~/.zshrc (if not already present)
-echo 'fpath=(~/.zsh/completions $fpath)' >> ~/.zshrc
-echo 'autoload -Uz compinit && compinit' >> ~/.zshrc
-
-# Or enable it immediately for the current session
-eval "$(constraint complete --shell zsh)"
+constraint store list
 ```
 
-#### Installing Fish Completion
+## Relationship to other projects
+
+`constraint` is designed to be embedded as the resolution engine for other
+systems. In particular, a separate coding harness is being built on top of it,
+encoding an agent loop as rules and using suspension points as the seams where
+an LLM or a human resolves goals the program cannot discharge automatically. The
+harness is a consumer of `constraint`, not part of it; `constraint` itself is
+agnostic about what drives it.
+
+## Project status
+
+`constraint` is under active development. The core is functional: the
+meta-interpreter, explicit suspend/resume, content-addressed rulesets with chain
+composition, and the state-persistence layer are all in place and driven through
+the CLI. Additional ruleset backends, a richer query surface, and lower-level
+documentation aimed at automated agents are in progress.
+
+## Development
 
 ```bash
-# Generate and save to Fish's completion directory
-constraint complete --shell fish -o ~/.config/fish/completions/constraint.fish
-
-# Fish automatically loads completions from this directory
-# Or enable it immediately for the current session
-constraint complete --shell fish | source
-```
-
-### Future CLI Commands
-
-> **Note**: The following commands are planned but not yet implemented.
-
-```bash
-# Validate a repository against constraints
-constraint check --repo-path /path/to/repo --constraints my_constraints.pl
-
-# List available extractors
-constraint extractors list
-
-# Run specific extractors
-constraint extract --repo-path /path/to/repo --extractor filesystem,git
-
-# Validate with custom spec pack
-constraint check --repo-path . --spec-pack python_project
-```
-
-### Python API (Conceptual)
-
-```python
-from constraint import ConstraintChecker
-from constraint.extractors import FileSystemExtractor, GitExtractor
-
-# Initialize checker with extractors
-checker = ConstraintChecker(
-    extractors=[FileSystemExtractor(), GitExtractor()],
-    constraint_file="constraints.pl"
-)
-
-# Validate repository
-result = checker.validate("/path/to/repo")
-
-if result.is_compliant:
-    print("✓ All constraints satisfied")
-else:
-    for violation in result.violations:
-        print(f"✗ {violation}")
-```
-
-## Development Workflow
-
-This project follows the **quickspec workflow**:
-
-### Issue Management
-- Issues live in `issues/` directory
-- Use `issues/issue-template.md` for new issues
-- See `issues/issue-creator.md` for guidance
-
-### Scratch Work
-- Conversations and notes go in `scratch/`
-- Follow structure in `scratch/chatter_readme.md`
-- Use `.chat` files for working transcripts
-
-### Testing
-- Tests located in `src/tests/`
-- Run with `pytest`
-- Add regression tests for new features
-
-### Development Setup
-
-```bash
-# Install the package in development mode with dev dependencies
 pip install -e ".[dev]"
 
-# Run tests
-pytest
-
-# Type checking
-mypy src/constraint
-
-# Linting
-ruff check src/constraint
-
-# Run the CLI in development mode
-python -m constraint.cli --help
+pytest              # run the test suite
+mypy src/constraint # type checking
+ruff check src/constraint  # linting
 ```
-
-## Project Status
-
-This is an **early-stage project** under active development. Current status:
-
-- [x] Project concept and architecture defined
-- [x] Repository structure established
-- [x] Python package structure
-- [x] CLI framework (Click) with bash completion
-- [x] Type checking (mypy) and linting (ruff) configured
-- [ ] Janus/SWI-Prolog integration
-- [ ] Core extractors
-- [ ] Constraint validation engine
-- [ ] Example spec packs
-- [ ] Documentation and examples
 
 ## Contributing
 
-Contributions are welcome! Please:
-
-1. Review issues in `issues/` directory
-2. Follow coding standards in `.github/copilot-instructions.md`
-3. Write tests for new features
-4. Keep PRs focused and minimal
-
-## License
-
-TBD
+Contributions are welcome. Keep changes focused, and add tests for new
+behavior.
