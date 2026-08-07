@@ -25,15 +25,17 @@ services:
     image: 'ghcr.io/bracket/service-mini-swe:${MSWEA_IMAGE_VERSION:-2.3.0}'
     pull_policy: missing
     restart: "no"
-    working_dir: /repo
+    working_dir: /work/repo
     environment:
       HOST_UID: '${HOST_UID:?Error: HOST_UID must be set (use: HOST_UID=$(id -u))}'
       HOST_GID: '${HOST_GID:?Error: HOST_GID must be set (use: HOST_GID=$(id -g))}'
       MSWEA_MODEL_NAME: 'openai/${MSWEA_MODEL_ALIAS:-mini-swe-coding}'
       MSWEA_MODEL_CLASS: 'litellm_response'
-      OPENAI_API_BASE: 'http://host.docker.internal:${MSWEA_ARBITER_PORT:-27248}/v1'
+      OPENAI_API_BASE: 'http://${MSWE_ARBITER_HOST}:${MSWEA_ARBITER_PORT:-27248}/v1'
       OPENAI_API_KEY: 'arbiter-local-unused'
       MSWEA_COST_TRACKING: 'ignore_errors'
+      PIP_INDEX_URL: 'http://${MSWEA_DEVPI_HOST}:${MSWEA_DEVPI_PORT:-7974}/bracket/packages/+simple/'
+      PIP_TRUSTED_HOST: '${MSWEA_DEVPI_HOST:?Error: MSWEA_DEVPI_HOST must be set}'
     # host.docker.internal resolves to the host IP via host-gateway.
     # Requires Docker Engine >= 20.10 on Linux; macOS/Windows have it natively.
     extra_hosts:
@@ -41,7 +43,7 @@ services:
     volumes:
       - type: bind
         source: '${MSWEA_REPO_ROOT:?Error: MSWEA_REPO_ROOT must be set}'
-        target: /repo
+        target: /work/repo
       - type: bind
         source: '${MSWEA_TASK_DIR:?Error: MSWEA_TASK_DIR must be set}'
         target: /work/task
