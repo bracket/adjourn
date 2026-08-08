@@ -38,6 +38,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 constraint = ["meta.pl"]
+"constraint.mini_swe" = ["data/*.yml"]
 
 [tool.pytest.ini_options]
 testpaths = ["src/tests"]
