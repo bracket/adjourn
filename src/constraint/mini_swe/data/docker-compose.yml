@@ -18,7 +18,8 @@ name: mini-swe-agent
 
 networks:
   default:
-    name: mini_swe_agent_default
+    name: "${MSWEA_NETWORK:-mini_swe_agent_default}"
+    external: ${MSWEA_NETWORK_EXTERNAL:-false}
 
 services:
   mini:
