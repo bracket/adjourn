@@ -9,11 +9,12 @@ import subprocess
 
 import click
 
+from constraint.config import Config
+from constraint.constraint_foreign import load_foreign_plugins
 from constraint.meta import init_state, resume_state
 from constraint.runner import Runner
-from constraint.config import Config
-from constraint.store import AggregateRuleSetStore, StoreInfo, build_store_from_config
 from constraint.state_store import JsonFileStateStore
+from constraint.store import AggregateRuleSetStore, StoreInfo, build_store_from_config
 
 
 @click.group(invoke_without_command=True)
@@ -69,6 +70,8 @@ def cmd_init(
     """
     try:
         store = _load_store(config_path)
+        config = Config(_resolve_config_path(config_path))
+        load_foreign_plugins(config.foreign_plugins)
         state = init_state(query)
 
         ruleset_hash = _resolve_ruleset_hash(ruleset_name, config_path)
@@ -130,6 +133,8 @@ def cmd_resume(
 
     try:
         store = _load_store(config_path)
+        config = Config(_resolve_config_path(config_path))
+        load_foreign_plugins(config.foreign_plugins)
         runner = Runner(store)
         new_state = runner.run(state)
     except Exception as exc:  # noqa: BLE001  — Janus/Prolog errors are opaque

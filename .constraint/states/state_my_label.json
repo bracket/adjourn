@@ -1,0 +1,15 @@
+{
+  "branches": [
+    {
+      "goals": []
+    }
+  ],
+  "original_goal": "my_yield_goal2",
+  "resume_kind": "suspended",
+  "ruleset_hash": "621cc2ca4015f510a01780f5039f617125fb4fdd39c164c6c47b42f91364210a",
+  "status": "suspended",
+  "suspension": {
+    "label": "my_label"
+  },
+  "version": 0
+}
