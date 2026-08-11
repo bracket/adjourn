@@ -22,6 +22,11 @@ class Config:
         return dict(self._data["aliases"])
 
     @property
+    def foreign_plugins(self) -> list[str]:
+        """Return the list of foreign plugin module names, or [] if absent."""
+        return list(self._data["foreign_plugins"])
+
+    @property
     def base_dir(self) -> Path:
         """Return the base directory for relative ruleset file paths."""
         if self.path.parent.name == ".constraint":
@@ -132,4 +137,24 @@ class Config:
                 validated_store["name"] = store_name
             validated_stores.append(validated_store)
 
-        return {"stores": validated_stores, "aliases": validated_aliases}
+        foreign = raw_data.get("foreign")
+        validated_plugins: list[str] = []
+        if foreign is not None:
+            if not isinstance(foreign, dict):
+                raise ValueError(
+                    f"Invalid config file {self.path}: 'foreign' must be a mapping"
+                )
+            plugins = foreign.get("plugins")
+            if plugins is not None:
+                if not isinstance(plugins, list):
+                    raise ValueError(
+                        f"Invalid config file {self.path}: 'foreign.plugins' must be a list"
+                    )
+                for i, item in enumerate(plugins):
+                    if not isinstance(item, str):
+                        raise ValueError(
+                            f"Invalid config file {self.path}: 'foreign.plugins[{i}]' must be a string"
+                        )
+                validated_plugins = list(plugins)
+
+        return {"stores": validated_stores, "aliases": validated_aliases, "foreign_plugins": validated_plugins}

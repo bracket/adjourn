@@ -19,6 +19,7 @@ Usage (Prolog side)::
 
 from __future__ import annotations
 
+import importlib
 import subprocess
 from collections.abc import Callable
 from typing import Any
@@ -64,12 +65,24 @@ def dispatch(fn_name: str, arg: Any) -> Any:
     return fn(arg)
 
 
+def load_foreign_plugins(names: list[str]) -> None:
+    """Import each named module so its ``@register`` decorators fire.
+
+    Args:
+        names: Importable dotted module names in loading order.
+
+    Raises:
+        ImportError: If any module cannot be imported.
+    """
+    for name in names:
+        importlib.import_module(name)
+
+
 # ---------------------------------------------------------------------------
 # Additional callout subpackages — imported here so their @register decorators
 # fire at module load time and populate the registry.
 # ---------------------------------------------------------------------------
 
-import constraint.mini_swe.mini_swe as _mini_swe_module  # noqa: F401
 import constraint.subprocess.subprocess as _subprocess_module  # noqa: F401
 
 # ---------------------------------------------------------------------------
