@@ -73,7 +73,6 @@ class TestLoadForeignPlugins:
 
     def test_registered_callout_dispatchable_after_load(self, tmp_path: Path) -> None:
         """A @register callout in a dynamically-imported module enters the registry."""
-        import importlib.util
         import sys
 
         mod_name = "_test_foreign_plugin_xyz"
@@ -83,17 +82,14 @@ class TestLoadForeignPlugins:
             "@register('_test_fn_xyz')\n"
             "def _fn(arg): return 'ok'\n"
         )
-        spec = importlib.util.spec_from_file_location(mod_name, mod_path)
-        assert spec is not None
         # Remove from sys.modules if present so we can reload cleanly.
         sys.modules.pop(mod_name, None)
         # Add parent dir to sys.path temporarily
-        import sys as _sys
-        _sys.path.insert(0, str(tmp_path))
+        sys.path.insert(0, str(tmp_path))
         try:
             load_foreign_plugins([mod_name])
             assert "_test_fn_xyz" in _registry
         finally:
-            _sys.path.pop(0)
+            sys.path.pop(0)
             sys.modules.pop(mod_name, None)
             _registry.pop("_test_fn_xyz", None)
