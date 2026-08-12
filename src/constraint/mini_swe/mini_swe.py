@@ -58,7 +58,6 @@ _ENV_HOST_REPO_ROOT = "ENBUG_HOST_REPO_ROOT"
 _ENV_HOST_TICKET_DIR = "ENBUG_HOST_TICKET_DIR"
 
 
-@register("run_mini_swe")
 def _run_mini_swe(arg: Any) -> str:
     """Dispatch mini-swe-agent in a Docker container against a repo checkout.
 
