@@ -4,9 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from constraint.parser.ast import Clause, Compound, Variable
+from constraint.parser.ast import Atom, Clause, Compound, Variable
+from constraint.parser.parser import parse_file
 from constraint.store.mnestic_adapter import MnesticAdapter, RelationDescriptor
-from constraint.store.store import RuleSetStore, StoreInfo, hash_clauses
+from constraint.store.store import (
+    RuleSetStore,
+    StoreInfo,
+    _program_clauses,
+    hash_clauses,
+)
 
 
 def _to_camel_case(snake_str: str) -> str:
@@ -56,6 +62,17 @@ def _generate_clause_for_relation(descriptor: RelationDescriptor) -> Clause:
     )
 
 
+def _wrap_query_rule_clause(clause: Clause) -> Clause:
+    """Wrap *clause* as a ``query_rule/2`` fact.
+
+    Facts become ``query_rule(Head, true)`` and rules become
+    ``query_rule(Head, Body)``.  The returned wrapper clause is always a
+    fact (``body=None``).
+    """
+    body = clause.body if clause.body is not None else Atom("true")
+    return Clause(head=Compound("query_rule", [clause.head, body]), body=None)
+
+
 def _generate_clauses(descriptors: list[RelationDescriptor]) -> list[Clause]:
     """Generate base-predicate clauses for all discovered relations."""
     return [_generate_clause_for_relation(d) for d in descriptors]
@@ -74,9 +91,11 @@ class MnesticRuleSetStore(RuleSetStore):
         self,
         path: str | Path,
         name: str | None = None,
+        support: str | Path | None = None,
     ) -> None:
         self.path = Path(path)
         self.name = name
+        self.support = Path(support) if support is not None else None
         self._adapter = MnesticAdapter(str(self.path))
         self._ruleset_hash: str | None = None
         self._clauses: list[Clause] | None = None
@@ -91,7 +110,19 @@ class MnesticRuleSetStore(RuleSetStore):
         if self._ruleset_hash is not None and self._clauses is not None:
             return
         descriptors = self._adapter.discover_schema()
-        clauses = _generate_clauses(descriptors)
+        base_clauses = _generate_clauses(descriptors)
+        query_rule_clauses: list[Clause] = []
+        if self.support is not None:
+            program = parse_file(str(self.support))
+            support_clauses = _program_clauses(program)
+            if not support_clauses:
+                raise ValueError(
+                    f"Support file {self.support} contains no clauses: "
+                    "the interpreted program has no clauses. An empty program "
+                    "cannot resolve any goal and is not a meaningful input."
+                )
+            query_rule_clauses = [_wrap_query_rule_clause(c) for c in support_clauses]
+        clauses = base_clauses + query_rule_clauses
         self._clauses = clauses
         self._descriptor = descriptors
         self._ruleset_hash = hash_clauses(clauses)
