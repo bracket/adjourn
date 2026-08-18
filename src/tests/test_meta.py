@@ -199,30 +199,72 @@ class TestResumeStateDone:
     def setup_method(self) -> None:
         self.ruleset = _parse_rules(NONEMPTY_RULESET)
 
-    def test_unknown_goal_reaches_done(self) -> None:
+    def test_unknown_goal_raises_error(self) -> None:
         from constraint.meta import init_state, resume_state
 
         state = init_state("no_rule_exists_for_this_goal")
-        result = resume_state(state, self.ruleset)
-        assert result["status"] == "done"
+        with pytest.raises(Exception, match="unknown_goal"):
+            resume_state(state, self.ruleset)
 
     def test_done_state_is_idempotent(self) -> None:
         """Resuming a done state must return the same state unchanged."""
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("no_rule_exists_for_this_goal")
-        state = resume_state(state, self.ruleset)
+        state = {
+            "version": 0,
+            "original_goal": "true",
+            "branches": [],
+            "status": "done",
+        }
         assert state["status"] == "done"
         state2 = resume_state(state, self.ruleset)
         assert state2["status"] == "done"
         assert state2["branches"] == state["branches"]
 
-    def test_done_has_no_suspension(self) -> None:
+    def test_failing_builtin_reaches_done_without_suspension(self) -> None:
         from constraint.meta import init_state, resume_state
 
-        state = init_state("no_rule_exists_for_this_goal")
+        state = init_state("false")
         result = resume_state(state, self.ruleset)
+        assert result["status"] == "done"
         assert "suspension" not in result
+
+
+class TestResumeStateEscapeHatch:
+    """Tests for non-rule goal dispatch via once(call/1)."""
+
+    def setup_method(self) -> None:
+        self.ruleset = _parse_rules(
+            NONEMPTY_RULESET
+            + "plain_concat_result(R) :- atom_concat(left, right, R).\n"
+        )
+
+    def test_builtin_goal_binds_output(self) -> None:
+        from constraint.meta import init_state, resume_state
+
+        state = init_state("atom_concat(prefix, suffix, R)")
+        result = resume_state(state, self.ruleset)
+        assert result["status"] == "solution"
+        assert result["bindings"]["R"] == "prefixsuffix"
+
+    def test_consulted_non_rule_predicate_is_callable(self) -> None:
+        from constraint.meta import init_state, resume_state
+
+        state = init_state("plain_concat_result(R)")
+        result = resume_state(state, self.ruleset)
+        assert result["status"] == "solution"
+        assert result["bindings"]["R"] == "leftright"
+
+    def test_builtin_binding_survives_suspend_resume_round_trip(self) -> None:
+        from constraint.meta import init_state, resume_state
+
+        state = init_state(
+            "(atom_concat(prefix, suffix, R), yield(pause), R=prefixsuffix)"
+        )
+        state = resume_state(state, self.ruleset)
+        assert state["status"] == "suspended"
+        state = resume_state(state, self.ruleset)
+        assert state["status"] == "solution"
 
 
 class TestResumeStateEmptyRuleset:
@@ -256,6 +298,7 @@ class TestResumeStateMultipleRules:
         self.ruleset = _parse_rules(
             "rule(choice, true).\n"
             "rule(choice, true).\n"
+            "choice :- yield(escape_hatch_should_not_run).\n"
         )
 
     def test_first_rule_gives_solution(self) -> None:
@@ -277,6 +320,13 @@ class TestResumeStateMultipleRules:
         # (Additional branches may be present if prior test runs accumulated
         # rule/2 facts in the SWI-Prolog process; we only verify ≥ 1.)
         assert len(result["branches"]) >= 1
+
+    def test_rule_dispatch_takes_precedence_over_callable_predicate(self) -> None:
+        from constraint.meta import init_state, resume_state
+
+        state = init_state("choice")
+        result = resume_state(state, self.ruleset)
+        assert result["status"] == "solution"
 
 
 class TestResumeStateSchemaConsistency:

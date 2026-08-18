@@ -86,15 +86,23 @@ reduce_goal(checkpoint(Label), Gs, Rest, checkpoint(Label), state([branch(Gs)|Re
 reduce_goal(G, Gs, Rest, Event, State1) :-
     % Strip module qualification if present.
     (G = _Module:Goal -> UnqualifiedGoal = Goal ; UnqualifiedGoal = G),
-    findall(branch(NewGoals),
-            ( user:rule(UnqualifiedGoal, Body),
-              body_to_goals(Body, BodyGoals),
-              append(BodyGoals, Gs, NewGoals)
-            ),
-            NewBranches),
-    % DFS order: explore the first alternative first, keep the rest for later.
-    append(NewBranches, Rest, NextBranches),
-    step(state(NextBranches), Event, State1).
+    ( user:rule(UnqualifiedGoal, _) ->
+        findall(branch(NewGoals),
+                ( user:rule(UnqualifiedGoal, Body),
+                  body_to_goals(Body, BodyGoals),
+                  append(BodyGoals, Gs, NewGoals)
+                ),
+                NewBranches),
+        % DFS order: explore the first alternative first, keep the rest for later.
+        append(NewBranches, Rest, NextBranches),
+        step(state(NextBranches), Event, State1)
+    ; predicate_property(user:UnqualifiedGoal, visible) ->
+        ( once(user:UnqualifiedGoal) ->
+            step(state([branch(Gs)|Rest]), Event, State1)
+        ; step(state(Rest), Event, State1)
+        )
+    ; throw(error(unknown_goal(UnqualifiedGoal), context(reduce_goal/5, G)))
+    ).
 
 % body_to_goals(+Body, -Goals)
 % Convert a rule body into a flat goal list (resolvent segment).
