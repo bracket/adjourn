@@ -4,13 +4,15 @@
 > deliberately to **mnestic** (CozoDB, `rocksdb` backend) — the filename
 > and type key are specific on purpose; a neutral "datalog store"
 > abstraction is a later generalization, not a v1 commitment.
-> Implementation not yet started.
+> Support-file loading has landed (PR #49); the `query/3` compiler is the
+> next implementation block and is specified here.
 >
 > **What v1 covers.** A new `RuleSetStore` type that exposes an
 > externally-populated mnestic term database for *querying* from inside
-> `constraint`, via a `query/1` operator that compiles a conjunctive goal
-> region to CozoScript, runs it, and enumerates result rows as solution
-> branches. **Writing/loading is entirely out of scope** — the database is
+> `constraint`, via a `query/3` operator (findall-shaped:
+> `query(Template, Query, Bag)`) that compiles a conjunctive query to
+> CozoScript, runs it, and collects result rows into `Bag`.
+> **Writing/loading is entirely out of scope** — the database is
 > populated offline in a separate process; `constraint` only reads it.
 > The worked example throughout is the treesitter → CST nested-function
 > query proven standalone in prior work; the goal of the first
@@ -21,8 +23,8 @@
 The architecture of a **mnestic query store**: how an externally-built
 CozoDB term database is attached to a `constraint` program as a store,
 how the store's relations become queryable Prolog goals, and how a
-conjunctive query region is compiled to CozoScript and run with results
-threaded back as ordinary Prolog solutions.
+conjunctive query is compiled to CozoScript and run with result rows
+collected into a bag (findall-shaped), not threaded into the resolvent.
 
 Clause dispatch and the meta-interpreter kernel are covered in
 [`reduce-goal.md`](reduce-goal.md); rule-set scoping and the `chain`
@@ -38,8 +40,8 @@ A **mnestic query store** is a different kind of source: it does not
 contribute `rule/2` clauses to ordinary resolution at all. Instead it
 attaches a **term database** — a set of stored relations populated
 offline — and makes those relations queryable through a dedicated
-`query/1` region whose body is compiled to the backend's dialect and
-executed there, not walked by the meta-interpreter.
+`query/3` goal whose `Query` argument is compiled to the backend's
+dialect and executed there, not walked by the meta-interpreter.
 
 Two motivations drive keeping this separate from ordinary rule dispatch:
 
@@ -47,7 +49,7 @@ Two motivations drive keeping this separate from ordinary rule dispatch:
   a recursive transitive closure, and a guard is exactly what CozoDB is
   good at. Reducing it one goal at a time Prolog-side and joining in the
   meta-interpreter would discard the entire point of using mnestic. The
-  whole region must be shipped as **one** script.
+  whole query must be shipped as **one** script.
 - **Recursion belongs to the backend.** Transitive closure
   (`descendant` over `parent_id`) is a derived, recursive relation. It
   cannot be reduced against stored facts goal-by-goal; it must be handed
@@ -94,7 +96,7 @@ Fields specific to the mnestic store:
 Querying a mnestic store needs two kinds of predicate, and **neither is a
 `rule/2` clause**. They live in a namespace distinct from ordinary
 resolution so they never collide with `user:rule/2` dispatch or with the
-kernel's goal reduction. They exist only to (i) let a `query/1` region
+kernel's goal reduction. They exist only to (i) let a `query/3` query
 name relations and derived predicates naturally, and (ii) feed the
 compiler.
 
@@ -103,18 +105,21 @@ compiler.
 At store open, the adapter **discovers the store's schema** from the live
 database — the stored relations, their columns, and column types
 ([full descriptor](#schema-discovery), load-bearing for the compiler).
-From that descriptor it generates one **base predicate per stored
-relation**, positional over the relation's columns in schema order. For
-the CST example the discovered `*node` relation yields:
+From that descriptor it knows one **base relation per stored relation**,
+named by the relation's functor with its set of valid column keys. For the
+CST example the discovered `*node` relation has columns:
 
 ```
-node(Id, Kind, ParentId, StartByte, EndByte,
-     StartRow, StartCol, EndRow, EndCol, IsNamed, Text)
+node{id, kind, parent_id, start_byte, end_byte,
+     start_row, start_col, end_row, end_col, is_named, text}
 ```
 
-These generated predicates are the compiler's notion of a **base
-relation**: a goal whose functor names a discovered relation compiles to
-a stored-relation match against mnestic.
+A base relation is addressed through the **keyed surface** — a goal
+`node(id: X, kind: 'function_definition')` names only the columns it
+constrains and compiles to a stored-relation match against mnestic. This
+discovery is what lets Python (not Prolog) classify a query goal as a base
+match: its functor names a discovered relation and its keys are valid
+columns.
 
 ### User support rules (`query_rule/2`)
 
@@ -122,15 +127,18 @@ The user writes derived relations as **ordinary-looking Prolog** in the
 `support` file:
 
 ```prolog
-descendant(A, D) :- node(D, _, A, _,_,_,_,_,_,_,_).
-descendant(A, D) :- node(M, _, A, _,_,_,_,_,_,_,_), descendant(M, D).
+descendant(Anc, Desc) :- node(id: Desc, parent_id: Anc).
+descendant(Anc, Desc) :- descendant(Anc, Mid), node(id: Desc, parent_id: Mid).
 
 nested_fn(O, I) :-
-    node(O, function_definition, _, _,_,_,_,_,_,_,_),
-    node(I, function_definition, _, _,_,_,_,_,_,_,_),
+    node(id: O, kind: 'function_definition'),
+    node(id: I, kind: 'function_definition'),
     descendant(O, I),
-    O \= I.
+    O != I.
 ```
+
+Support-rule bodies use the **same keyed base surface** as `query/3`
+queries — one vocabulary everywhere.
 
 On load these are **wrapped as `query_rule(Head, Body)` facts**, exactly
 analogous to how [`FileRuleSetStore`](../src/constraint/store/store.py)
@@ -141,8 +149,9 @@ keeps these out of ordinary dispatch.
 
 `query_rule/2` clauses are **inert data for the compiler**. They are
 never executed Prolog-side and never enter `reduce_goal`'s general
-`rule/2` path. The compiler reads them to lift derived relations into
-cozo rules; nothing else consults them.
+`rule/2` path. The Prolog compiler reads them only to collect the transitive closure of
+referenced derived relations into the emitted term; Python lifts them to
+cozo `:=` rules. Nothing else consults them.
 
 ### Merge
 
@@ -159,87 +168,181 @@ mnestic store composes into `@top` like any other member, subject to the
 same immutability contract (same database + same support file ⇒ same
 generated content ⇒ same hash).
 
-## The `query/1` operator
+## The `query/3` operator
 
-`query/1` is a **new `reduce_goal` clause** in the kernel. A goal
+`query/3` is a **new `reduce_goal` clause** in the kernel. It is
+**findall-shaped**:
 
 ```prolog
-query(( node(O, function_definition, _, _,_,_,_,_,_,_,_),
-        descendant(O, I),
-        O \= I,
-        node(_, identifier, O, _,_,_,_,_,_,_, Name) ))
+query(Template, Query, Bag)
 ```
 
-demarcates a **compile-and-ship region**: the entire conjunction inside
-`query/1` is compiled to one CozoScript script, run against the store's
-handle, and its result rows are enumerated back as solutions. The `query`
-wrapper (rather than bare `?-`-style goals) is what tells the kernel
-"this region is answered by the backend, not by resolution."
+- **`Template`** — a term `Functor(Col1, Col2, ...)` where `Functor` is an
+  arbitrary name chosen by the author and each argument names a
+  **projection column**. It defines both *what columns come back* and *the
+  shape of each result*.
+- **`Query`** — the conjunctive query, written against the keyed base
+  surface (see [Base surface](#base-relation-surface-keyed)).
+- **`Bag`** — unified with the list of results, one `Functor(V1, V2, ...)`
+  term per returned row, in the argument order of `Template`.
 
-Reduction is **row-per-branch**, so a query composes with the rest of the
-resolvent like ordinary Prolog:
+A worked goal:
 
-- each returned row binds the region's [output variables](#projection)
-  and becomes one solution branch;
-- multiple rows become multiple branches, spliced DFS in the usual way
-  (see [`reduce-goal.md` §Kernel mechanics](reduce-goal.md));
-- backtracking into a `query/1` enumerates the next row.
+```prolog
+query(
+    result(OuterId, NameText, OuterStart),
+    ( node(id: OuterId, kind: 'function_definition', start_byte: OuterStart),
+      descendant(OuterId, InnerId),
+      node(id: InnerId, kind: 'function_definition'),
+      OuterId != InnerId,
+      node(parent_id: OuterId, kind: 'identifier', text: NameText) ),
+    Out
+)
+```
 
-From the author's side, `query((...))` reads like a conjunction of goals
-that happens to be answered all at once. The point is that it *feels*
-Prolog-native while the backend does the relational work.
+demarcates a **compile-and-ship query**: the conjunction in `Query` is
+compiled to one CozoScript script, run against the store's handle, and its
+result rows are collected into `Out` as
+`[result(Id, Name, Start), ...]`. The `query` wrapper (rather than
+bare `?-`-style goals) is what tells the kernel "this is answered by the
+backend, not by resolution."
 
+Reduction is **all-at-once, not row-per-branch**. Unlike the earlier
+sketch, `query/3` does **not** bind into the resolvent or spawn one
+solution branch per row: it behaves like `findall/3`, unifying `Bag` with
+the full result list in a single deterministic reduction. Enumerating rows
+as branches, occurs-outside projection analysis, and backtracking into the
+query are all **removed** by this shape — the interpreter core is untouched
+beyond adding the `query/3` clause.
+
+**Precondition.** Every non-projection position in `Query` (every column
+constant) must already be **bound to an atom** at reduction time.
+Projection is carried entirely by `Template`; the variables in `Template`
+are what come back.
 ## The compiler
 
-Compilation from the `query/1` region to CozoScript is **Prolog-side and
-adapter-specific**. It works over the **positional** internal terms (the
-schema-derived base predicates and `query_rule/2` bodies), which keeps
-the compiler uniform; the [sugar surface](#user-facing-sugar) is expanded
-away before the compiler sees anything.
+**Scope note.** The `query/3` compiler is the unit of work specified here.
+The `query/3` `reduce_goal` clause (kernel wiring, `Bag` unification) and
+the mnestic adapter callout (schema discovery, `run_script`, row
+marshalling) are **separate future issues**; this section is the compiler
+contract they build against.
 
-### Conjunct classification (by origin, no tagging)
+The compiler is split across the seam:
 
-Walking the region's conjunction, each conjunct is classified by
-**where its functor comes from** — there is no tagging in the support
-file:
+- **Prolog side** parses the keyed `Query`, collects the transitive
+  closure of referenced `query_rule/2` derived relations, translates the
+  v1 builtins into its own emitted-term functors, and emits **one
+  intermediate term** capturing template + derived rules + goals. It does
+  **not** emit CozoScript, does **not** classify base-vs-derived, and does
+  **not** consult the schema.
+- **Python side** receives that term, classifies each relation literal as
+  base (against the discovered schema) or derived (matches a passed-down
+  derived-rule head), transliterates to CozoScript, validates base columns
+  and types against the schema, assembles the final script, and runs it.
 
-- functor names a **discovered relation** → **base match** (stored
-  relation in cozo);
-- functor is a **`query_rule/2` head** → **derived relation** (lift its
-  clauses into a cozo recursive/derived rule);
-- functor is a **known builtin** → **guard**.
+The reason base-vs-derived classification lives Python-side is that only
+Python holds the discovered schema; the Prolog side cannot tell a stored
+relation from a derived one without it. So Prolog stays schema-free and
+hands down term literals it has done whatever validation it *can* do on.
 
-Classification is purely by origin: the schema descriptor and the set of
-`query_rule/2` heads are the two registries; everything else is a builtin
-or an error.
+### Base-relation surface (keyed)
+
+Base relations are written in a **keyed, dict-ish surface** using the `:`
+operator, naming only the columns a goal constrains:
+
+```prolog
+node(id: OuterId, kind: 'function_definition', start_byte: OuterStart)
+```
+
+This must be **parseable Prolog** but need not be meaningful as ordinary
+Prolog — `:` is reused purely as a term constructor (it parses as SWI's
+module-qualification operator, `:(id, OuterId)`, which the compiler walks
+as a key-value pair). Keying rather than positional arguments is
+deliberate: an eleven-column relation is unreadable and brittle
+positionally, and the same relation naturally appears with different sets
+of keys at different call sites (`node(id: I, kind: K)` vs
+`node(parent_id: P, kind: K, text: T)`) without any arity mismatch. The
+compiler normalizes each `Key: Value` surface pair to a `Key-Value` pair
+in the emitted term.
+
+The **same keyed vocabulary is used everywhere** — in `query/3` `Query`
+goals and in the `support`-file `query_rule/2` bodies alike.
+
+### Derived-relation collection
+
+Walking `Query`, any goal whose functor is a `query_rule/2` head is a
+**derived relation** (e.g. `descendant`). The Prolog compiler collects the
+**transitive closure** of derived relations reachable from the query —
+`descendant`'s own body references `descendant`, so recursion must survive
+into the emitted term — and emits their clauses as term literals. It does
+**not** transliterate them to cozo `:=` rules; Python does that, since
+distinguishing a derived-rule body goal from a base match again needs the
+schema.
 
 ### Builtins and guards (v1 minimal set)
 
 v1 supports exactly:
 
 - `=/2` — unification / equality;
-- `\=/2` — inequality (the demo's `O \= I` guard);
-- **column-constant match** — a constant in a base-relation argument
-  position (the demo's `kind = function_definition`, expressed as the
-  constant `function_definition` in `node/11`'s second argument).
+- `!=/2` — inequality (the demo's `OuterId != InnerId` guard);
+- **column-constant match** — a constant in a keyed base-relation position
+  (the demo's `kind: 'function_definition'`).
 
-Any other builtin in a `query/1` region is a **hard compile error**. v1
-does **not** fall back to Prolog-side post-filtering. Failing fast keeps
-the compile seam honest — an unsupported construct surfaces immediately
-rather than silently splitting evaluation across two engines — and is the
-conservative choice for not painting the design into a corner. The guard
-set widens deliberately, guard by guard, as real queries need it.
+The Prolog compiler **owns translation of these v1 builtins**: it emits
+them with its own functor in the intermediate term (e.g. `'!='` as the
+functor of the emitted inequality literal), because Prolog understands its
+own terms better than a downstream re-parser would. Any other builtin in a
+`Query` is a **hard compile error** Prolog-side. v1 does **not** fall back
+to Prolog-side post-filtering. Failing fast keeps the seam honest — an
+unsupported construct surfaces immediately rather than silently splitting
+evaluation across two engines. The guard set widens deliberately, guard by
+guard, as real queries need it.
 
-### Projection (correct from the start)
+### Projection
 
-The columns the compiled query returns are the region's **output
-variables**: unbound variables appearing inside the `query/1` region that
-**also occur outside it** — in the surrounding resolvent or the original
-goal. Variables local to the region (appearing only inside `query/1`) are
-existential and are **not** returned. This is genuine projection, not
-"return every region variable," and it is in scope for v1 — over-
-returning is not an acceptable v0 shortcut here because it would leak
-existential variables into the solution bindings.
+The columns the compiled query returns are exactly the **arguments of
+`Template`**, in `Template` argument order. There is no occurs-outside
+analysis and no notion of region-local vs. escaping variables: projection
+is stated explicitly by the author in `Template`, which is both simpler
+and unambiguous. The projection column order is recorded as the **head of
+the obligations list** (see [Obligations](#the-emitted-term-and-obligations)).
+
+### The emitted term and obligations
+
+The Prolog compiler emits **one intermediate term**. For the worked
+example:
+
+```prolog
+compiled_query(
+    template(result, [outer_id, name_text, outer_start]),
+    derived([
+        rule(descendant(anc, desc),
+             [ node([id-desc, parent_id-anc]) ]),
+        rule(descendant(anc, desc),
+             [ descendant(anc, mid), node([id-desc, parent_id-mid]) ])
+    ]),
+    goals([
+        node([id-outer_id, kind-'function_definition', start_byte-outer_start]),
+        descendant(outer_id, inner_id),
+        node([id-inner_id, kind-'function_definition']),
+        '!='(outer_id, inner_id),
+        node([id-outer_id, kind-'identifier', text-name_text])
+    ])
+)
+```
+
+Note the surface `Key: Value` pairs have been normalized to `Key-Value`
+pairs, and the `!=` guard carries its own functor.
+
+**Transport.** The intermediate term may be handed to Python directly, or
+(given known Janus marshalling limitations for complex terms) emitted via
+`term_to_atom/2` as a string that Python re-parses. Either way the term
+above is the contract.
+
+**Obligations.** The compiler emits an obligations list of the form
+`[Projection | Rest]`: the projection column order is the **head**, and
+the relation-existence / column obligations Python validates pre-run
+follow.
 
 ### Prolog-side compiler placement
 
@@ -248,32 +351,37 @@ file to `meta.pl`** (the meta-interpreter's own `.pl` source), loaded
 alongside it. Concretely it is consulted through the same
 `_ensure_*_loaded` pattern `meta.py` already uses to load `meta.pl` and
 the foreign-callout module (`importlib.resources` + a process-level
-`_consulted` guard). The `query/1` `reduce_goal` clause and the
-compiler predicates it calls are thus part of the kernel's loaded Prolog
-program. The Python half — schema discovery, `run_script`, row
-marshalling — lives in the mnestic adapter (below).
+`_consulted` guard). The `query/3` `reduce_goal` clause and the compiler
+predicates it calls are thus part of the kernel's loaded Prolog program.
+The Python half — schema discovery, base-vs-derived classification,
+CozoScript assembly, `run_script`, row marshalling — lives in the mnestic
+adapter (below).
 
 ## Prolog / Python split
 
 Mirrors the split in [`reduce-goal.md`](reduce-goal.md):
 
-- The **Prolog kernel** owns: the `query/1` `reduce_goal` clause, conjunct
-  classification, compilation of the region to a CozoScript string, and
-  enumeration of returned rows into solution branches.
+- The **Prolog kernel** owns: the `query/3` `reduce_goal` clause, parsing
+  the keyed `Query`, collecting the transitive closure of `query_rule/2`
+  derived relations, translating v1 builtins, and emitting the one
+  intermediate term + obligations. It does **not** produce CozoScript.
 - **Python** owns the **mnestic adapter**: opening the database, schema
-  discovery, executing the compiled script via
+  discovery, classifying base-vs-derived relations, assembling the
+  CozoScript from the intermediate term, executing it via
   `run_script(script, params, immutable)` against `mnestic.CozoDbPy`, and
-  marshalling result rows back to the kernel.
+  marshalling result rows back into `Bag`.
 
 The kernel reaches the adapter through the existing Janus foreign-callout
 path (`foreign(Fn, In, Out)` → `py_call`), the same mechanism the general
 store oracle uses. Calling out is **not** a suspension: the backend
-answers immediately, so a `query/1` reduces inline.
+answers immediately, so a `query/3` reduces inline (deterministically,
+`findall`-style). The callout itself is a **separate future issue**; the
+compiler specified above produces the intermediate term it will carry.
 
 ### The `run_script` mutability flag
 
 The adapter executes via `run_script(script, params, immutable)`. In v1
-every `query/1` is a **read** (`immutable` → read-only), consistent with
+every `query/3` is a **read** (`immutable` → read-only), consistent with
 writing being out of scope. The mutability flag is nonetheless the more
 durable seam than the database open-mode: it is the point at which
 read-query vs future mutating-load is discriminated per call. Recording
@@ -291,25 +399,16 @@ type mismatch at compile time) depends on having the full descriptor. If
 a future backend cannot supply types, that constraint is evaluated when
 it arises; mnestic can, so v1 assumes it.
 
-## User-facing sugar
+## The keyed surface is the surface
 
-The positional base predicates (`node/11`) are the compiler's target, not
-necessarily the surface an author wants to write against — eleven
-positional arguments with underscores is noisy and brittle against schema
-change. A **param-keyed projection sugar** lets a query name only the
-columns it cares about, e.g.:
-
-```prolog
-node_match([id-O, kind=function_definition])
-```
-
-This is **surface sugar only**. It desugars to the positional
-`node/11` form (binding `O`, matching the constant, leaving the rest
-anonymous) *before* the compiler runs, so the compiler continues to see
-only positional terms. The sugar is generated from the discovered schema
-(column names come from the descriptor); its exact shape — the `-` bind /
-`=` constant-match convention shown here, or another — is a surface
-decision, not a compiler concern.
+Earlier drafts proposed a positional `node/11` base predicate with a
+separate `node_match([...])` projection *sugar* layered on top. That is
+**superseded**: the keyed form (`node(id: X, kind: 'function_definition')`)
+is now the one and only base surface, authored directly in both queries and
+support rules. There is no positional layer beneath it and no separate
+desugaring step. The compiler's only normalization is surface `Key: Value`
+→ emitted `Key-Value` pairs, described under
+[Base-relation surface](#base-relation-surface-keyed).
 
 ## Worked example: nested-function query
 
@@ -322,30 +421,52 @@ treesitter → mnestic CST pipeline proven in prior work. Schema:
 ```
 
 Support rules (`support` file): `descendant/2` as the transitive closure
-over `parent_id`; `nested_fn/2` selecting a `function_definition` node
-with a `function_definition` descendant under an `O \= I` guard (as shown
+over `parent_id`, in the keyed surface (as shown
 [above](#user-support-rules-query_rule2)).
 
-Query region:
+Query:
 
 ```prolog
-query(( nested_fn(O, _),
-        node(_, identifier, O, _,_,_,_,_,_,_, Name) ))
+query(
+    result(OuterId, NameText, OuterStart),
+    ( node(id: OuterId, kind: 'function_definition', start_byte: OuterStart),
+      descendant(OuterId, InnerId),
+      node(id: InnerId, kind: 'function_definition'),
+      OuterId != InnerId,
+      node(parent_id: OuterId, kind: 'identifier', text: NameText) ),
+    Out
+)
 ```
 
-Outputs `O` (outer function node id) and `Name` (its name, resolved by
-joining the direct `identifier` child on `parent_id = O`). Against a file
-with a `def outer_function` containing a nested `def inner_function`, the
-query returns the single `outer_function` row.
+Projects `OuterId`, `NameText`, `OuterStart` (named explicitly by
+`Template`). `NameText` is the outer function's name, resolved by joining
+its direct `identifier` child on `parent_id = OuterId`. Against a file with
+a `def outer_function` containing a nested `def inner_function`, `Out`
+unifies with a single `result(...)` for `outer_function`. This mirrors the
+target CozoScript:
+
+```
+descendant[anc, desc] := *node{id: desc, parent_id: anc}
+descendant[anc, desc] := descendant[anc, mid], *node{id: desc, parent_id: mid}
+
+?[outer_id, name_text, outer_start] :=
+    *node{id: outer_id, kind: 'function_definition', start_byte: outer_start},
+    descendant[outer_id, inner_id],
+    *node{id: inner_id, kind: 'function_definition'},
+    outer_id != inner_id,
+    *node{parent_id: outer_id, kind: 'identifier', text: name_text}
+```
 
 Note: the correct treesitter node kind is **`function_definition`**
 (snake_case CST kind), **not** the stdlib `ast` `FunctionDef`. There is no
 `name` column in the schema; a function's name is the text of its direct
 `identifier` child, recovered by the join above.
 
-The first implementation block's target is exactly this: the query runs
-from **inside** `constraint` via `query/1` against the real mnestic
-database and returns the same row the standalone pipeline produced.
+The compiler block's target is exactly this query's intermediate term and
+obligations. Running it end-to-end from **inside** `constraint` — the
+`query/3` `reduce_goal` clause plus the adapter callout that assembles and
+runs the CozoScript above — follows in the subsequent issues, and returns
+the same row the standalone pipeline produced.
 
 ## Deferred / out of scope for v1
 
@@ -353,7 +474,7 @@ database and returns the same row the standalone pipeline produced.
   entirely out of scope; v1 reads an externally-populated store. When it
   arrives it slots behind the same `run_script(..., immutable)` seam
   (mutating vs read-only), likely as a distinct store-side operation
-  rather than a `query/1` region.
+  rather than a `query/3` query.
 - **Neutral query representation.** A backend-independent Prolog term
   language for datalog, with cozo as one compile target behind an
   adapter interface — the real fix for CozoScript lock-in. v1
