@@ -214,10 +214,17 @@ def build_store_from_config(config: Config) -> AggregateRuleSetStore:
             )
         elif store_type == "mnestic":
             from constraint.store.mnestic_store import MnesticRuleSetStore
+            support_val = store_config.get("support")
+            support_path: Path | None = None
+            if support_val is not None:
+                support_path = Path(support_val)
+                if not support_path.is_absolute():
+                    support_path = config.base_dir / support_path
             stores.append(
                 MnesticRuleSetStore(
                     store_path,
                     name=store_config.get("name"),
+                    support=support_path,
                 )
             )
         else:

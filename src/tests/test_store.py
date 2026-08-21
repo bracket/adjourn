@@ -691,3 +691,115 @@ class TestMnesticStore:
         clauses1 = store1.clauses_for(store1.ruleset_hash)
         clauses2 = store2.clauses_for(store2.ruleset_hash)
         assert [str(c) for c in clauses1] == [str(c) for c in clauses2]
+
+    def test_mnestic_store_with_support_file(self, tmp_path: Path) -> None:
+        """A mnestic store with a support file merges base + query_rule/2 facts."""
+        pytest.importorskip("mnestic")
+        db_path = tmp_path / "support_test.db"
+        _create_mnestic_db(
+            str(db_path),
+            (
+                ":create node {"
+                "    id: Int, kind: String, parent_id: Int,"
+                "    a: Int, b: Int, c: Int, d: Int, e: Int, f: Int, g: Int, h: Int"
+                "    => }"
+            ),
+        )
+        support_file = tmp_path / "support.pl"
+        support_file.write_text(
+            "descendant(A, D) :- node(D, _, A, _,_,_,_,_,_,_,_).\n"
+            "descendant(A, D) :- node(M, _, A, _,_,_,_,_,_,_,_), descendant(M, D).\n"
+            "nested_fn(O, I) :-\n"
+            "    node(O, function_definition, _, _,_,_,_,_,_,_,_),\n"
+            "    node(I, function_definition, _, _,_,_,_,_,_,_,_),\n"
+            "    descendant(O, I),\n"
+            "    O \\= I.\n"
+        )
+        store = MnesticRuleSetStore(db_path, support=support_file)
+        clauses = store.clauses_for(store.ruleset_hash)
+        # First clause(s) are base predicates (node/11)
+        base_functors = {c.head.functor for c in clauses if isinstance(c.head, Compound) and c.head.functor != "query_rule"}
+        assert "node" in base_functors
+        # Then query_rule/2 facts
+        qr_clauses = [c for c in clauses if isinstance(c.head, Compound) and c.head.functor == "query_rule"]
+        assert len(qr_clauses) == 3
+        qr_heads = [c.head.args[0].functor for c in qr_clauses if isinstance(c.head.args[0], Compound)]
+        assert qr_heads.count("descendant") == 2
+        assert qr_heads.count("nested_fn") == 1
+        assert clauses.index(qr_clauses[0]) > clauses.index(
+            next(c for c in clauses if isinstance(c.head, Compound) and c.head.functor == "node")
+        )
+
+    def test_mnestic_store_without_support_unchanged(self, tmp_path: Path) -> None:
+        """A mnestic store without support produces only base-predicate clauses."""
+        pytest.importorskip("mnestic")
+        db_path = tmp_path / "no_support.db"
+        _create_mnestic_db(str(db_path), ":create item { code: String => val: Int }")
+        store = MnesticRuleSetStore(db_path)
+        clauses = store.clauses_for(store.ruleset_hash)
+        assert all(
+            isinstance(c.head, Compound) and c.head.functor != "query_rule"
+            for c in clauses
+        )
+
+    def test_mnestic_support_changes_hash(self, tmp_path: Path) -> None:
+        """Editing the support file changes the store hash."""
+        pytest.importorskip("mnestic")
+        db_path1 = tmp_path / "hash_sensitivity1.db"
+        db_path2 = tmp_path / "hash_sensitivity2.db"
+        _create_mnestic_db(str(db_path1), ":create item { code: String => val: Int }")
+        shutil.copytree(db_path1, db_path2)
+        support1 = tmp_path / "support1.pl"
+        support2 = tmp_path / "support2.pl"
+        support1.write_text("foo(X) :- item(X, _).\n")
+        support2.write_text("bar(X) :- item(X, _).\n")
+        store1 = MnesticRuleSetStore(db_path1, support=support1)
+        store2 = MnesticRuleSetStore(db_path2, support=support2)
+        assert store1.ruleset_hash != store2.ruleset_hash
+
+    def test_mnestic_support_empty_raises(self, tmp_path: Path) -> None:
+        """A present but empty support file raises ValueError."""
+        pytest.importorskip("mnestic")
+        db_path = tmp_path / "empty_support.db"
+        _create_mnestic_db(str(db_path), ":create item { code: String => val: Int }")
+        support_file = tmp_path / "empty.pl"
+        support_file.write_text("")
+        store = MnesticRuleSetStore(db_path, support=support_file)
+        with pytest.raises(ValueError, match="contains no clauses"):
+            _ = store.ruleset_hash
+
+    def test_mnestic_build_store_from_config_threads_support(self, tmp_path: Path) -> None:
+        """build_store_from_config passes support path to MnesticRuleSetStore."""
+        pytest.importorskip("mnestic")
+        import yaml
+
+        db_path = tmp_path / "config_support.db"
+        _create_mnestic_db(str(db_path), ":create item { code: String => val: Int }")
+        support_file = tmp_path / "support.pl"
+        support_file.write_text("foo(X) :- item(X, _).\n")
+
+        config_dir = tmp_path / ".constraint"
+        config_dir.mkdir()
+        config_path = config_dir / "config.yaml"
+        config_path.write_text(
+            yaml.safe_dump(
+                {
+                    "stores": [
+                        {
+                            "type": "mnestic",
+                            "path": str(db_path),
+                            "support": str(support_file),
+                        }
+                    ],
+                    "aliases": {},
+                }
+            )
+        )
+        config = Config(config_path)
+        store = build_store_from_config(config)
+        clauses = store.clauses_for(store.ruleset_hash)
+        qr_clauses = [
+            c for c in clauses
+            if isinstance(c.head, Compound) and c.head.functor == "query_rule"
+        ]
+        assert len(qr_clauses) == 1
