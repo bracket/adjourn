@@ -134,7 +134,7 @@ nested_fn(O, I) :-
     node(id: O, kind: 'function_definition'),
     node(id: I, kind: 'function_definition'),
     descendant(O, I),
-    O != I.
+    O \= I.
 ```
 
 Support-rule bodies use the **same keyed base surface** as `query/3`
@@ -194,7 +194,7 @@ query(
     ( node(id: OuterId, kind: 'function_definition', start_byte: OuterStart),
       descendant(OuterId, InnerId),
       node(id: InnerId, kind: 'function_definition'),
-      OuterId != InnerId,
+      OuterId \= InnerId,
       node(parent_id: OuterId, kind: 'identifier', text: NameText) ),
     Out
 )
@@ -233,8 +233,10 @@ The compiler is split across the seam:
   closure of referenced `query_rule/2` derived relations, translates the
   v1 builtins into its own emitted-term functors, and emits **one
   intermediate term** capturing template + derived rules + goals. It does
-  **not** emit CozoScript, does **not** classify base-vs-derived, and does
-  **not** consult the schema.
+  **not** emit CozoScript, does **not** *authoritatively* classify
+  base-vs-derived (it does a provisional split by `query_rule/2`
+  membership — see [Obligations](#the-emitted-term-and-obligations)), and
+  does **not** consult the schema.
 - **Python side** receives that term, classifies each relation literal as
   base (against the discovered schema) or derived (matches a passed-down
   derived-rule head), transliterates to CozoScript, validates base columns
@@ -242,8 +244,9 @@ The compiler is split across the seam:
 
 The reason base-vs-derived classification lives Python-side is that only
 Python holds the discovered schema; the Prolog side cannot tell a stored
-relation from a derived one without it. So Prolog stays schema-free and
-hands down term literals it has done whatever validation it *can* do on.
+relation from a *valid* one without it. So Prolog stays schema-free: it
+marks as derived only what it can prove derived (a `query_rule/2` head) and
+emits every other relation as a base obligation for Python to verify.
 
 ### Base-relation surface (keyed)
 
@@ -283,8 +286,9 @@ schema.
 
 v1 supports exactly:
 
-- `=/2` — unification / equality;
-- `!=/2` — inequality (the demo's `OuterId != InnerId` guard);
+- `\=/2` — inequality (the demo's `OuterId \= InnerId` guard); the
+  surface operator is standard Prolog `\=`, which the compiler translates
+  to the internal `'!='` functor (mirroring CozoScript) in the emitted term;
 - **column-constant match** — a constant in a keyed base-relation position
   (the demo's `kind: 'function_definition'`).
 
@@ -334,15 +338,25 @@ compiled_query(
 Note the surface `Key: Value` pairs have been normalized to `Key-Value`
 pairs, and the `!=` guard carries its own functor.
 
-**Transport.** The intermediate term may be handed to Python directly, or
-(given known Janus marshalling limitations for complex terms) emitted via
-`term_to_atom/2` as a string that Python re-parses. Either way the term
-above is the contract.
+**Transport.** The intermediate term is emitted via `term_to_atom/2` as a
+string that Python re-parses; direct Janus hand-off is *not* used, because
+Janus marshalling of complex compound terms has proven unreliable. The term
+above is the contract; the atom is its serialization.
 
 **Obligations.** The compiler emits an obligations list of the form
-`[Projection | Rest]`: the projection column order is the **head**, and
-the relation-existence / column obligations Python validates pre-run
-follow.
+`[Projection | Rest]`. The projection column order is the **head**
+(`[outer_id, name_text, outer_start]` for the worked example). Each element
+of `Rest` is a **base-relation obligation** of the form `Relation(Col1,
+Col2, ...)` — `Relation` the relation's functor and `Col*` the columns the
+query touched, in no particular order (e.g. `node(id, kind, start_byte,
+parent_id, text)`). Prolog emits one such obligation for every relation it
+could **not** resolve as a `query_rule/2`-derived head — a *provisional*
+base/derived split by `query_rule/2` membership. Python does the
+**authoritative** check: it confirms each obligation names a relation that
+exists in the discovered schema with those columns; a relation Python
+cannot resolve either (neither a schema relation nor a derived rule) is a
+hard error. Prolog is thus not fully schema-blind about which literals are
+base — it guesses base-by-exclusion and defers verification to Python.
 
 ### Prolog-side compiler placement
 
@@ -432,7 +446,7 @@ query(
     ( node(id: OuterId, kind: 'function_definition', start_byte: OuterStart),
       descendant(OuterId, InnerId),
       node(id: InnerId, kind: 'function_definition'),
-      OuterId != InnerId,
+      OuterId \= InnerId,
       node(parent_id: OuterId, kind: 'identifier', text: NameText) ),
     Out
 )
@@ -484,8 +498,8 @@ the same row the standalone pipeline produced.
 - **Second backend / the `backend:` key.** Only `rocksdb` mnestic in v1.
   The orthogonal `backend:` encoding is recommended for when a second
   engine appears, not implemented now.
-- **Wider builtin / guard set.** Beyond `{=/2, \=/2, column-constant
-  match}`; aggregation and negation especially are cozo-specific in their
+- **Wider builtin / guard set.** Beyond `{\=/2, column-constant
+  match}` (e.g. column-column comparison, dropped from v1); aggregation and negation especially are cozo-specific in their
   semantics and are not portable datalog — deferred until a query needs
   them, and a candidate driver for the neutral representation above.
 - **Handle / discovery lifecycle changes.** v1 opens once and memoizes
