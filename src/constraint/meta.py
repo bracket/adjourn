@@ -112,6 +112,7 @@ def resume_state(state: dict[str, Any], clauses: list[Clause]) -> dict[str, Any]
         )
 
     _ensure_meta_loaded()
+    _ensure_query_compiler_loaded()
     _ensure_ruleset_loaded(clauses)
     _ensure_foreign_loaded()
 
@@ -142,6 +143,17 @@ def _ensure_meta_loaded() -> None:
     if key in _consulted:
         return
     ref = files("constraint").joinpath("meta.pl")
+    with as_file(ref) as pl_path:
+        janus.consult(str(pl_path))
+    _consulted.add(key)
+
+
+def _ensure_query_compiler_loaded() -> None:
+    """Consult ``query_compiler.pl`` into SWI-Prolog if not already loaded."""
+    key = "<constraint_query_compiler.pl>"
+    if key in _consulted:
+        return
+    ref = files("constraint").joinpath("query_compiler.pl")
     with as_file(ref) as pl_path:
         janus.consult(str(pl_path))
     _consulted.add(key)
