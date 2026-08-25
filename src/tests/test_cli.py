@@ -532,7 +532,7 @@ class TestResumeCommand:
             main,
             [
                 "init",
-                "no_rule_cli_test_goal",
+                "true",
                 str(state_file),
                 "--ruleset",
                 "test_rules",
@@ -542,20 +542,25 @@ class TestResumeCommand:
         )
         out_file = tmp_path / "out.json"
 
-        # First resume → done
+        # Drive the run to completion: 'true' yields a solution first, then
+        # a further resume exhausts remaining branches to reach 'done'.
         runner.invoke(
             main, ["resume", str(state_file), str(out_file), "--config", str(config_path)]
+        )
+        runner.invoke(
+            main, ["resume", str(out_file), str(out_file), "--config", str(config_path)]
         )
         state_done = json.loads(out_file.read_text())
         assert state_done["status"] == "done"
 
-        # Second resume → still done
+        # Resuming a done state again must leave it unchanged.
         result2 = runner.invoke(
             main, ["resume", str(out_file), str(out_file), "--config", str(config_path)]
         )
         assert result2.exit_code == 0
         state_done2 = json.loads(out_file.read_text())
         assert state_done2["status"] == "done"
+        assert state_done2["branches"] == state_done["branches"]
 
     def test_resume_nonexistent_state_fails(
         self, runner: CliRunner, tmp_path: Path
