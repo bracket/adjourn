@@ -6,6 +6,8 @@
 :- module(qc_derived, [ collect_derived/2, is_derived/1 ]).
 :- use_module(qc_surface).
 
+:- multifile user:query_rule/2.
+
 % is_derived(+Goal)
 % True iff Goal's functor/arity matches a query_rule/2 head.
 is_derived(Goal) :-
