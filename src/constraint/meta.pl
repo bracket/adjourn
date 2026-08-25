@@ -76,6 +76,21 @@ reduce_goal(foreign(Fn, In, Out), Gs, Rest, Event, State1) :-
     py_call(constraint_foreign:dispatch(Fn, In), Out),
     step(state([branch(Gs)|Rest]), Event, State1).
 
+
+% query/3: compile and reduce via foreign/3 callout.
+% Placed before the general user:rule/2 dispatch clause.
+reduce_goal(query(Template, Query, Bag), Gs, Rest, Event, State1) :-
+    query_compiler:compile_query(Query, CompiledAtom, Obligations),
+    term_to_atom(Obligations, ObligationsAtom),
+    Template =.. [F|_],
+    % Reduce foreign(mnestic_query, ...) through the existing foreign/3 path
+    % by calling step on a state with the foreign goal.  The continuation
+    % builds result terms from the returned rows then proceeds with Gs.
+    step(state([branch([
+        foreign(mnestic_query, [CompiledAtom, ObligationsAtom], Rows),
+        build_query_results(F, Rows, Bag)
+      | Gs]) | Rest]), Event, State1).
+
 % general case: interpret via user:rule/2.
 % Collect ALL matching rules for G, then create one branch per alternative.
 % This makes choice points explicit and resumable.
@@ -112,6 +127,15 @@ body_to_goals((A,B), Goals) :- !,
     body_to_goals(B, GB),
     append(GA, GB, Goals).
 body_to_goals(A, [A]).
+
+
+% --- Helper for query/3 result construction ---
+
+% build_query_results(+F, +Rows, -Bag)
+% Build result terms from Rows and unify with Bag.
+% Each row is a value-list [V1, V2, ...]; the result term is F(V1, V2, ...).
+user:build_query_results(F, Rows, Bag) :-
+    maplist({F}/[Vs, T]>>(T =.. [F|Vs]), Rows, Bag).
 
 % --- Packed interface for Python/Janus interop ---
 %

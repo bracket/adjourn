@@ -111,3 +111,26 @@ def _git_rev_parse(arg: Any) -> str:
         check=True,
     )
     return result.stdout.strip()
+
+# ---------------------------------------------------------------------------
+# Stub callout: mnestic_query (query/3 reduction)
+# ---------------------------------------------------------------------------
+
+
+@register("mnestic_query")
+def _mnestic_query(arg: Any) -> list[list[str | int]]:
+    """Stub for the mnestic query adapter.
+
+    Accepts a 2-element list ``[CompiledTermAtom, ObligationsAtom]`` where
+    both elements are atom strings (marshalled from Prolog).  Returns canned
+    positional value-lists in projection column order.
+
+    Args:
+        arg: A 2-element list ``[compiled_term_atom, obligations_atom]``.
+
+    Returns:
+        A list of value-lists, each in projection column order.  For the
+        worked example this returns ``[['n_outer', 'outer_function', 0]]``.
+    """
+    # Canned response for the worked example.
+    return [["n_outer", "outer_function", 0]]
