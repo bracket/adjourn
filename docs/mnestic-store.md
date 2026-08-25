@@ -190,12 +190,12 @@ A worked goal:
 
 ```prolog
 query(
-    result(OuterId, NameText, OuterStart),
-    ( node(id: OuterId, kind: 'function_definition', start_byte: OuterStart),
-      descendant(OuterId, InnerId),
-      node(id: InnerId, kind: 'function_definition'),
-      OuterId \= InnerId,
-      node(parent_id: OuterId, kind: 'identifier', text: NameText) ),
+    result(outer_id, name_text, outer_start),
+    ( node(id: outer_id, kind: 'function_definition', start_byte: outer_start),
+      descendant(outer_id, inner_id),
+      node(id: inner_id, kind: 'function_definition'),
+      outer_id \= inner_id,
+      node(parent_id: outer_id, kind: 'identifier', text: name_text) ),
     Out
 )
 ```
