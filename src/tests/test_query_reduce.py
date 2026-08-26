@@ -17,6 +17,7 @@ import pytest
 
 from constraint import meta
 from constraint.constraint_foreign import _registry
+from constraint.store.mnestic_adapter import register as _register_adapter
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -105,6 +106,23 @@ def _setup_engine() -> None:
 
 class TestQueryReduceWorkedExample:
     """Tests for the worked-example query/3 reduction."""
+
+    @pytest.fixture(autouse=True)
+    def _register_mock_store(self) -> Any:
+        """Register a mock adapter for the 'source' store so the
+        mnestic_query callout can resolve it."""
+        from constraint.store.mnestic_adapter import MnesticAdapter
+
+        class _MockAdapter:
+            """Mock adapter that returns the canned worked-example data."""
+            def compile_and_run(self, compiled_atom: str, obligations_atom: str) -> list[list[str | int]]:
+                return [["n_outer", "outer_function", 0]]
+
+        _register_adapter("source", _MockAdapter())  # type: ignore[arg-type]
+        yield
+        # Clean up the registry
+        from constraint.store.mnestic_adapter import _registry as _adapter_registry
+        _adapter_registry.pop("source", None)
 
     def test_worked_example_reduces_to_solution(self) -> None:
         """The worked-example query/3 must reduce to a solution event."""

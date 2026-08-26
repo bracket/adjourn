@@ -14,8 +14,7 @@ from typing import Any
 
 from mnestic import CozoDbPy
 
-from constraint.parser import parse_term, Atom, Variable, Integer, Compound, List
-
+from constraint.parser import Atom, Compound, Integer, List, Variable, parse_term
 
 # ---------------------------------------------------------------------------
 # Module-level store-name → MnesticAdapter registry
@@ -644,3 +643,222 @@ class MnesticAdapter:
                 column_bindings[col_name] = str(value.value)
 
         return BaseLiteral(relation=functor, column_bindings=column_bindings)
+
+    # ------------------------------------------------------------------
+    # CozoScript assembly
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _collect_column_tokens(
+        parsed: ParsedCompiledQuery,
+    ) -> set[str]:
+        """Collect all column-token atom names from the parsed query.
+
+        These are atoms that represent variable-like bindings (as opposed
+        to string constants) and should be rendered unquoted in CozoScript.
+        """
+        tokens: set[str] = set(parsed.projection_columns)
+
+        # Add arguments from derived rule heads
+        for rule in parsed.derived_rules:
+            for arg in rule.head.args:
+                if isinstance(arg, Atom):
+                    tokens.add(arg.value)
+
+        # Add arguments from classified goals (derived and guard)
+        for goal in parsed.goals:
+            if goal.kind == "derived" or goal.kind == "guard":
+                for arg in goal.detail.args:
+                    if isinstance(arg, Atom):
+                        tokens.add(arg.value)
+
+        # Add arguments from derived rule body literals
+        for rule in parsed.derived_rules:
+            for literal in rule.body:
+                if isinstance(literal, Compound):
+                    # Derived literal or guard in body
+                    if literal.functor == "!=" or any(
+                        literal.functor == r.head.functor for r in parsed.derived_rules
+                    ):
+                        for arg in literal.args:
+                            if isinstance(arg, Atom):
+                                tokens.add(arg.value)
+                    # Base literal: extract values from key-value pairs
+                    elif len(literal.args) == 1 and isinstance(literal.args[0], List):
+                        for kv in literal.args[0].elements:
+                            if isinstance(kv, Compound) and kv.functor == "-" and len(kv.args) == 2:
+                                val = kv.args[1]
+                                if isinstance(val, Atom):
+                                    tokens.add(val.value)
+
+        return tokens
+
+    @staticmethod
+    def _render_value(value: str, column_tokens: set[str]) -> str:
+        """Render a base-literal value for CozoScript.
+
+        Column tokens (variable-like bindings) are rendered unquoted.
+        Integer strings are rendered as-is.
+        String constants are single-quoted.
+        """
+        if value in column_tokens:
+            return value
+        # Check if it is an integer
+        try:
+            int(value)
+            return value
+        except ValueError:
+            pass
+        # String constant: single-quote with escaping
+        escaped = value.replace("\\", "\\\\").replace("'", "\\'")
+        return f"'{escaped}'"
+
+    @staticmethod
+    def _render_base_literal(
+        relation: str,
+        column_bindings: dict[str, str],
+        column_tokens: set[str],
+    ) -> str:
+        """Render a base literal as ``*rel{col: val, ...}``."""
+        pairs = ", ".join(
+            f"{col}: {MnesticAdapter._render_value(val, column_tokens)}"
+            for col, val in column_bindings.items()
+        )
+        return f"*{relation}{{{pairs}}}"
+
+    @staticmethod
+    def _render_derived_head(head: Compound) -> str:
+        """Render a derived rule head as ``name[arg1, arg2, ...]``."""
+        args_str = ", ".join(str(arg) for arg in head.args)
+        return f"{head.functor}[{args_str}]"
+
+    @staticmethod
+    def _render_raw_literal(
+        literal: Any,
+        column_tokens: set[str],
+        derived_functors: set[str],
+    ) -> str:
+        """Render a raw AST literal (from a derived rule body) as CozoScript."""
+        if not isinstance(literal, Compound):
+            return str(literal)
+
+        functor = literal.functor
+
+        # Guard: !=
+        if functor == "!=":
+            if len(literal.args) == 2:
+                return f"{literal.args[0]} != {literal.args[1]}"
+            return str(literal)
+
+        # Derived literal (use square brackets in CozoScript)
+        if functor in derived_functors:
+            args_str = ", ".join(str(arg) for arg in literal.args)
+            return f"{functor}[{args_str}]"
+
+        # Base literal: *rel{col: val, ...}
+        if len(literal.args) == 1 and isinstance(literal.args[0], List):
+            pairs: list[str] = []
+            for kv in literal.args[0].elements:
+                if isinstance(kv, Compound) and kv.functor == "-" and len(kv.args) == 2:
+                    key = str(kv.args[0])
+                    val_node = kv.args[1]
+                    if isinstance(val_node, Atom):
+                        val = MnesticAdapter._render_value(
+                            val_node.value, column_tokens
+                        )
+                    elif isinstance(val_node, Integer):
+                        val = str(val_node.value)
+                    else:
+                        val = str(val_node)
+                    pairs.append(f"{key}: {val}")
+            return f"*{functor}{{{', '.join(pairs)}}}"
+
+        # Fallback
+        return str(literal)
+
+    @staticmethod
+    def _render_classified_goal(
+        goal: ClassifiedGoal,
+        column_tokens: set[str],
+    ) -> str:
+        """Render a classified goal as a CozoScript body literal."""
+        if goal.kind == "base":
+            base = goal.detail
+            assert isinstance(base, BaseLiteral)
+            return MnesticAdapter._render_base_literal(
+                base.relation, base.column_bindings, column_tokens
+            )
+        elif goal.kind == "derived":
+            derived = goal.detail
+            assert isinstance(derived, DerivedLiteral)
+            args_str = ", ".join(str(arg) for arg in derived.args)
+            return f"{derived.head_functor}[{args_str}]"
+        elif goal.kind == "guard":
+            guard = goal.detail
+            assert isinstance(guard, Guard)
+            if len(guard.args) == 2:
+                return f"{guard.args[0]} != {guard.args[1]}"
+            return str(guard)
+        else:
+            raise ValueError(f"Unknown goal kind: {goal.kind}")
+
+    def _assemble_script(self, parsed: ParsedCompiledQuery) -> str:
+        """Assemble a CozoScript string from a parsed compiled query.
+
+        Emits derived rules first (all clauses per relation, in declaration
+        order), then the query head ``?[proj...] := body``.
+
+        Args:
+            parsed: The validated, classified compiled query.
+
+        Returns:
+            A CozoScript string ready for execution.
+        """
+        column_tokens = self._collect_column_tokens(parsed)
+        derived_functors = {rule.head.functor for rule in parsed.derived_rules}
+
+        parts: list[str] = []
+
+        # --- Derived rules ---
+        for rule in parsed.derived_rules:
+            head_str = self._render_derived_head(rule.head)
+            body_strs = [
+                self._render_raw_literal(lit, column_tokens, derived_functors)
+                for lit in rule.body
+            ]
+            parts.append(f"{head_str} := {', '.join(body_strs)}")
+
+        # --- Query head ---
+        proj_str = ", ".join(parsed.projection_columns)
+        body_strs = [
+            self._render_classified_goal(goal, column_tokens)
+            for goal in parsed.goals
+        ]
+        parts.append(f"?[{proj_str}] := {', '.join(body_strs)}")
+
+        return "\n".join(parts)
+
+    # ------------------------------------------------------------------
+    # Orchestrator: parse → assemble → execute
+    # ------------------------------------------------------------------
+
+    def compile_and_run(
+        self,
+        compiled_atom: str,
+        obligations_atom: str,
+    ) -> list[list[str | int]]:
+        """Parse a compiled query, assemble CozoScript, execute it, and
+        return the raw result rows.
+
+        Args:
+            compiled_atom: The serialized ``compiled_query(...)`` term.
+            obligations_atom: The serialized obligations term.
+
+        Returns:
+            The ``rows`` list-of-lists from the CozoDB result, in
+            projection column order.
+        """
+        parsed = self.parse_compiled_query(compiled_atom, obligations_atom)
+        script = self._assemble_script(parsed)
+        result = self.run_script(script, {}, immutable=True)
+        return result["rows"]

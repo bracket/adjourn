@@ -1132,3 +1132,301 @@ class TestMnesticAdapterQueryCompile:
         base = result.goals[0].detail
         assert isinstance(base, BaseLiteral)
         assert base.column_bindings["kind"] == "function_definition"
+
+
+# ---------------------------------------------------------------------------
+# MnesticAdapter CozoScript assembly and compile_and_run tests
+# ---------------------------------------------------------------------------
+
+
+class TestMnesticAdapterAssembly:
+    """Tests for MnesticAdapter CozoScript assembly and compile_and_run."""
+
+    def _make_node_db_with_data(self, tmp_path: Path) -> str:
+        """Create a rocksdb database with a ``node`` relation and sample data.
+
+        Inserts nodes matching the worked-example query so that
+        ``compile_and_run`` returns predictable results.
+
+        Returns the path string.
+        """
+        db_path = tmp_path / "assembly_test.db"
+        _create_mnestic_db(
+            str(db_path),
+            (
+                ":create node {"
+                "    id: Int"
+                "    =>"
+                "    kind: String,"
+                "    parent_id: Int?,"
+                "    start_byte: Int,"
+                "    end_byte: Int,"
+                "    start_row: Int,"
+                "    start_col: Int,"
+                "    end_row: Int,"
+                "    end_col: Int,"
+                "    is_named: Bool,"
+                "    text: String,"
+                "}"
+            ),
+        )
+        # Insert sample data via import_relations
+        from mnestic import CozoDbPy
+        db = CozoDbPy("rocksdb", str(db_path), "")
+        db.import_relations(data={
+            "node": {
+                "headers": [
+                    "id", "kind", "parent_id", "start_byte", "end_byte",
+                    "start_row", "start_col", "end_row", "end_col",
+                    "is_named", "text"
+                ],
+                "rows": [
+                    [1, "function_definition", None, 0, 20, 0, 0, 0, 20, True, "outer_fn"],
+                    [2, "function_definition", 1, 10, 15, 1, 0, 1, 5, True, "inner_fn"],
+                    [3, "identifier", 1, 5, 8, 0, 5, 0, 8, True, "name_text"],
+                ],
+            }
+        })
+        db.close()
+        return str(db_path)
+
+    def test_assemble_script_well_formed(self, tmp_path: Path) -> None:
+        """_assemble_script produces correct CozoScript for the worked example."""
+        db_path = self._make_node_db_with_data(tmp_path)
+        adapter = MnesticAdapter(db_path)
+
+        compiled_atom = (
+            "compiled_query("
+            "    store(source),"
+            "    template(result, [outer_id, name_text, outer_start]),"
+            "    derived(["
+            "        rule(descendant(anc, desc), [ node([id-desc, parent_id-anc]) ]),"
+            "        rule(descendant(anc, desc), [ descendant(anc, mid), node([id-desc, parent_id-mid]) ])"
+            "    ]),"
+            "    goals(["
+            "        node([id-outer_id, kind-'function_definition', start_byte-outer_start]),"
+            "        descendant(outer_id, inner_id),"
+            "        node([id-inner_id, kind-'function_definition']),"
+            "        '!='(outer_id, inner_id),"
+            "        node([parent_id-outer_id, kind-'identifier', text-name_text])"
+            "    ])"
+            ")"
+        )
+        obligations_atom = "obligations([])"
+
+        parsed = adapter.parse_compiled_query(compiled_atom, obligations_atom)
+        script = adapter._assemble_script(parsed)
+
+        # Verify derived rules appear before the query head
+        lines = script.strip().split("\n")
+        assert len(lines) == 3
+        assert lines[0].startswith("descendant[anc, desc] :=")
+        assert lines[1].startswith("descendant[anc, desc] :=")
+        assert lines[2].startswith("?[outer_id, name_text, outer_start] :=")
+
+        # Verify base literals use asterisk prefix
+        assert "*node{" in script
+
+        # Verify column-constant is single-quoted
+        assert "'function_definition'" in script
+        assert "'identifier'" in script
+
+        # Verify column tokens are unquoted
+        assert "outer_id" in script
+        assert "inner_id" in script
+        assert "name_text" in script
+
+        # Verify guard renders as inline !=
+        assert "outer_id != inner_id" in script
+
+    def test_compile_and_run_returns_rows(self, tmp_path: Path) -> None:
+        """compile_and_run executes the assembled script and returns rows."""
+        db_path = self._make_node_db_with_data(tmp_path)
+        adapter = MnesticAdapter(db_path)
+
+        compiled_atom = (
+            "compiled_query("
+            "    store(source),"
+            "    template(result, [outer_id, name_text, outer_start]),"
+            "    derived(["
+            "        rule(descendant(anc, desc), [ node([id-desc, parent_id-anc]) ]),"
+            "        rule(descendant(anc, desc), [ descendant(anc, mid), node([id-desc, parent_id-mid]) ])"
+            "    ]),"
+            "    goals(["
+            "        node([id-outer_id, kind-'function_definition', start_byte-outer_start]),"
+            "        descendant(outer_id, inner_id),"
+            "        node([id-inner_id, kind-'function_definition']),"
+            "        '!='(outer_id, inner_id),"
+            "        node([parent_id-outer_id, kind-'identifier', text-name_text])"
+            "    ])"
+            ")"
+        )
+        obligations_atom = "obligations([])"
+
+        rows = adapter.compile_and_run(compiled_atom, obligations_atom)
+
+        # Expect one result row: [outer_id, name_text, outer_start]
+        # outer_id=1 (function_definition), name_text='name_text', outer_start=0
+        assert len(rows) == 1
+        row = rows[0]
+        assert len(row) == 3
+        assert row[0] == 1  # outer_id
+        assert row[1] == "name_text"  # name_text
+        assert row[2] == 0  # outer_start
+
+    def test_compile_and_run_empty_result(self, tmp_path: Path) -> None:
+        """compile_and_run returns empty list when no rows match."""
+        db_path = self._make_node_db_with_data(tmp_path)
+        adapter = MnesticAdapter(db_path)
+
+        # Query for a non-existent kind
+        compiled_atom = (
+            "compiled_query("
+            "    store(source),"
+            "    template(result, [x]),"
+            "    derived([]),"
+            "    goals(["
+            "        node([id-x, kind-'nonexistent'])"
+            "    ])"
+            ")"
+        )
+        obligations_atom = "obligations([])"
+
+        rows = adapter.compile_and_run(compiled_atom, obligations_atom)
+        assert rows == []
+
+    def test_compile_and_run_with_integer_value(self, tmp_path: Path) -> None:
+        """compile_and_run handles integer values in base literals."""
+        db_path = self._make_node_db_with_data(tmp_path)
+        adapter = MnesticAdapter(db_path)
+
+        compiled_atom = (
+            "compiled_query("
+            "    store(source),"
+            "    template(result, [x]),"
+            "    derived([]),"
+            "    goals(["
+            "        node([id-x, start_byte-0])"
+            "    ])"
+            ")"
+        )
+        obligations_atom = "obligations([])"
+
+        rows = adapter.compile_and_run(compiled_atom, obligations_atom)
+        # Node with id=1 has start_byte=0
+        assert len(rows) == 1
+        assert rows[0][0] == 1
+
+
+class TestMnesticQueryCallout:
+    """Tests for the _mnestic_query foreign callout."""
+
+    def _make_node_db_with_data(self, tmp_path: Path) -> str:
+        """Create a rocksdb database with a ``node`` relation and sample data."""
+        db_path = tmp_path / "callout_test.db"
+        _create_mnestic_db(
+            str(db_path),
+            (
+                ":create node {"
+                "    id: Int"
+                "    =>"
+                "    kind: String,"
+                "    parent_id: Int?,"
+                "    start_byte: Int,"
+                "    end_byte: Int,"
+                "    start_row: Int,"
+                "    start_col: Int,"
+                "    end_row: Int,"
+                "    end_col: Int,"
+                "    is_named: Bool,"
+                "    text: String,"
+                "}"
+            ),
+        )
+        from mnestic import CozoDbPy
+        db = CozoDbPy("rocksdb", str(db_path), "")
+        db.import_relations(data={
+            "node": {
+                "headers": [
+                    "id", "kind", "parent_id", "start_byte", "end_byte",
+                    "start_row", "start_col", "end_row", "end_col",
+                    "is_named", "text"
+                ],
+                "rows": [
+                    [1, "function_definition", None, 0, 20, 0, 0, 0, 20, True, "outer_fn"],
+                    [2, "function_definition", 1, 10, 15, 1, 0, 1, 5, True, "inner_fn"],
+                    [3, "identifier", 1, 5, 8, 0, 5, 0, 8, True, "name_text"],
+                ],
+            }
+        })
+        db.close()
+        return str(db_path)
+
+    def test_callout_success_path(self, tmp_path: Path) -> None:
+        """_mnestic_query returns correct rows for a registered store."""
+        from constraint.constraint_foreign import _mnestic_query
+        from constraint.store.mnestic_adapter import register, MnesticAdapter
+
+        db_path = self._make_node_db_with_data(tmp_path)
+        adapter = MnesticAdapter(db_path)
+        register("test_store", adapter)
+
+        compiled_atom = (
+            "compiled_query("
+            "    store(test_store),"
+            "    template(result, [outer_id, name_text, outer_start]),"
+            "    derived(["
+            "        rule(descendant(anc, desc), [ node([id-desc, parent_id-anc]) ]),"
+            "        rule(descendant(anc, desc), [ descendant(anc, mid), node([id-desc, parent_id-mid]) ])"
+            "    ]),"
+            "    goals(["
+            "        node([id-outer_id, kind-'function_definition', start_byte-outer_start]),"
+            "        descendant(outer_id, inner_id),"
+            "        node([id-inner_id, kind-'function_definition']),"
+            "        '!='(outer_id, inner_id),"
+            "        node([parent_id-outer_id, kind-'identifier', text-name_text])"
+            "    ])"
+            ")"
+        )
+        obligations_atom = "obligations([])"
+
+        result = _mnestic_query([compiled_atom, obligations_atom])
+
+        assert len(result) == 1
+        row = result[0]
+        assert row[0] == 1
+        assert row[1] == "name_text"
+        assert row[2] == 0
+
+    def test_callout_unregistered_store_raises(self) -> None:
+        """_mnestic_query raises ValueError for an unregistered store name."""
+        from constraint.constraint_foreign import _mnestic_query
+
+        compiled_atom = (
+            "compiled_query("
+            "    store(no_such_store),"
+            "    template(result, [x]),"
+            "    derived([]),"
+            "    goals(["
+            "        node([id-x])"
+            "    ])"
+            ")"
+        )
+        obligations_atom = "obligations([])"
+
+        with pytest.raises(ValueError, match="store 'no_such_store' is not registered"):
+            _mnestic_query([compiled_atom, obligations_atom])
+
+    def test_callout_malformed_arg_raises(self) -> None:
+        """_mnestic_query raises ValueError for a malformed argument."""
+        from constraint.constraint_foreign import _mnestic_query
+
+        with pytest.raises(ValueError, match="2-element list"):
+            _mnestic_query("not_a_list")
+
+    def test_callout_malformed_compiled_term_raises(self) -> None:
+        """_mnestic_query raises ValueError for a malformed compiled term."""
+        from constraint.constraint_foreign import _mnestic_query
+
+        with pytest.raises(ValueError, match="compiled_query"):
+            _mnestic_query(["not_a_compiled_query", "obligations([])"])
