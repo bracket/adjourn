@@ -18,7 +18,9 @@ State file schema (v0)::
         ],
         "status": "running | suspended | solution | done",
         "suspension": { "label": "<term string>" },  # only when suspended
-        "bindings": { "<var>": "<term string>" }     # only when solution
+        "bindings": { "<var>": "<term string>" },    # only when solution
+        "ruleset_hash": "<hash string>",             # optional; pinned ruleset hash
+        "resume_hash": "<hash string>"               # optional; pinned override hash for resume
     }
 
 Notes on variable bindings
@@ -91,7 +93,7 @@ def resume_state(state: dict[str, Any], clauses: list[Clause]) -> dict[str, Any]
         An updated v0 state dictionary reflecting the result of one ``step/3``
         call.  The returned dict always contains the same top-level keys as the
         input (``version``, ``original_goal``, ``branches``, ``status``).
-        ``ruleset_hash`` is preserved when present in the input state.
+        ``ruleset_hash`` and ``resume_hash`` are preserved when present in the input state.
         ``suspension`` is added when ``status == "suspended"``.
         ``bindings`` is added when ``status == "solution"``.
 
@@ -319,6 +321,8 @@ def _build_new_state(
     }
     if "ruleset_hash" in old_state:
         new_state["ruleset_hash"] = old_state["ruleset_hash"]
+    if "resume_hash" in old_state:
+        new_state["resume_hash"] = old_state["resume_hash"]
 
     if event_atom == "done":
         new_state["status"] = "done"

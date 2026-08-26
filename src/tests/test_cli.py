@@ -209,6 +209,23 @@ class TestInitCommand:
         assert state["version"] == 0
         assert "ruleset_hash" in state
 
+
+    def test_init_writes_resume_hash(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """init should write both ruleset_hash and resume_hash equal."""
+        state_file = tmp_path / "state.json"
+        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
+        result = runner.invoke(
+            main,
+            ["init", "true", str(state_file), "--ruleset", "test_rules", "--config", str(config_path)],
+        )
+        assert result.exit_code == 0, result.output
+        state = json.loads(state_file.read_text())
+        assert "ruleset_hash" in state
+        assert "resume_hash" in state
+        assert state["resume_hash"] == state["ruleset_hash"]
+
     def test_init_preserves_original_goal(
         self, runner: CliRunner, tmp_path: Path
     ) -> None:
@@ -459,6 +476,30 @@ class TestResumeCommand:
         assert result.exit_code == 0
         assert "status:" in result.output
 
+
+    def test_resume_shows_both_hashes(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """resume should print short ruleset_hash and resume_hash lines."""
+        state_file = tmp_path / "state.json"
+        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
+        runner.invoke(
+            main,
+            ["init", "true", str(state_file), "--ruleset", "test_rules", "--config", str(config_path)],
+        )
+        out_file = tmp_path / "out.json"
+        result = runner.invoke(
+            main, ["resume", str(state_file), str(out_file), "--config", str(config_path)]
+        )
+        assert result.exit_code == 0, result.output
+        # Check that both hash lines are present with 12-char values
+        lines = result.output.strip().split(chr(10))
+        hash_lines = [l for l in lines if l.startswith('ruleset_hash:') or l.startswith('resume_hash:')]
+        assert len(hash_lines) == 2
+        for line in hash_lines:
+            # resume_hash has two spaces after colon for alignment
+            value = line.split(':', 1)[1].strip()
+            assert len(value) == 12
     def test_resume_yield_goal(
         self, runner: CliRunner, tmp_path: Path
     ) -> None:

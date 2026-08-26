@@ -104,22 +104,30 @@ class Runner:
     def step(self, state: dict[str, Any]) -> dict[str, Any]:
         """Drive one meta-interpreter step using the held store.
 
-        Reads the pinned ruleset hash from *state* (under the key
-        ``"ruleset_hash"``), resolves the clauses via the held store, calls
+        Reads the pinned ruleset hash from *state*: prefers the optional
+        ``"resume_hash"`` key when present (strict ``in`` check), falling
+        back to the required ``"ruleset_hash"`` key otherwise.  Resolves
+        the clauses via the held store, calls
         :func:`~constraint.meta.resume_state`, and returns the updated state
         dict.
 
         Args:
             state: A v0 state dictionary containing at minimum
-                ``"ruleset_hash"`` (a non-empty ``str``).
+                ``"ruleset_hash"`` (a non-empty ``str``).  When
+                ``"resume_hash"`` is present it is used unconditionally,
+                even if its value is empty or unresolvable.
 
         Returns:
             An updated v0 state dictionary as returned by ``resume_state``.
 
         Raises:
-            KeyError: If *state* does not contain ``"ruleset_hash"``.
+            KeyError: If *state* does not contain ``"ruleset_hash"`` and
+                ``"resume_hash"`` is also absent.
         """
-        ruleset_hash: str = state["ruleset_hash"]
+        if "resume_hash" in state:
+            ruleset_hash: str = state["resume_hash"]
+        else:
+            ruleset_hash = state["ruleset_hash"]
         clauses = self._store.clauses_for(ruleset_hash)
         return resume_state(state, clauses)
 

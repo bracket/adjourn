@@ -21,6 +21,18 @@ class _StubStore:
         return []
 
 
+
+
+class _RecordingStore:
+    """Minimal store stand-in that records the hash passed to ``clauses_for``."""
+
+    def __init__(self, label: str = "") -> None:
+        self.label = label
+        self.called_with: str | None = None
+
+    def clauses_for(self, hash_val: str) -> list:
+        self.called_with = hash_val
+        return []
 class _RecordingSeam:
     """Recording seam that captures calls for test assertions."""
 
@@ -157,6 +169,39 @@ class TestRunnerStep:
         state = {"ruleset_hash": "abc", "status": "running"}
         with pytest.raises(ValueError, match="empty ruleset"):
             runner.step(state)
+
+
+
+
+    def test_step_uses_resume_hash_when_present(self) -> None:
+        """When ``resume_hash`` is present in state, ``step`` resolves
+        clauses using the ``resume_hash`` value, not ``ruleset_hash``."""
+        store = _RecordingStore("rec")
+        runner = Runner(store)
+        state = {"ruleset_hash": "abc", "resume_hash": "xyz", "status": "running"}
+        with pytest.raises(ValueError, match="empty ruleset"):
+            runner.step(state)
+        assert store.called_with == "xyz"
+
+    def test_step_uses_ruleset_hash_when_resume_hash_absent(self) -> None:
+        """When ``resume_hash`` is absent, ``step`` resolves clauses
+        using ``ruleset_hash``."""
+        store = _RecordingStore("rec")
+        runner = Runner(store)
+        state = {"ruleset_hash": "abc", "status": "running"}
+        with pytest.raises(ValueError, match="empty ruleset"):
+            runner.step(state)
+        assert store.called_with == "abc"
+
+    def test_step_passes_empty_resume_hash_through(self) -> None:
+        """A present-but-empty ``resume_hash`` (``""``) is passed through
+        to the store rather than falling back to ``ruleset_hash``."""
+        store = _RecordingStore("rec")
+        runner = Runner(store)
+        state = {"ruleset_hash": "abc", "resume_hash": "", "status": "running"}
+        with pytest.raises(ValueError, match="empty ruleset"):
+            runner.step(state)
+        assert store.called_with == ""
 
 
 class TestRunnerStateStore:

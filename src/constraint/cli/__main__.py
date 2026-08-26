@@ -75,6 +75,7 @@ def cmd_init(
 
         ruleset_hash = _resolve_ruleset_hash(ruleset_name, config_path)
         state["ruleset_hash"] = ruleset_hash
+        state["resume_hash"] = ruleset_hash
 
         state_file.parent.mkdir(parents=True, exist_ok=True)
         state_file.write_text(json.dumps(state, indent=2) + "\n")
@@ -136,6 +137,8 @@ def cmd_resume(
         store = build_store_from_config(config)
         runner = Runner(store)
         new_state = runner.run(state)
+        if "resume_hash" in state:
+            new_state["resume_hash"] = state["resume_hash"]
     except Exception as exc:  # noqa: BLE001  — Janus/Prolog errors are opaque
         click.echo(f"Error during resume: {exc}", err=True)
         sys.exit(1)
@@ -224,6 +227,13 @@ def _print_status_summary(state: dict[str, Any]) -> None:
         click.echo(f"status: running — {branches} branch(es) remaining")
     else:
         click.echo(f"status: {status}")
+
+    ruleset_hash = state.get("ruleset_hash")
+    if isinstance(ruleset_hash, str) and ruleset_hash:
+        click.echo(f"ruleset_hash: {ruleset_hash[:12]}")
+        resume_hash = state.get("resume_hash")
+        if isinstance(resume_hash, str) and resume_hash:
+            click.echo(f"resume_hash:  {resume_hash[:12]}")
 
 
 def _resolve_config_path(config_path: Optional[Path]) -> Path:
