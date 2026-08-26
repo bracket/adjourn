@@ -996,8 +996,12 @@ class TestMnesticAdapterQueryCompile:
         with pytest.raises(ValueError, match="unbound variables"):
             adapter.parse_compiled_query(compiled_atom, obligations_atom)
 
-    def test_rejects_variable_in_derived_body(self, tmp_path: Path) -> None:
-        """A Variable in a derived-rule body literal is rejected."""
+    def test_accepts_variable_in_derived_body(self, tmp_path: Path) -> None:
+        """A Variable in a derived-rule body literal is accepted.
+        
+        Derived rules may contain variables as rule parameters; these are
+        not checked for groundness since they are legitimate rule variables.
+        """
         db_path = self._make_node_db(tmp_path)
         adapter = MnesticAdapter(db_path)
 
@@ -1015,8 +1019,15 @@ class TestMnesticAdapterQueryCompile:
         )
         obligations_atom = "obligations([])"
 
-        with pytest.raises(ValueError, match="unbound variables"):
-            adapter.parse_compiled_query(compiled_atom, obligations_atom)
+        result = adapter.parse_compiled_query(compiled_atom, obligations_atom)
+        assert result.store_name == "source"
+        assert result.projection_columns == ["outer_id"]
+        assert len(result.derived_rules) == 1
+        assert result.derived_rules[0].head.functor == "p"
+        assert len(result.goals) == 1
+        assert result.goals[0].kind == "derived"
+        assert result.goals[0].detail.head_functor == "p"
+        assert [a.value for a in result.goals[0].detail.args] == ["outer_id"]
 
     def test_rejects_variable_in_guard_argument(self, tmp_path: Path) -> None:
         """A Variable in a guard argument is rejected."""

@@ -293,7 +293,7 @@ class MnesticAdapter:
         goals_literals = self._extract_goals_list(goals_term)
 
         # --- Ground-invariant check ---
-        self._check_ground(compiled)
+        self._check_ground(goals_term)
 
         # --- Classify goals against schema and derived heads ---
         schema = self.discover_schema()
