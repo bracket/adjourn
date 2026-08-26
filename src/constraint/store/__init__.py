@@ -13,4 +13,6 @@ from .mnestic_adapter import (
     ColumnDescriptor as ColumnDescriptor,
     MnesticAdapter as MnesticAdapter,
     RelationDescriptor as RelationDescriptor,
+    lookup as lookup,
+    register as register,
 )

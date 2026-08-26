@@ -15,6 +15,46 @@ from typing import Any
 from mnestic import CozoDbPy
 
 
+# ---------------------------------------------------------------------------
+# Module-level store-name → MnesticAdapter registry
+# ---------------------------------------------------------------------------
+
+_registry: dict[str, MnesticAdapter] = {}
+
+
+def register(name: str, adapter: MnesticAdapter) -> None:
+    """Bind *name* to *adapter* in the module-level registry.
+
+    Args:
+        name: The store name to register under.
+        adapter: The MnesticAdapter instance to associate with *name*.
+    """
+    _registry[name] = adapter
+
+
+def lookup(name: str) -> MnesticAdapter:
+    """Return the MnesticAdapter registered under *name*.
+
+    Args:
+        name: The store name to look up.
+
+    Returns:
+        The registered MnesticAdapter instance.
+
+    Raises:
+        KeyError: If *name* has not been registered.
+    """
+    try:
+        return _registry[name]
+    except KeyError:
+        raise KeyError(f"Unknown mnestic store: '{name}'") from None
+
+
+# ---------------------------------------------------------------------------
+# Schema descriptors
+# ---------------------------------------------------------------------------
+
+
 @dataclass(frozen=True)
 class ColumnDescriptor:
     """Descriptor for a single column in a discovered relation."""

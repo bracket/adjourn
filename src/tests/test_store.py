@@ -16,6 +16,7 @@ from constraint.store import (
     FileRuleSetStore,
     RuleSetStore,
     build_store_from_config,
+    lookup,
 )
 
 
@@ -803,3 +804,41 @@ class TestMnesticStore:
             if isinstance(c.head, Compound) and c.head.functor == "query_rule"
         ]
         assert len(qr_clauses) == 1
+
+
+
+class TestMnesticAdapterRegistry:
+    """Tests for the store-name → MnesticAdapter registry."""
+
+    def test_registration_and_lookup(self, tmp_path: Path) -> None:
+        """A named MnesticRuleSetStore registers its adapter for lookup."""
+        db_path = tmp_path / "registry_test.db"
+        _create_mnestic_db(
+            str(db_path),
+            ":create item { code: String => val: Int }",
+        )
+        store = MnesticRuleSetStore(str(db_path), name="my_store")
+        # Trigger lazy load so registration happens
+        _ = store.ruleset_hash
+
+        adapter = lookup("my_store")
+        assert adapter is store._adapter
+
+    def test_lookup_unknown_name_raises(self) -> None:
+        """lookup on an unregistered name raises KeyError with a clear message."""
+        with pytest.raises(KeyError, match="Unknown mnestic store: 'no_such_store'"):
+            lookup("no_such_store")
+
+    def test_unnamed_store_does_not_register(self, tmp_path: Path) -> None:
+        """A store with name=None does not register anything."""
+        db_path = tmp_path / "unnamed.db"
+        _create_mnestic_db(
+            str(db_path),
+            ":create item { code: String => val: Int }",
+        )
+        store = MnesticRuleSetStore(str(db_path))  # no name
+        _ = store.ruleset_hash
+
+        # The registry should still be empty for any name
+        with pytest.raises(KeyError, match="Unknown mnestic store"):
+            lookup("anything")

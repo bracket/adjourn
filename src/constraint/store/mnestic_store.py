@@ -6,7 +6,7 @@ from pathlib import Path
 
 from constraint.parser.ast import Atom, Clause, Compound, Variable
 from constraint.parser.parser import parse_file
-from constraint.store.mnestic_adapter import MnesticAdapter, RelationDescriptor
+from constraint.store.mnestic_adapter import MnesticAdapter, RelationDescriptor, register
 from constraint.store.store import (
     RuleSetStore,
     StoreInfo,
@@ -109,6 +109,9 @@ class MnesticRuleSetStore(RuleSetStore):
         """Discover schema and generate clauses on first access."""
         if self._ruleset_hash is not None and self._clauses is not None:
             return
+        # Register the adapter under the store's configured name once.
+        if self.name is not None:
+            register(self.name, self._adapter)
         descriptors = self._adapter.discover_schema()
         base_clauses = _generate_clauses(descriptors)
         query_rule_clauses: list[Clause] = []
