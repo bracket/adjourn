@@ -571,3 +571,61 @@ class TestResumeStateYieldResumeKind:
         state = init_state("test_yield_rk")
         result = resume_state(state, self.ruleset)
         assert result["suspension"]["label"] == "bar"
+
+
+class TestResumeHashPreservation:
+    """Tests that resume_hash is preserved across resume_state steps."""
+
+    def setup_method(self) -> None:
+        self.ruleset = _parse_rules("rule(step_goal, yield(step1)).\n")
+
+    def test_resume_hash_survives_multiple_steps(self) -> None:
+        from constraint.meta import init_state, resume_state
+        from constraint.store import hash_clauses
+
+        ruleset_hash = hash_clauses(self.ruleset)
+        resume_hash = "test_resume_hash_value"
+
+        state = init_state("step_goal")
+        state["ruleset_hash"] = ruleset_hash
+        state["resume_hash"] = resume_hash
+
+        for i in range(3):
+            state = resume_state(state, self.ruleset)
+            assert "resume_hash" in state, f"resume_hash missing after step {i}"
+            assert state["resume_hash"] == resume_hash, \
+                f"resume_hash changed after step {i}: {state['resume_hash']}"
+            assert "ruleset_hash" in state, f"ruleset_hash missing after step {i}"
+
+    def test_resume_hash_preserved_when_absent(self) -> None:
+        """When resume_hash is not in the input, it must not appear in output."""
+        from constraint.meta import init_state, resume_state
+        from constraint.store import hash_clauses
+
+        ruleset_hash = hash_clauses(self.ruleset)
+
+        state = init_state("step_goal")
+        state["ruleset_hash"] = ruleset_hash
+        # Deliberately omit resume_hash
+
+        for i in range(3):
+            state = resume_state(state, self.ruleset)
+            assert "resume_hash" not in state, \
+                f"resume_hash unexpectedly present after step {i}"
+
+    def test_resume_hash_preserved_in_done_short_circuit(self) -> None:
+        """A done state short-circuits via dict(state), which preserves all keys."""
+        from constraint.meta import resume_state
+
+        state = {
+            "version": 0,
+            "original_goal": "true",
+            "branches": [],
+            "status": "done",
+            "ruleset_hash": "some_hash",
+            "resume_hash": "some_resume_hash",
+        }
+
+        state2 = resume_state(state, self.ruleset)
+        assert state2["resume_hash"] == "some_resume_hash"
+        assert state2["ruleset_hash"] == "some_hash"
