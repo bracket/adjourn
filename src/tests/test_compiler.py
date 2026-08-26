@@ -52,7 +52,7 @@ def _load_helpers() -> None:
         "user:query_rule(descendant(Anc, Desc), [ descendant(Anc, Mid), node(id: Desc, parent_id: Mid) ]).\n"
         "\n"
         "compile_demo(CompiledAtom, ObligationsAtom) :-\n"
-        "    Query = query(result(OuterId, NameText, OuterStart), \n"
+        "    Query = query(source:result(OuterId, NameText, OuterStart), \n"
         "                  ( node(id: OuterId, kind: 'function_definition', start_byte: OuterStart),\n"
         "                    descendant(OuterId, InnerId),\n"
         "                    node(id: InnerId, kind: 'function_definition'),\n"
@@ -67,7 +67,7 @@ def _load_helpers() -> None:
         "\n"
         "compile_unsupported(Status) :-\n"
         "    catch(\n"
-        "        (Query = query(result(X), (X > 5), _),\n"
+        "        (Query = query(source:result(X), (X > 5), _),\n"
         "         query_compiler:compile_query(Query, _, _),\n"
         "         Status = 'no_error'),\n"
         "        error(unsupported_builtin(_), _),\n"
@@ -75,7 +75,7 @@ def _load_helpers() -> None:
         "    ).\n"
         "\n"
         "compile_supported_neq(CompiledAtom) :-\n"
-        "    Query = query(result(X, Y), (X \\= Y), _),\n"
+        "    Query = query(source:result(X, Y), (X \\= Y), _),\n"
         "    query_compiler:compile_query(Query, CompiledAtom, _).\n"
     )
     janus.consult(path)
@@ -117,14 +117,14 @@ class TestCompileQuery:
         # (a term with unbound vars cannot be marshalled back to Python).
         struct_ok = janus.query_once(
             "read_term_from_atom(Atom, _T, []), "
-            "( _T = compiled_query(template(result, _), derived(_), goals(_)) "
+            "( _T = compiled_query(store(_), template(result, _), derived(_), goals(_)) "
             "  -> R = true ; R = false )",
             {"Atom": comp_atom},
         )
         assert struct_ok is not None
         assert struct_ok.get("R") == "true", (
             f"Compiled term {comp_atom} does not match "
-            f"compiled_query(template(result, _), derived(_), goals(_))"
+            f"compiled_query(store(_), template(result, _), derived(_), goals(_))"
         )
 
     def test_emitted_term_key_value_normalization(self) -> None:
@@ -169,7 +169,7 @@ class TestCompileQuery:
         # Check for the recursive rule: rule(descendant(_, _), [descendant(_, _), ...])
         derived_ok = janus.query_once(
             "read_term_from_atom(Atom, _T, []), "
-            "( ( _T = compiled_query(_, derived(_D), _), "
+            "( ( _T = compiled_query(_, _, derived(_D), _), "
             "    member(rule(descendant(_, _), [descendant(_, _)|_]), _D) ) "
             "  -> R = true ; R = false )",
             {"Atom": comp_atom},

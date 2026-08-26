@@ -58,7 +58,7 @@ def _load_helpers() -> None:
         "user:query_rule(descendant(Anc, Desc), [ descendant(Anc, Mid), node(id: Desc, parent_id: Mid) ]).\n"
         "\n"
         "reduce_worked_example(BagAtom) :-\n"
-        "    Goal = query(result(outer_id, name_text, outer_start),\n"
+        "    Goal = query(source:result(outer_id, name_text, outer_start),\n"
         "                 ( node(id: outer_id, kind: 'function_definition', start_byte: outer_start),\n"
         "                   descendant(outer_id, inner_id),\n"
         "                   node(id: inner_id, kind: 'function_definition'),\n"

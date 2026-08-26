@@ -14,14 +14,14 @@
 % compile_query(+QueryGoal, -CompiledTermAtom, -Obligations)
 % Compile a query/3 goal into serialized intermediate term and obligations list.
 compile_query(QueryGoal, CompiledTermAtom, [ProjCols|BaseObligs]) :-
-    QueryGoal = query(Template, Body, _),
+    QueryGoal = query(Store:Template, Body, _),
     body_goals(Body, GoalsList),
     map_goals(GoalsList, EmittedGoals),
     collect_derived(GoalsList, DerivedRules),
     template_of(Template, TemplateTerm),
     projection_cols(Template, ProjCols),
     base_obligations(GoalsList, BaseObligs),
-    CompiledTerm = compiled_query(TemplateTerm, derived(DerivedRules), goals(EmittedGoals)),
+    CompiledTerm = compiled_query(store(Store), TemplateTerm, derived(DerivedRules), goals(EmittedGoals)),
     term_to_atom(CompiledTerm, CompiledTermAtom).
 
 % body_goals(+Body, -Goals)
