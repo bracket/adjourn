@@ -11,7 +11,8 @@ import click
 
 from constraint.config import Config
 from constraint.constraint_foreign import load_foreign_plugins
-from constraint.meta import init_state, resume_state
+from constraint.meta import resume_state
+from constraint.state import init_state, set_resume_hash, resolve_ruleset_hash
 from constraint.runner import Runner
 from constraint.state_store import JsonFileStateStore
 from constraint.store import AggregateRuleSetStore, StoreInfo, build_store_from_config
@@ -71,11 +72,8 @@ def cmd_init(
     try:
         config = Config(_resolve_config_path(config_path))
         load_foreign_plugins(config.foreign_plugins)
-        state = init_state(query)
-
-        ruleset_hash = _resolve_ruleset_hash(ruleset_name, config_path)
-        state["ruleset_hash"] = ruleset_hash
-        state["resume_hash"] = ruleset_hash
+        store = build_store_from_config(config)
+        state = init_state(query, ruleset_name, store, config)
 
         state_file.parent.mkdir(parents=True, exist_ok=True)
         state_file.write_text(json.dumps(state, indent=2) + "\n")
@@ -151,6 +149,75 @@ def cmd_resume(
         sys.exit(1)
 
     _print_status_summary(new_state)
+
+
+@main.command("set-resume")
+@click.argument("ruleset_name")
+@click.argument("state_file", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "-o",
+    "--output",
+    "output_file",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output file path (default: rewrite state_file in place). Use '-' for stdout.",
+)
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Path to the project config file.",
+)
+def cmd_set_resume(
+    ruleset_name: str,
+    state_file: Path,
+    output_file: Optional[Path],
+    config_path: Optional[Path],
+) -> None:
+    """Set or update the resume_hash in a state file.
+
+    RULESET_NAME is a ruleset alias, store name, system alias, or raw hash.
+    STATE_FILE is the path to the existing state JSON.
+
+    The resolved ruleset hash is written as the ``resume_hash`` field.
+    The ``ruleset_hash`` field is left untouched.
+
+    Examples:
+
+        constraint set-resume other-rules state.json
+        constraint set-resume other-rules state.json -o updated_state.json
+        constraint set-resume other-rules state.json -o -
+    """
+    try:
+        raw = state_file.read_text()
+        state = json.loads(raw)
+    except OSError as exc:
+        click.echo(f"Error reading {state_file}: {exc}", err=True)
+        sys.exit(1)
+    except json.JSONDecodeError as exc:
+        click.echo(f"Error parsing {state_file}: {exc}", err=True)
+        sys.exit(1)
+
+    try:
+        config = Config(_resolve_config_path(config_path))
+        store = build_store_from_config(config)
+        new_state = set_resume_hash(state, ruleset_name, store, config)
+    except (ValueError, KeyError, OSError) as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+    serialized = json.dumps(new_state, indent=2) + "\n"
+
+    if output_file is None:
+        # Rewrite in place
+        state_file.write_text(serialized)
+    elif str(output_file) == "-":
+        # Print to stdout
+        click.echo(serialized, nl=False)
+    else:
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        output_file.write_text(serialized)
 
 
 @main.group("store")
@@ -252,60 +319,6 @@ def _load_store(config_path: Optional[Path]) -> AggregateRuleSetStore:
     """Load the configured aggregate ruleset store."""
     config = Config(_resolve_config_path(config_path))
     return build_store_from_config(config)
-
-
-def _resolve_ruleset_hash(ruleset_name: str, config_path: Optional[Path]) -> str:
-    """Resolve a ruleset alias or raw hash to a known ruleset hash."""
-    resolved_config_path = _resolve_config_path(config_path)
-    config = Config(resolved_config_path)
-    store = build_store_from_config(config)
-    if ruleset_name.startswith("@"):
-        ruleset_hash = _resolve_system_alias(ruleset_name, store)
-    elif (store_name_hash := _resolve_store_name_hash(ruleset_name, store)) is not None:
-        ruleset_hash = store_name_hash
-    elif ruleset_name in config.aliases:
-        ruleset_hash = config.alias_hash(ruleset_name)
-    else:
-        ruleset_hash = ruleset_name
-    if not store.owns(ruleset_hash):
-        raise ValueError(
-            f"Unknown ruleset '{ruleset_name}': not a configured alias or known hash"
-        )
-    return ruleset_hash
-
-
-def _resolve_system_alias(
-    name: str,
-    store: AggregateRuleSetStore,
-) -> str:
-    """Resolve a reserved system alias to a ruleset hash."""
-    if name == "@top":
-        return store.ruleset_hash
-    if name != "@first":
-        raise ValueError(f"Unknown system alias: {name}")
-    first_store_hash = _first_non_system_store_hash(store)
-    if first_store_hash is None:
-        raise ValueError("System alias '@first' requires at least one configured store")
-    return first_store_hash
-
-
-def _first_non_system_store_hash(store: AggregateRuleSetStore) -> str | None:
-    """Return the hash of the first configured non-system store."""
-    for store_info in store.store_info_list():
-        if store_info.type != "system":
-            return store_info.hash
-    return None
-
-
-def _resolve_store_name_hash(
-    ruleset_name: str,
-    store: AggregateRuleSetStore,
-) -> str | None:
-    """Resolve a configured per-store name to its ruleset hash."""
-    for store_info in store.store_info_list():
-        if store_info.name == ruleset_name:
-            return store_info.hash
-    return None
 
 
 def _format_store_info_raw(store_info_list: list[StoreInfo]) -> str:

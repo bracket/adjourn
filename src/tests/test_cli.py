@@ -880,3 +880,149 @@ class TestStoreCommand:
 
         assert result.exit_code == 0, result.output
         assert result.output.startswith("[\n  {")
+
+class TestSetResumeCommand:
+    """Tests for the ``set-resume`` subcommand."""
+
+    def test_set_resume_help(self, runner: CliRunner) -> None:
+        """set-resume --help should display usage information."""
+        result = runner.invoke(main, ["set-resume", "--help"])
+        assert result.exit_code == 0
+        assert "RULESET_NAME" in result.output or "ruleset" in result.output.lower()
+
+    def test_set_resume_updates_resume_hash_in_place(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """set-resume should update resume_hash and leave ruleset_hash untouched."""
+        config_path = _write_config(
+            tmp_path,
+            {"first_rules": "p(a).\n", "second_rules": "q(b).\n"},
+        )
+        state_file = tmp_path / "state.json"
+        # Init with first_rules (resolved via alias)
+        result_init = runner.invoke(
+            main,
+            ["init", "true", str(state_file), "--ruleset", "first_rules", "--config", str(config_path)],
+        )
+        assert result_init.exit_code == 0, result_init.output
+        state_before = json.loads(state_file.read_text())
+        old_ruleset_hash = state_before["ruleset_hash"]
+        old_resume_hash = state_before["resume_hash"]
+
+        # set-resume to second_rules (resolved via alias)
+        result = runner.invoke(
+            main,
+            ["set-resume", "second_rules", str(state_file), "--config", str(config_path)],
+        )
+        assert result.exit_code == 0, result.output
+
+        state_after = json.loads(state_file.read_text())
+        assert state_after["ruleset_hash"] == old_ruleset_hash
+        assert state_after["resume_hash"] != old_resume_hash
+        second_hash = FileRuleSetStore(tmp_path / "rules" / "second_rules.pl").known_rulesets()[0]
+        assert state_after["resume_hash"] == second_hash
+
+    def test_set_resume_output_to_different_file(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """-o to a distinct file writes there and leaves input unchanged."""
+        config_path = _write_config(
+            tmp_path,
+            {"first_rules": "p(a).\n", "second_rules": "q(b).\n"},
+        )
+        state_file = tmp_path / "state.json"
+        result_init = runner.invoke(
+            main,
+            ["init", "true", str(state_file), "--ruleset", "first_rules", "--config", str(config_path)],
+        )
+        assert result_init.exit_code == 0, result_init.output
+        state_before = json.loads(state_file.read_text())
+
+        out_file = tmp_path / "updated.json"
+        result = runner.invoke(
+            main,
+            [
+                "set-resume", "second_rules", str(state_file),
+                "-o", str(out_file), "--config", str(config_path),
+            ],
+        )
+        assert result.exit_code == 0, result.output
+
+        # Input file unchanged
+        assert json.loads(state_file.read_text()) == state_before
+        # Output file has updated resume_hash
+        state_out = json.loads(out_file.read_text())
+        assert state_out["ruleset_hash"] == state_before["ruleset_hash"]
+        assert state_out["resume_hash"] != state_before["resume_hash"]
+
+    def test_set_resume_output_to_stdout(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """-o - should print JSON to stdout."""
+        config_path = _write_config(
+            tmp_path,
+            {"first_rules": "p(a).\n", "second_rules": "q(b).\n"},
+        )
+        state_file = tmp_path / "state.json"
+        result_init = runner.invoke(
+            main,
+            ["init", "true", str(state_file), "--ruleset", "first_rules", "--config", str(config_path)],
+        )
+        assert result_init.exit_code == 0, result_init.output
+        state_before = json.loads(state_file.read_text())
+
+        result = runner.invoke(
+            main,
+            [
+                "set-resume", "second_rules", str(state_file),
+                "-o", "-", "--config", str(config_path),
+            ],
+        )
+        assert result.exit_code == 0, result.output
+
+        # Input file unchanged
+        assert json.loads(state_file.read_text()) == state_before
+        # Stdout contains valid JSON with updated resume_hash
+        state_stdout = json.loads(result.output)
+        assert state_stdout["ruleset_hash"] == state_before["ruleset_hash"]
+        assert state_stdout["resume_hash"] != state_before["resume_hash"]
+
+    def test_set_resume_unknown_ruleset_fails(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """An unknown ruleset name should exit non-zero with an error."""
+        config_path = _write_config(
+            tmp_path,
+            {"test_rules": NONEMPTY_RULESET},
+        )
+        state_file = tmp_path / "state.json"
+        result_init = runner.invoke(
+            main,
+            ["init", "true", str(state_file), "--ruleset", "test_rules", "--config", str(config_path)],
+        )
+        assert result_init.exit_code == 0, result_init.output
+
+        result = runner.invoke(
+            main,
+            ["set-resume", "nonexistent", str(state_file), "--config", str(config_path)],
+        )
+        assert result.exit_code != 0
+        assert "Unknown ruleset" in result.output
+
+    def test_set_resume_nonexistent_state_file_fails(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """A nonexistent state file should exit non-zero."""
+        config_path = _write_config(
+            tmp_path,
+            {"test_rules": NONEMPTY_RULESET},
+        )
+        result = runner.invoke(
+            main,
+            [
+                "set-resume", "test_rules",
+                str(tmp_path / "nonexistent.json"),
+                "--config", str(config_path),
+            ],
+        )
+        assert result.exit_code != 0
