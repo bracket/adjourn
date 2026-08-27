@@ -113,24 +113,62 @@ def _git_rev_parse(arg: Any) -> str:
     return result.stdout.strip()
 
 # ---------------------------------------------------------------------------
-# Stub callout: mnestic_query (query/3 reduction)
+# Mnestic query callout (query/3 reduction)
 # ---------------------------------------------------------------------------
+
+from constraint.parser import Compound, parse_term
+from constraint.store.mnestic_adapter import MnesticAdapter, lookup
 
 
 @register("mnestic_query")
 def _mnestic_query(arg: Any) -> list[list[str | int]]:
-    """Stub for the mnestic query adapter.
+    """Execute a compiled query against a registered mnestic store.
 
     Accepts a 2-element list ``[CompiledTermAtom, ObligationsAtom]`` where
-    both elements are atom strings (marshalled from Prolog).  Returns canned
-    positional value-lists in projection column order.
+    both elements are atom strings (marshalled from Prolog).  Parses the
+    compiled term to extract the store name, resolves the adapter via the
+    module-level registry, assembles and executes the CozoScript, and
+    returns the raw value-lists.
 
     Args:
         arg: A 2-element list ``[compiled_term_atom, obligations_atom]``.
 
     Returns:
-        A list of value-lists, each in projection column order.  For the
-        worked example this returns ``[['n_outer', 'outer_function', 0]]``.
+        A list of value-lists, each in projection column order.
+
+    Raises:
+        ValueError: If the compiled term is malformed or the store name is
+            not registered.
     """
-    # Canned response for the worked example.
-    return [["n_outer", "outer_function", 0]]
+    if not isinstance(arg, list) or len(arg) != 2:
+        raise ValueError(
+            f"mnestic_query expects a 2-element list [CompiledAtom, ObligationsAtom], "
+            f"got {arg!r}"
+        )
+    compiled_atom, obligations_atom = arg
+
+    # Parse the compiled atom enough to read the store(Name) field.
+    compiled = parse_term(compiled_atom)
+    if not isinstance(compiled, Compound) or compiled.functor != "compiled_query":
+        raise ValueError(
+            f"Expected compiled_query/4 term, got "
+            f"{compiled.functor if isinstance(compiled, Compound) else type(compiled).__name__}"
+        )
+    if len(compiled.args) != 4:
+        raise ValueError(
+            f"Expected compiled_query/4 with 4 arguments, got {len(compiled.args)}"
+        )
+    store_term = compiled.args[0]
+    store_name = MnesticAdapter._extract_store_name(store_term)
+
+    # Resolve the adapter via the registry.
+    try:
+        adapter = lookup(store_name)
+    except KeyError:
+        raise ValueError(
+            f"mnestic_query: store '{store_name}' is not registered. "
+            "Ensure the store is configured and loaded before running queries."
+        ) from None
+
+    # Delegate to compile_and_run and return raw value-lists.
+    return adapter.compile_and_run(compiled_atom, obligations_atom)

@@ -79,8 +79,8 @@ reduce_goal(foreign(Fn, In, Out), Gs, Rest, Event, State1) :-
 
 % query/3: compile and reduce via foreign/3 callout.
 % Placed before the general user:rule/2 dispatch clause.
-reduce_goal(query(Template, Query, Bag), Gs, Rest, Event, State1) :-
-    query_compiler:compile_query(query(Template, Query, Bag), CompiledAtom, Obligations),
+reduce_goal(query(Store:Template, Query, Bag), Gs, Rest, Event, State1) :-
+    query_compiler:compile_query(query(Store:Template, Query, Bag), CompiledAtom, Obligations),
     term_to_atom(Obligations, ObligationsAtom),
     Template =.. [F|_],
     % Reduce foreign(mnestic_query, ...) through the existing foreign/3 path

@@ -16,6 +16,7 @@ from constraint.store import (
     FileRuleSetStore,
     RuleSetStore,
     build_store_from_config,
+    lookup,
 )
 
 
@@ -470,6 +471,9 @@ from constraint.store import (
     MnesticRuleSetStore,
     ColumnDescriptor,
     RelationDescriptor,
+    BaseLiteral,
+    DerivedLiteral,
+    Guard,
 )
 from constraint.parser.ast import Variable
 
@@ -803,3 +807,637 @@ class TestMnesticStore:
             if isinstance(c.head, Compound) and c.head.functor == "query_rule"
         ]
         assert len(qr_clauses) == 1
+
+
+
+class TestMnesticAdapterRegistry:
+    """Tests for the store-name → MnesticAdapter registry."""
+
+    def test_registration_and_lookup(self, tmp_path: Path) -> None:
+        """A named MnesticRuleSetStore registers its adapter for lookup."""
+        db_path = tmp_path / "registry_test.db"
+        _create_mnestic_db(
+            str(db_path),
+            ":create item { code: String => val: Int }",
+        )
+        store = MnesticRuleSetStore(str(db_path), name="my_store")
+        # Trigger lazy load so registration happens
+        _ = store.ruleset_hash
+
+        adapter = lookup("my_store")
+        assert adapter is store._adapter
+
+    def test_lookup_unknown_name_raises(self) -> None:
+        """lookup on an unregistered name raises KeyError with a clear message."""
+        with pytest.raises(KeyError, match="Unknown mnestic store: 'no_such_store'"):
+            lookup("no_such_store")
+
+    def test_unnamed_store_does_not_register(self, tmp_path: Path) -> None:
+        """A store with name=None does not register anything."""
+        db_path = tmp_path / "unnamed.db"
+        _create_mnestic_db(
+            str(db_path),
+            ":create item { code: String => val: Int }",
+        )
+        store = MnesticRuleSetStore(str(db_path))  # no name
+        _ = store.ruleset_hash
+
+        # The registry should still be empty for any name
+        with pytest.raises(KeyError, match="Unknown mnestic store"):
+            lookup("anything")
+
+# ---------------------------------------------------------------------------
+# MnesticAdapter compiled-query parsing tests
+# ---------------------------------------------------------------------------
+
+
+class TestMnesticAdapterQueryCompile:
+    """Tests for MnesticAdapter.parse_compiled_query()."""
+
+    def _make_node_db(self, tmp_path: Path) -> str:
+        """Create a small rocksdb database with a ``node`` relation.
+
+        Returns the path string.
+        """
+        db_path = tmp_path / "query_compile.db"
+        _create_mnestic_db(
+            str(db_path),
+            (
+                ":create node {"
+                "    id: Int"
+                "    =>"
+                "    kind: String,"
+                "    parent_id: Int?,"
+                "    start_byte: Int,"
+                "    end_byte: Int,"
+                "    start_row: Int,"
+                "    start_col: Int,"
+                "    end_row: Int,"
+                "    end_col: Int,"
+                "    is_named: Bool,"
+                "    text: String,"
+                "}"
+            ),
+        )
+        return str(db_path)
+
+    # ------------------------------------------------------------------
+    # Success path
+    # ------------------------------------------------------------------
+
+    def test_well_formed_compiled_query(self, tmp_path: Path) -> None:
+        """A well-formed compiled atom parses and classifies correctly."""
+        db_path = self._make_node_db(tmp_path)
+        adapter = MnesticAdapter(db_path)
+
+        compiled_atom = (
+            "compiled_query("
+            "    store(source),"
+            "    template(result, [outer_id, name_text, outer_start]),"
+            "    derived(["
+            "        rule(descendant(anc, desc), [ node([id-desc, parent_id-anc]) ]),"
+            "        rule(descendant(anc, desc), [ descendant(anc, mid), node([id-desc, parent_id-mid]) ])"
+            "    ]),"
+            "    goals(["
+            "        node([id-outer_id, kind-'function_definition', start_byte-outer_start]),"
+            "        descendant(outer_id, inner_id),"
+            "        node([id-inner_id, kind-'function_definition']),"
+            "        '!='(outer_id, inner_id),"
+            "        node([id-outer_id, kind-'identifier', text-name_text])"
+            "    ])"
+            ")"
+        )
+        obligations_atom = "obligations([])"
+
+        result = adapter.parse_compiled_query(compiled_atom, obligations_atom)
+
+        # Store name
+        assert result.store_name == "source"
+
+        # Projection columns
+        assert result.projection_columns == ["outer_id", "name_text", "outer_start"]
+
+        # Derived rules
+        assert len(result.derived_rules) == 2
+        assert result.derived_rules[0].head.functor == "descendant"
+        assert result.derived_rules[1].head.functor == "descendant"
+
+        # Goals — 5 literals
+        assert len(result.goals) == 5
+
+        # Goal 0: base literal node(...)
+        assert result.goals[0].kind == "base"
+        base0 = result.goals[0].detail
+        assert isinstance(base0, BaseLiteral)
+        assert base0.relation == "node"
+        assert base0.column_bindings == {
+            "id": "outer_id",
+            "kind": "function_definition",
+            "start_byte": "outer_start",
+        }
+
+        # Goal 1: derived literal descendant(...)
+        assert result.goals[1].kind == "derived"
+        derived1 = result.goals[1].detail
+        assert isinstance(derived1, DerivedLiteral)
+        assert derived1.head_functor == "descendant"
+        assert [a.value for a in derived1.args] == ["outer_id", "inner_id"]
+
+        # Goal 2: base literal node(...)
+        assert result.goals[2].kind == "base"
+        base2 = result.goals[2].detail
+        assert isinstance(base2, BaseLiteral)
+        assert base2.relation == "node"
+        assert base2.column_bindings == {
+            "id": "inner_id",
+            "kind": "function_definition",
+        }
+
+        # Goal 3: guard !=
+        assert result.goals[3].kind == "guard"
+        guard3 = result.goals[3].detail
+        assert isinstance(guard3, Guard)
+        assert guard3.functor == "!="
+        assert [a.value for a in guard3.args] == ["outer_id", "inner_id"]
+
+        # Goal 4: base literal node(...)
+        assert result.goals[4].kind == "base"
+        base4 = result.goals[4].detail
+        assert isinstance(base4, BaseLiteral)
+        assert base4.relation == "node"
+        assert base4.column_bindings == {
+            "id": "outer_id",
+            "kind": "identifier",
+            "text": "name_text",
+        }
+
+    # ------------------------------------------------------------------
+    # Ground-invariant rejection
+    # ------------------------------------------------------------------
+
+    def test_rejects_variable_in_base_literal_value(self, tmp_path: Path) -> None:
+        """A Variable in a base-literal value position is rejected."""
+        db_path = self._make_node_db(tmp_path)
+        adapter = MnesticAdapter(db_path)
+
+        # Variable 'X' in a value position
+        compiled_atom = (
+            "compiled_query("
+            "    store(source),"
+            "    template(result, [outer_id]),"
+            "    derived([]),"
+            "    goals(["
+            "        node([id-X])"
+            "    ])"
+            ")"
+        )
+        obligations_atom = "obligations([])"
+
+        with pytest.raises(ValueError, match="unbound variables"):
+            adapter.parse_compiled_query(compiled_atom, obligations_atom)
+
+    def test_accepts_variable_in_derived_body(self, tmp_path: Path) -> None:
+        """A Variable in a derived-rule body literal is accepted.
+        
+        Derived rules may contain variables as rule parameters; these are
+        not checked for groundness since they are legitimate rule variables.
+        """
+        db_path = self._make_node_db(tmp_path)
+        adapter = MnesticAdapter(db_path)
+
+        compiled_atom = (
+            "compiled_query("
+            "    store(source),"
+            "    template(result, [outer_id]),"
+            "    derived(["
+            "        rule(p(X), [ q([id-X]) ])"
+            "    ]),"
+            "    goals(["
+            "        p(outer_id)"
+            "    ])"
+            ")"
+        )
+        obligations_atom = "obligations([])"
+
+        result = adapter.parse_compiled_query(compiled_atom, obligations_atom)
+        assert result.store_name == "source"
+        assert result.projection_columns == ["outer_id"]
+        assert len(result.derived_rules) == 1
+        assert result.derived_rules[0].head.functor == "p"
+        assert len(result.goals) == 1
+        assert result.goals[0].kind == "derived"
+        assert result.goals[0].detail.head_functor == "p"
+        assert [a.value for a in result.goals[0].detail.args] == ["outer_id"]
+
+    def test_rejects_variable_in_guard_argument(self, tmp_path: Path) -> None:
+        """A Variable in a guard argument is rejected."""
+        db_path = self._make_node_db(tmp_path)
+        adapter = MnesticAdapter(db_path)
+
+        compiled_atom = (
+            "compiled_query("
+            "    store(source),"
+            "    template(result, [outer_id]),"
+            "    derived([]),"
+            "    goals(["
+            "        node([id-outer_id]),"
+            "        '!='(outer_id, X)"
+            "    ])"
+            ")"
+        )
+        obligations_atom = "obligations([])"
+
+        with pytest.raises(ValueError, match="unbound variables"):
+            adapter.parse_compiled_query(compiled_atom, obligations_atom)
+
+    # ------------------------------------------------------------------
+    # Missing relation / column rejection
+    # ------------------------------------------------------------------
+
+    def test_rejects_missing_relation(self, tmp_path: Path) -> None:
+        """A literal naming a relation not in schema or derived heads is rejected."""
+        db_path = self._make_node_db(tmp_path)
+        adapter = MnesticAdapter(db_path)
+
+        compiled_atom = (
+            "compiled_query("
+            "    store(source),"
+            "    template(result, [x]),"
+            "    derived([]),"
+            "    goals(["
+            "        nonexistent([id-x])"
+            "    ])"
+            ")"
+        )
+        obligations_atom = "obligations([])"
+
+        with pytest.raises(ValueError, match="Unknown goal literal 'nonexistent'"):
+            adapter.parse_compiled_query(compiled_atom, obligations_atom)
+
+    def test_rejects_missing_column(self, tmp_path: Path) -> None:
+        """A base literal with a column not in the schema relation is rejected."""
+        db_path = self._make_node_db(tmp_path)
+        adapter = MnesticAdapter(db_path)
+
+        compiled_atom = (
+            "compiled_query("
+            "    store(source),"
+            "    template(result, [x]),"
+            "    derived([]),"
+            "    goals(["
+            "        node([id-x, bogus_column-x])"
+            "    ])"
+            ")"
+        )
+        obligations_atom = "obligations([])"
+
+        with pytest.raises(ValueError, match="Unknown column 'bogus_column'"):
+            adapter.parse_compiled_query(compiled_atom, obligations_atom)
+
+    # ------------------------------------------------------------------
+    # Guard-set enforcement
+    # ------------------------------------------------------------------
+
+    def test_rejects_unknown_guard_functor(self, tmp_path: Path) -> None:
+        """A guard functor outside {!=, column-constant} is rejected."""
+        db_path = self._make_node_db(tmp_path)
+        adapter = MnesticAdapter(db_path)
+
+        # '<' is not a recognized guard, not a derived head, not a schema relation
+        compiled_atom = (
+            "compiled_query("
+            "    store(source),"
+            "    template(result, [x, y]),"
+            "    derived([]),"
+            "    goals(["
+            "        node([id-x]),"
+            "        '<'(x, y)"
+            "    ])"
+            ")"
+        )
+        obligations_atom = "obligations([])"
+
+        with pytest.raises(ValueError, match="Unknown goal literal"):
+            adapter.parse_compiled_query(compiled_atom, obligations_atom)
+
+    def test_accepts_column_constant_match(self, tmp_path: Path) -> None:
+        """A column-constant match (constant atom in base-literal value) is accepted."""
+        db_path = self._make_node_db(tmp_path)
+        adapter = MnesticAdapter(db_path)
+
+        compiled_atom = (
+            "compiled_query("
+            "    store(source),"
+            "    template(result, [outer_id]),"
+            "    derived([]),"
+            "    goals(["
+            "        node([id-outer_id, kind-'function_definition'])"
+            "    ])"
+            ")"
+        )
+        obligations_atom = "obligations([])"
+
+        result = adapter.parse_compiled_query(compiled_atom, obligations_atom)
+        assert len(result.goals) == 1
+        assert result.goals[0].kind == "base"
+        base = result.goals[0].detail
+        assert isinstance(base, BaseLiteral)
+        assert base.column_bindings["kind"] == "function_definition"
+
+
+# ---------------------------------------------------------------------------
+# MnesticAdapter CozoScript assembly and compile_and_run tests
+# ---------------------------------------------------------------------------
+
+
+class TestMnesticAdapterAssembly:
+    """Tests for MnesticAdapter CozoScript assembly and compile_and_run."""
+
+    def _make_node_db_with_data(self, tmp_path: Path) -> str:
+        """Create a rocksdb database with a ``node`` relation and sample data.
+
+        Inserts nodes matching the worked-example query so that
+        ``compile_and_run`` returns predictable results.
+
+        Returns the path string.
+        """
+        db_path = tmp_path / "assembly_test.db"
+        _create_mnestic_db(
+            str(db_path),
+            (
+                ":create node {"
+                "    id: Int"
+                "    =>"
+                "    kind: String,"
+                "    parent_id: Int?,"
+                "    start_byte: Int,"
+                "    end_byte: Int,"
+                "    start_row: Int,"
+                "    start_col: Int,"
+                "    end_row: Int,"
+                "    end_col: Int,"
+                "    is_named: Bool,"
+                "    text: String,"
+                "}"
+            ),
+        )
+        # Insert sample data via import_relations
+        from mnestic import CozoDbPy
+        db = CozoDbPy("rocksdb", str(db_path), "")
+        db.import_relations(data={
+            "node": {
+                "headers": [
+                    "id", "kind", "parent_id", "start_byte", "end_byte",
+                    "start_row", "start_col", "end_row", "end_col",
+                    "is_named", "text"
+                ],
+                "rows": [
+                    [1, "function_definition", None, 0, 20, 0, 0, 0, 20, True, "outer_fn"],
+                    [2, "function_definition", 1, 10, 15, 1, 0, 1, 5, True, "inner_fn"],
+                    [3, "identifier", 1, 5, 8, 0, 5, 0, 8, True, "name_text"],
+                ],
+            }
+        })
+        db.close()
+        return str(db_path)
+
+    def test_assemble_script_well_formed(self, tmp_path: Path) -> None:
+        """_assemble_script produces correct CozoScript for the worked example."""
+        db_path = self._make_node_db_with_data(tmp_path)
+        adapter = MnesticAdapter(db_path)
+
+        compiled_atom = (
+            "compiled_query("
+            "    store(source),"
+            "    template(result, [outer_id, name_text, outer_start]),"
+            "    derived(["
+            "        rule(descendant(anc, desc), [ node([id-desc, parent_id-anc]) ]),"
+            "        rule(descendant(anc, desc), [ descendant(anc, mid), node([id-desc, parent_id-mid]) ])"
+            "    ]),"
+            "    goals(["
+            "        node([id-outer_id, kind-'function_definition', start_byte-outer_start]),"
+            "        descendant(outer_id, inner_id),"
+            "        node([id-inner_id, kind-'function_definition']),"
+            "        '!='(outer_id, inner_id),"
+            "        node([parent_id-outer_id, kind-'identifier', text-name_text])"
+            "    ])"
+            ")"
+        )
+        obligations_atom = "obligations([])"
+
+        parsed = adapter.parse_compiled_query(compiled_atom, obligations_atom)
+        script = adapter._assemble_script(parsed)
+
+        # Verify derived rules appear before the query head
+        lines = script.strip().split("\n")
+        assert len(lines) == 3
+        assert lines[0].startswith("descendant[anc, desc] :=")
+        assert lines[1].startswith("descendant[anc, desc] :=")
+        assert lines[2].startswith("?[outer_id, name_text, outer_start] :=")
+
+        # Verify base literals use asterisk prefix
+        assert "*node{" in script
+
+        # Verify column-constant is single-quoted
+        assert "'function_definition'" in script
+        assert "'identifier'" in script
+
+        # Verify column tokens are unquoted
+        assert "outer_id" in script
+        assert "inner_id" in script
+        assert "name_text" in script
+
+        # Verify guard renders as inline !=
+        assert "outer_id != inner_id" in script
+
+    def test_compile_and_run_returns_rows(self, tmp_path: Path) -> None:
+        """compile_and_run executes the assembled script and returns rows."""
+        db_path = self._make_node_db_with_data(tmp_path)
+        adapter = MnesticAdapter(db_path)
+
+        compiled_atom = (
+            "compiled_query("
+            "    store(source),"
+            "    template(result, [outer_id, name_text, outer_start]),"
+            "    derived(["
+            "        rule(descendant(anc, desc), [ node([id-desc, parent_id-anc]) ]),"
+            "        rule(descendant(anc, desc), [ descendant(anc, mid), node([id-desc, parent_id-mid]) ])"
+            "    ]),"
+            "    goals(["
+            "        node([id-outer_id, kind-'function_definition', start_byte-outer_start]),"
+            "        descendant(outer_id, inner_id),"
+            "        node([id-inner_id, kind-'function_definition']),"
+            "        '!='(outer_id, inner_id),"
+            "        node([parent_id-outer_id, kind-'identifier', text-name_text])"
+            "    ])"
+            ")"
+        )
+        obligations_atom = "obligations([])"
+
+        rows = adapter.compile_and_run(compiled_atom, obligations_atom)
+
+        # Expect one result row: [outer_id, name_text, outer_start]
+        # outer_id=1 (function_definition), name_text='name_text', outer_start=0
+        assert len(rows) == 1
+        row = rows[0]
+        assert len(row) == 3
+        assert row[0] == 1  # outer_id
+        assert row[1] == "name_text"  # name_text
+        assert row[2] == 0  # outer_start
+
+    def test_compile_and_run_empty_result(self, tmp_path: Path) -> None:
+        """compile_and_run returns empty list when no rows match."""
+        db_path = self._make_node_db_with_data(tmp_path)
+        adapter = MnesticAdapter(db_path)
+
+        # Query for a non-existent kind
+        compiled_atom = (
+            "compiled_query("
+            "    store(source),"
+            "    template(result, [x]),"
+            "    derived([]),"
+            "    goals(["
+            "        node([id-x, kind-'nonexistent'])"
+            "    ])"
+            ")"
+        )
+        obligations_atom = "obligations([])"
+
+        rows = adapter.compile_and_run(compiled_atom, obligations_atom)
+        assert rows == []
+
+    def test_compile_and_run_with_integer_value(self, tmp_path: Path) -> None:
+        """compile_and_run handles integer values in base literals."""
+        db_path = self._make_node_db_with_data(tmp_path)
+        adapter = MnesticAdapter(db_path)
+
+        compiled_atom = (
+            "compiled_query("
+            "    store(source),"
+            "    template(result, [x]),"
+            "    derived([]),"
+            "    goals(["
+            "        node([id-x, start_byte-0])"
+            "    ])"
+            ")"
+        )
+        obligations_atom = "obligations([])"
+
+        rows = adapter.compile_and_run(compiled_atom, obligations_atom)
+        # Node with id=1 has start_byte=0
+        assert len(rows) == 1
+        assert rows[0][0] == 1
+
+
+class TestMnesticQueryCallout:
+    """Tests for the _mnestic_query foreign callout."""
+
+    def _make_node_db_with_data(self, tmp_path: Path) -> str:
+        """Create a rocksdb database with a ``node`` relation and sample data."""
+        db_path = tmp_path / "callout_test.db"
+        _create_mnestic_db(
+            str(db_path),
+            (
+                ":create node {"
+                "    id: Int"
+                "    =>"
+                "    kind: String,"
+                "    parent_id: Int?,"
+                "    start_byte: Int,"
+                "    end_byte: Int,"
+                "    start_row: Int,"
+                "    start_col: Int,"
+                "    end_row: Int,"
+                "    end_col: Int,"
+                "    is_named: Bool,"
+                "    text: String,"
+                "}"
+            ),
+        )
+        from mnestic import CozoDbPy
+        db = CozoDbPy("rocksdb", str(db_path), "")
+        db.import_relations(data={
+            "node": {
+                "headers": [
+                    "id", "kind", "parent_id", "start_byte", "end_byte",
+                    "start_row", "start_col", "end_row", "end_col",
+                    "is_named", "text"
+                ],
+                "rows": [
+                    [1, "function_definition", None, 0, 20, 0, 0, 0, 20, True, "outer_fn"],
+                    [2, "function_definition", 1, 10, 15, 1, 0, 1, 5, True, "inner_fn"],
+                    [3, "identifier", 1, 5, 8, 0, 5, 0, 8, True, "name_text"],
+                ],
+            }
+        })
+        db.close()
+        return str(db_path)
+
+    def test_callout_success_path(self, tmp_path: Path) -> None:
+        """_mnestic_query returns correct rows for a registered store."""
+        from constraint.constraint_foreign import _mnestic_query
+        from constraint.store.mnestic_adapter import register, MnesticAdapter
+
+        db_path = self._make_node_db_with_data(tmp_path)
+        adapter = MnesticAdapter(db_path)
+        register("test_store", adapter)
+
+        compiled_atom = (
+            "compiled_query("
+            "    store(test_store),"
+            "    template(result, [outer_id, name_text, outer_start]),"
+            "    derived(["
+            "        rule(descendant(anc, desc), [ node([id-desc, parent_id-anc]) ]),"
+            "        rule(descendant(anc, desc), [ descendant(anc, mid), node([id-desc, parent_id-mid]) ])"
+            "    ]),"
+            "    goals(["
+            "        node([id-outer_id, kind-'function_definition', start_byte-outer_start]),"
+            "        descendant(outer_id, inner_id),"
+            "        node([id-inner_id, kind-'function_definition']),"
+            "        '!='(outer_id, inner_id),"
+            "        node([parent_id-outer_id, kind-'identifier', text-name_text])"
+            "    ])"
+            ")"
+        )
+        obligations_atom = "obligations([])"
+
+        result = _mnestic_query([compiled_atom, obligations_atom])
+
+        assert len(result) == 1
+        row = result[0]
+        assert row[0] == 1
+        assert row[1] == "name_text"
+        assert row[2] == 0
+
+    def test_callout_unregistered_store_raises(self) -> None:
+        """_mnestic_query raises ValueError for an unregistered store name."""
+        from constraint.constraint_foreign import _mnestic_query
+
+        compiled_atom = (
+            "compiled_query("
+            "    store(no_such_store),"
+            "    template(result, [x]),"
+            "    derived([]),"
+            "    goals(["
+            "        node([id-x])"
+            "    ])"
+            ")"
+        )
+        obligations_atom = "obligations([])"
+
+        with pytest.raises(ValueError, match="store 'no_such_store' is not registered"):
+            _mnestic_query([compiled_atom, obligations_atom])
+
+    def test_callout_malformed_arg_raises(self) -> None:
+        """_mnestic_query raises ValueError for a malformed argument."""
+        from constraint.constraint_foreign import _mnestic_query
+
+        with pytest.raises(ValueError, match="2-element list"):
+            _mnestic_query("not_a_list")
+
+    def test_callout_malformed_compiled_term_raises(self) -> None:
+        """_mnestic_query raises ValueError for a malformed compiled term."""
+        from constraint.constraint_foreign import _mnestic_query
+
+        with pytest.raises(ValueError, match="compiled_query"):
+            _mnestic_query(["not_a_compiled_query", "obligations([])"])
