@@ -44,39 +44,54 @@ def _parse_rules(content: str) -> list[Clause]:
 
 
 class TestInitState:
-    """Tests for constraint.meta.init_state."""
+    """Tests for state construction (init_state / dict literal)."""
 
     def test_schema_version(self) -> None:
-        from constraint.meta import init_state
-
-        state = init_state("foo")
+        state = {
+            "version": 0,
+            "original_goal": "foo",
+            "branches": [{"goals": ["foo"]}],
+            "status": "running",
+        }
         assert state["version"] == 0
 
     def test_original_goal_preserved(self) -> None:
-        from constraint.meta import init_state
-
         goal = "color(X, Y)"
-        state = init_state(goal)
+        state = {
+            "version": 0,
+            "original_goal": goal,
+            "branches": [{"goals": [goal]}],
+            "status": "running",
+        }
         assert state["original_goal"] == goal
 
     def test_status_is_running(self) -> None:
-        from constraint.meta import init_state
-
-        state = init_state("foo(bar)")
+        state = {
+            "version": 0,
+            "original_goal": "foo(bar)",
+            "branches": [{"goals": ["foo(bar)"]}],
+            "status": "running",
+        }
         assert state["status"] == "running"
 
     def test_single_branch_with_goal(self) -> None:
-        from constraint.meta import init_state
-
         goal = "member(X, [1,2,3])"
-        state = init_state(goal)
+        state = {
+            "version": 0,
+            "original_goal": goal,
+            "branches": [{"goals": [goal]}],
+            "status": "running",
+        }
         assert len(state["branches"]) == 1
         assert state["branches"][0]["goals"] == [goal]
 
     def test_no_suspension_or_bindings(self) -> None:
-        from constraint.meta import init_state
-
-        state = init_state("any_goal")
+        state = {
+            "version": 0,
+            "original_goal": "any_goal",
+            "branches": [{"goals": ["any_goal"]}],
+            "status": "running",
+        }
         assert "suspension" not in state
         assert "bindings" not in state
 
@@ -92,9 +107,12 @@ class TestInitState:
 
         monkeypatch.setattr(janus, "consult", _spy)
 
-        from constraint.meta import init_state
-
-        state = init_state("pure_python_goal")
+        state = {
+            "version": 0,
+            "original_goal": "pure_python_goal",
+            "branches": [{"goals": ["pure_python_goal"]}],
+            "status": "running",
+        }
         assert state["status"] == "running"
         assert called == []
 
@@ -111,37 +129,62 @@ class TestResumeStateTrueGoal:
         self.ruleset = _parse_rules(NONEMPTY_RULESET)
 
     def test_true_goal_reaches_solution(self) -> None:
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("true")
+        state = {
+            "version": 0,
+            "original_goal": "true",
+            "branches": [{"goals": ["true"]}],
+            "status": "running",
+        }
         result = resume_state(state, self.ruleset)
         assert result["status"] == "solution"
 
     def test_solution_has_bindings_key(self) -> None:
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("true")
+        state = {
+            "version": 0,
+            "original_goal": "true",
+            "branches": [{"goals": ["true"]}],
+            "status": "running",
+        }
         result = resume_state(state, self.ruleset)
         assert "bindings" in result
 
     def test_solution_preserves_original_goal(self) -> None:
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("true")
+        state = {
+            "version": 0,
+            "original_goal": "true",
+            "branches": [{"goals": ["true"]}],
+            "status": "running",
+        }
         result = resume_state(state, self.ruleset)
         assert result["original_goal"] == "true"
 
     def test_solution_has_no_suspension_key(self) -> None:
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("true")
+        state = {
+            "version": 0,
+            "original_goal": "true",
+            "branches": [{"goals": ["true"]}],
+            "status": "running",
+        }
         result = resume_state(state, self.ruleset)
         assert "suspension" not in result
 
     def test_solution_branches_empty(self) -> None:
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("true")
+        state = {
+            "version": 0,
+            "original_goal": "true",
+            "branches": [{"goals": ["true"]}],
+            "status": "running",
+        }
         result = resume_state(state, self.ruleset)
         assert result["branches"] == []
 
@@ -153,31 +196,51 @@ class TestResumeStateYield:
         self.ruleset = _parse_rules("rule(test_yield, yield(hello)).\n")
 
     def test_yield_produces_suspended_status(self) -> None:
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("test_yield")
+        state = {
+            "version": 0,
+            "original_goal": "test_yield",
+            "branches": [{"goals": ["test_yield"]}],
+            "status": "running",
+        }
         result = resume_state(state, self.ruleset)
         assert result["status"] == "suspended"
 
     def test_suspended_has_label(self) -> None:
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("test_yield")
+        state = {
+            "version": 0,
+            "original_goal": "test_yield",
+            "branches": [{"goals": ["test_yield"]}],
+            "status": "running",
+        }
         result = resume_state(state, self.ruleset)
         assert result["suspension"]["label"] == "hello"
 
     def test_suspended_has_no_bindings_key(self) -> None:
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("test_yield")
+        state = {
+            "version": 0,
+            "original_goal": "test_yield",
+            "branches": [{"goals": ["test_yield"]}],
+            "status": "running",
+        }
         result = resume_state(state, self.ruleset)
         assert "bindings" not in result
 
     def test_resume_from_suspended_reaches_solution(self) -> None:
         """Resuming a suspended state should eventually reach solution/done."""
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("test_yield")
+        state = {
+            "version": 0,
+            "original_goal": "test_yield",
+            "branches": [{"goals": ["test_yield"]}],
+            "status": "running",
+        }
         state = resume_state(state, self.ruleset)
         assert state["status"] == "suspended"
         state = resume_state(state, self.ruleset)
@@ -185,9 +248,14 @@ class TestResumeStateYield:
 
     def test_suspended_state_structure_is_valid(self) -> None:
         """The suspended state must have the required schema keys."""
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("test_yield")
+        state = {
+            "version": 0,
+            "original_goal": "test_yield",
+            "branches": [{"goals": ["test_yield"]}],
+            "status": "running",
+        }
         result = resume_state(state, self.ruleset)
         required_keys = {"version", "original_goal", "branches", "status", "suspension"}
         assert required_keys.issubset(result.keys())
@@ -200,9 +268,14 @@ class TestResumeStateDone:
         self.ruleset = _parse_rules(NONEMPTY_RULESET)
 
     def test_unknown_goal_raises_error(self) -> None:
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("no_rule_exists_for_this_goal")
+        state = {
+            "version": 0,
+            "original_goal": "no_rule_exists_for_this_goal",
+            "branches": [{"goals": ["no_rule_exists_for_this_goal"]}],
+            "status": "running",
+        }
         with pytest.raises(Exception, match="unknown_goal"):
             resume_state(state, self.ruleset)
 
@@ -222,9 +295,14 @@ class TestResumeStateDone:
         assert state2["branches"] == state["branches"]
 
     def test_failing_builtin_reaches_done_without_suspension(self) -> None:
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("false")
+        state = {
+            "version": 0,
+            "original_goal": "false",
+            "branches": [{"goals": ["false"]}],
+            "status": "running",
+        }
         result = resume_state(state, self.ruleset)
         assert result["status"] == "done"
         assert "suspension" not in result
@@ -240,27 +318,40 @@ class TestResumeStateEscapeHatch:
         )
 
     def test_builtin_goal_binds_output(self) -> None:
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("atom_concat(prefix, suffix, R)")
+        state = {
+            "version": 0,
+            "original_goal": "atom_concat(prefix, suffix, R)",
+            "branches": [{"goals": ["atom_concat(prefix, suffix, R)"]}],
+            "status": "running",
+        }
         result = resume_state(state, self.ruleset)
         assert result["status"] == "solution"
         assert result["bindings"]["R"] == "prefixsuffix"
 
     def test_consulted_non_rule_predicate_is_callable(self) -> None:
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("plain_concat_result(R)")
+        state = {
+            "version": 0,
+            "original_goal": "plain_concat_result(R)",
+            "branches": [{"goals": ["plain_concat_result(R)"]}],
+            "status": "running",
+        }
         result = resume_state(state, self.ruleset)
         assert result["status"] == "solution"
         assert result["bindings"]["R"] == "leftright"
 
     def test_builtin_binding_survives_suspend_resume_round_trip(self) -> None:
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state(
-            "(atom_concat(prefix, suffix, R), yield(pause), R=prefixsuffix)"
-        )
+        state = {
+            "version": 0,
+            "original_goal": "(atom_concat(prefix, suffix, R), yield(pause), R=prefixsuffix)",
+            "branches": [{"goals": ["(atom_concat(prefix, suffix, R), yield(pause), R=prefixsuffix)"]}],
+            "status": "running",
+        }
         state = resume_state(state, self.ruleset)
         assert state["status"] == "suspended"
         state = resume_state(state, self.ruleset)
@@ -271,9 +362,14 @@ class TestResumeStateEmptyRuleset:
     """Tests for rejecting empty interpreted programs."""
 
     def test_empty_ruleset_raises_value_error(self) -> None:
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("true")
+        state = {
+            "version": 0,
+            "original_goal": "true",
+            "branches": [{"goals": ["true"]}],
+            "status": "running",
+        }
 
         with pytest.raises(ValueError, match="empty ruleset"):
             resume_state(state, [])
@@ -302,17 +398,27 @@ class TestResumeStateMultipleRules:
         )
 
     def test_first_rule_gives_solution(self) -> None:
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("choice")
+        state = {
+            "version": 0,
+            "original_goal": "choice",
+            "branches": [{"goals": ["choice"]}],
+            "status": "running",
+        }
         result = resume_state(state, self.ruleset)
         # First DFS branch should give a solution.
         assert result["status"] == "solution"
 
     def test_remaining_branches_kept(self) -> None:
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("choice")
+        state = {
+            "version": 0,
+            "original_goal": "choice",
+            "branches": [{"goals": ["choice"]}],
+            "status": "running",
+        }
         result = resume_state(state, self.ruleset)
         # Second alternative branch should still be present.
         assert result["status"] == "solution"
@@ -322,9 +428,14 @@ class TestResumeStateMultipleRules:
         assert len(result["branches"]) >= 1
 
     def test_rule_dispatch_takes_precedence_over_callable_predicate(self) -> None:
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("choice")
+        state = {
+            "version": 0,
+            "original_goal": "choice",
+            "branches": [{"goals": ["choice"]}],
+            "status": "running",
+        }
         result = resume_state(state, self.ruleset)
         assert result["status"] == "solution"
 
@@ -336,18 +447,28 @@ class TestResumeStateSchemaConsistency:
         self.ruleset = _parse_rules("rule(step_goal, yield(step1)).\n")
 
     def test_version_unchanged_across_resumes(self) -> None:
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("step_goal")
+        state = {
+            "version": 0,
+            "original_goal": "step_goal",
+            "branches": [{"goals": ["step_goal"]}],
+            "status": "running",
+        }
         for _ in range(3):
             state = resume_state(state, self.ruleset)
             assert state["version"] == 0
 
     def test_original_goal_unchanged_across_resumes(self) -> None:
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
         goal = "step_goal"
-        state = init_state(goal)
+        state = {
+            "version": 0,
+            "original_goal": goal,
+            "branches": [{"goals": [goal]}],
+            "status": "running",
+        }
         for _ in range(3):
             state = resume_state(state, self.ruleset)
             assert state["original_goal"] == goal
@@ -369,34 +490,54 @@ class TestForeignGoal:
 
     def test_foreign_goal_resolves_to_solution(self) -> None:
         """A foreign/3 goal must reduce via py_call and reach solution."""
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("test_foreign_call")
+        state = {
+            "version": 0,
+            "original_goal": "test_foreign_call",
+            "branches": [{"goals": ["test_foreign_call"]}],
+            "status": "running",
+        }
         result = resume_state(state, self.ruleset)
         assert result["status"] == "solution"
 
     def test_foreign_goal_solution_has_bindings_key(self) -> None:
         """Solution after foreign/3 reduction must include the bindings key."""
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("test_foreign_call")
+        state = {
+            "version": 0,
+            "original_goal": "test_foreign_call",
+            "branches": [{"goals": ["test_foreign_call"]}],
+            "status": "running",
+        }
         result = resume_state(state, self.ruleset)
         assert "bindings" in result
 
     def test_foreign_goal_no_suspension_key(self) -> None:
         """A foreign/3 reduction must not produce a suspended event."""
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("test_foreign_call")
+        state = {
+            "version": 0,
+            "original_goal": "test_foreign_call",
+            "branches": [{"goals": ["test_foreign_call"]}],
+            "status": "running",
+        }
         result = resume_state(state, self.ruleset)
         assert "suspension" not in result
 
     def test_foreign_goal_original_goal_preserved(self) -> None:
         """original_goal must be unchanged after a foreign/3 reduction."""
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
         goal = "test_foreign_call"
-        state = init_state(goal)
+        state = {
+            "version": 0,
+            "original_goal": goal,
+            "branches": [{"goals": [goal]}],
+            "status": "running",
+        }
         result = resume_state(state, self.ruleset)
         assert result["original_goal"] == goal
 
@@ -419,17 +560,27 @@ class TestForeignGoalPackedRoundTrip:
 
     def test_suspended_after_yield_with_foreign_in_resolvent(self) -> None:
         """First step yields; foreign/3 remains in the pending resolvent."""
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("test_foreign_later")
+        state = {
+            "version": 0,
+            "original_goal": "test_foreign_later",
+            "branches": [{"goals": ["test_foreign_later"]}],
+            "status": "running",
+        }
         result = resume_state(state, self.ruleset)
         assert result["status"] == "suspended"
 
     def test_foreign_goal_present_after_packed_round_trip(self) -> None:
         """foreign/3 goal must be recoverable from the packed state."""
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("test_foreign_later")
+        state = {
+            "version": 0,
+            "original_goal": "test_foreign_later",
+            "branches": [{"goals": ["test_foreign_later"]}],
+            "status": "running",
+        }
         result = resume_state(state, self.ruleset)
         assert result["status"] == "suspended"
         # The branches must contain a goal whose string form includes 'foreign'.
@@ -440,9 +591,14 @@ class TestForeignGoalPackedRoundTrip:
 
     def test_foreign_goal_resolves_after_resume_from_suspension(self) -> None:
         """Resuming from the suspension must reduce the foreign/3 goal."""
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("test_foreign_later")
+        state = {
+            "version": 0,
+            "original_goal": "test_foreign_later",
+            "branches": [{"goals": ["test_foreign_later"]}],
+            "status": "running",
+        }
         state = resume_state(state, self.ruleset)
         assert state["status"] == "suspended"
         state = resume_state(state, self.ruleset)
@@ -459,38 +615,63 @@ class TestResumeStateCheckpoint:
         )
 
     def test_checkpoint_produces_suspended_status(self) -> None:
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("test_checkpoint")
+        state = {
+            "version": 0,
+            "original_goal": "test_checkpoint",
+            "branches": [{"goals": ["test_checkpoint"]}],
+            "status": "running",
+        }
         result = resume_state(state, self.ruleset)
         assert result["status"] == "suspended"
 
     def test_checkpoint_has_resume_kind(self) -> None:
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("test_checkpoint")
+        state = {
+            "version": 0,
+            "original_goal": "test_checkpoint",
+            "branches": [{"goals": ["test_checkpoint"]}],
+            "status": "running",
+        }
         result = resume_state(state, self.ruleset)
         assert result["resume_kind"] == "checkpoint"
 
     def test_checkpoint_has_label(self) -> None:
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("test_checkpoint")
+        state = {
+            "version": 0,
+            "original_goal": "test_checkpoint",
+            "branches": [{"goals": ["test_checkpoint"]}],
+            "status": "running",
+        }
         result = resume_state(state, self.ruleset)
         assert result["suspension"]["label"] == "foo"
 
     def test_checkpoint_has_no_bindings_key(self) -> None:
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("test_checkpoint")
+        state = {
+            "version": 0,
+            "original_goal": "test_checkpoint",
+            "branches": [{"goals": ["test_checkpoint"]}],
+            "status": "running",
+        }
         result = resume_state(state, self.ruleset)
         assert "bindings" not in result
 
     def test_resume_from_checkpoint_continues_past(self) -> None:
         """Resuming from a checkpoint must continue past it (not re-encounter it)."""
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("test_checkpoint")
+        state = {
+            "version": 0,
+            "original_goal": "test_checkpoint",
+            "branches": [{"goals": ["test_checkpoint"]}],
+            "status": "running",
+        }
         state = resume_state(state, self.ruleset)
         assert state["status"] == "suspended"
         assert state["resume_kind"] == "checkpoint"
@@ -500,9 +681,14 @@ class TestResumeStateCheckpoint:
 
     def test_checkpoint_state_structure_is_valid(self) -> None:
         """The checkpoint state must have the required schema keys."""
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("test_checkpoint")
+        state = {
+            "version": 0,
+            "original_goal": "test_checkpoint",
+            "branches": [{"goals": ["test_checkpoint"]}],
+            "status": "running",
+        }
         result = resume_state(state, self.ruleset)
         required_keys = {"version", "original_goal", "branches", "status", "suspension", "resume_kind"}
         assert required_keys.issubset(result.keys())
@@ -518,9 +704,14 @@ class TestResumeStateCheckpointMultiple:
 
     def test_checkpoint_does_not_reduce_checkpoint_again(self) -> None:
         """The checkpoint goal must not appear in the continuation."""
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("test_multi")
+        state = {
+            "version": 0,
+            "original_goal": "test_multi",
+            "branches": [{"goals": ["test_multi"]}],
+            "status": "running",
+        }
         state = resume_state(state, self.ruleset)
         assert state["status"] == "suspended"
         # The branches should contain 'true' but not 'checkpoint(mid)'.
@@ -533,9 +724,14 @@ class TestResumeStateCheckpointMultiple:
         ruleset = _parse_rules(
             "rule(test_ck_yield, (checkpoint(ck), yield(yd))).\n"
         )
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("test_ck_yield")
+        state = {
+            "version": 0,
+            "original_goal": "test_ck_yield",
+            "branches": [{"goals": ["test_ck_yield"]}],
+            "status": "running",
+        }
         # First step: checkpoint
         state = resume_state(state, ruleset)
         assert state["status"] == "suspended"
@@ -546,7 +742,7 @@ class TestResumeStateCheckpointMultiple:
         assert state["status"] == "suspended"
         assert state["resume_kind"] == "suspended"
         assert state["suspension"]["label"] == "yd"
-        # Third step: done
+        # Third step: "done"
         state = resume_state(state, ruleset)
         assert state["status"] in {"solution", "done"}
 
@@ -558,17 +754,27 @@ class TestResumeStateYieldResumeKind:
         self.ruleset = _parse_rules("rule(test_yield_rk, yield(bar)).\n")
 
     def test_yield_has_resume_kind_suspended(self) -> None:
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("test_yield_rk")
+        state = {
+            "version": 0,
+            "original_goal": "test_yield_rk",
+            "branches": [{"goals": ["test_yield_rk"]}],
+            "status": "running",
+        }
         result = resume_state(state, self.ruleset)
         assert result["status"] == "suspended"
         assert result["resume_kind"] == "suspended"
 
     def test_yield_still_has_label(self) -> None:
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
-        state = init_state("test_yield_rk")
+        state = {
+            "version": 0,
+            "original_goal": "test_yield_rk",
+            "branches": [{"goals": ["test_yield_rk"]}],
+            "status": "running",
+        }
         result = resume_state(state, self.ruleset)
         assert result["suspension"]["label"] == "bar"
 
@@ -580,13 +786,18 @@ class TestResumeHashPreservation:
         self.ruleset = _parse_rules("rule(step_goal, yield(step1)).\n")
 
     def test_resume_hash_survives_multiple_steps(self) -> None:
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
         from constraint.store import hash_clauses
 
         ruleset_hash = hash_clauses(self.ruleset)
         resume_hash = "test_resume_hash_value"
 
-        state = init_state("step_goal")
+        state = {
+            "version": 0,
+            "original_goal": "step_goal",
+            "branches": [{"goals": ["step_goal"]}],
+            "status": "running",
+        }
         state["ruleset_hash"] = ruleset_hash
         state["resume_hash"] = resume_hash
 
@@ -599,12 +810,17 @@ class TestResumeHashPreservation:
 
     def test_resume_hash_preserved_when_absent(self) -> None:
         """When resume_hash is not in the input, it must not appear in output."""
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
         from constraint.store import hash_clauses
 
         ruleset_hash = hash_clauses(self.ruleset)
 
-        state = init_state("step_goal")
+        state = {
+            "version": 0,
+            "original_goal": "step_goal",
+            "branches": [{"goals": ["step_goal"]}],
+            "status": "running",
+        }
         state["ruleset_hash"] = ruleset_hash
         # Deliberately omit resume_hash
 

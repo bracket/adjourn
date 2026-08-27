@@ -172,11 +172,26 @@ class TestSubprocessForeignGoal:
         self, monkeypatch: Any
     ) -> None:
         """A foreign(subprocess, ...) goal must reduce and reach solution."""
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
         self._apply_callout_patches(monkeypatch)
 
-        state = init_state("test_subprocess_call")
+        state = {
+
+
+            "version": 0,
+
+
+            "original_goal": "test_subprocess_call",
+
+
+            "branches": [{"goals": ["test_subprocess_call"]}],
+
+
+            "status": "running",
+
+
+        }
         result = resume_state(state, self.ruleset)
         assert result["status"] == "solution"
 
@@ -184,11 +199,26 @@ class TestSubprocessForeignGoal:
         self, monkeypatch: Any
     ) -> None:
         """Solution after foreign(subprocess) reduction must include bindings key."""
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
         self._apply_callout_patches(monkeypatch)
 
-        state = init_state("test_subprocess_call")
+        state = {
+
+
+            "version": 0,
+
+
+            "original_goal": "test_subprocess_call",
+
+
+            "branches": [{"goals": ["test_subprocess_call"]}],
+
+
+            "status": "running",
+
+
+        }
         result = resume_state(state, self.ruleset)
         assert "bindings" in result
 
@@ -196,11 +226,26 @@ class TestSubprocessForeignGoal:
         self, monkeypatch: Any
     ) -> None:
         """A foreign(subprocess) reduction must not produce a suspended event."""
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
         self._apply_callout_patches(monkeypatch)
 
-        state = init_state("test_subprocess_call")
+        state = {
+
+
+            "version": 0,
+
+
+            "original_goal": "test_subprocess_call",
+
+
+            "branches": [{"goals": ["test_subprocess_call"]}],
+
+
+            "status": "running",
+
+
+        }
         result = resume_state(state, self.ruleset)
         assert "suspension" not in result
 
@@ -208,12 +253,22 @@ class TestSubprocessForeignGoal:
         self, monkeypatch: Any
     ) -> None:
         """original_goal must be unchanged after foreign(subprocess) reduction."""
-        from constraint.meta import init_state, resume_state
+        from constraint.meta import resume_state
 
         self._apply_callout_patches(monkeypatch)
 
         goal = "test_subprocess_call"
-        state = init_state(goal)
+        state = {
+
+            "version": 0,
+
+            "original_goal": goal,
+
+            "branches": [{"goals": [goal]}],
+
+            "status": "running",
+
+        }
         result = resume_state(state, self.ruleset)
         assert result["original_goal"] == goal
 

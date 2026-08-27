@@ -57,30 +57,6 @@ _loaded_ruleset_hash: str | None = None
 _ruleset_file_path = Path(tempfile.gettempdir()) / "constraint_runtime_ruleset.pl"
 
 
-def init_state(goal: str) -> dict[str, Any]:
-    """Construct the initial state dict for the given goal string.
-
-    This is a pure-Python operation; it does **not** invoke Prolog.
-
-    Args:
-        goal: A Prolog term as a string, e.g. ``"color(X, Y)"``.
-
-    Returns:
-        A v0 state dictionary with the following keys:
-
-        - ``version`` (int): schema version, always ``0``.
-        - ``original_goal`` (str): the *goal* string, unchanged.
-        - ``branches`` (list[dict]): one-element list ``[{"goals": [goal]}]``.
-        - ``status`` (str): always ``"running"``.
-    """
-    return {
-        "version": 0,
-        "original_goal": goal,
-        "branches": [{"goals": [goal]}],
-        "status": "running",
-    }
-
-
 def resume_state(state: dict[str, Any], clauses: list[Clause]) -> dict[str, Any]:
     """Load *clauses*, call ``step/3`` once, and return the updated state dict.
 
