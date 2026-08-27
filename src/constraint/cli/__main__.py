@@ -50,11 +50,27 @@ def main(ctx: click.Context) -> None:
     default=None,
     help="Path to the project config file.",
 )
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["raw", "json"], case_sensitive=False),
+    default="raw",
+    show_default=True,
+    help="Output format.",
+)
+@click.option(
+    "--pretty-print",
+    is_flag=True,
+    default=False,
+    help="Pretty-print JSON output.",
+)
 def cmd_init(
     query: str,
     state_file: Path,
     ruleset_name: str,
     config_path: Optional[Path],
+    output_format: str,
+    pretty_print: bool,
 ) -> None:
     """Initialise a new resolution state and write it to STATE_FILE.
 
@@ -81,6 +97,9 @@ def cmd_init(
         # Also persist through the state seam (writes .constraint/state_init.json).
         JsonFileStateStore().store_init_state(state)
 
+        if output_format == "json":
+            projection = _build_state_projection(state)
+            click.echo(_format_state_json(projection, pretty_print))
 
     except (OSError, ValueError, KeyError) as exc:
         click.echo(f"Error: {exc}", err=True)
@@ -97,10 +116,26 @@ def cmd_init(
     default=None,
     help="Path to the project config file.",
 )
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["raw", "json"], case_sensitive=False),
+    default="raw",
+    show_default=True,
+    help="Output format.",
+)
+@click.option(
+    "--pretty-print",
+    is_flag=True,
+    default=False,
+    help="Pretty-print JSON output.",
+)
 def cmd_resume(
     state_file: Path,
     output_file: Path,
     config_path: Optional[Path],
+    output_format: str,
+    pretty_print: bool,
 ) -> None:
     """Advance a resolution state by one step and write the result.
 
@@ -148,7 +183,11 @@ def cmd_resume(
         click.echo(f"Error writing {output_file}: {exc}", err=True)
         sys.exit(1)
 
-    _print_status_summary(new_state)
+    if output_format == "json":
+        projection = _build_state_projection(new_state)
+        click.echo(_format_state_json(projection, pretty_print))
+    else:
+        _print_status_summary(new_state)
 
 
 @main.command("set-resume")
@@ -380,6 +419,49 @@ def _state_ruleset_hash(state: dict[str, Any]) -> str:
     if not isinstance(ruleset_hash, str) or not ruleset_hash:
         raise ValueError("State is missing required 'ruleset_hash'")
     return ruleset_hash
+
+
+def _build_state_projection(state: dict[str, Any]) -> dict[str, Any]:
+    """Build a JSON projection dict from a state dictionary.
+
+    The projection contains exactly these keys:
+
+    - ``status`` — from ``state["status"]``.
+    - ``label`` — from ``state.get("suspension", {}).get("label")``; ``None``
+      when the state is not suspended or has no label.
+    - ``ruleset_hash`` — from ``state.get("ruleset_hash")``.
+    - ``resume_hash`` — from ``state.get("resume_hash")``; ``None`` when absent.
+
+    Args:
+        state: A v0 state dictionary.
+
+    Returns:
+        A dict with the four projection keys.
+    """
+    return {
+        "status": state.get("status"),
+        "label": state.get("suspension", {}).get("label"),
+        "ruleset_hash": state.get("ruleset_hash"),
+        "resume_hash": state.get("resume_hash"),
+    }
+
+
+def _format_state_json(
+    projection: dict[str, Any],
+    pretty_print: bool,
+) -> str:
+    """Return JSON serialization of a state projection.
+
+    Args:
+        projection: A state projection dict (from :func:`_build_state_projection`).
+        pretty_print: If ``True``, produce indented JSON.
+
+    Returns:
+        A JSON string.
+    """
+    if pretty_print:
+        return json.dumps(projection, indent=2)
+    return json.dumps(projection)
 
 
 
