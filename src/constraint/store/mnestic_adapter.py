@@ -24,31 +24,13 @@ _registry: dict[str, MnesticAdapter] = {}
 
 
 def register(name: str, adapter: MnesticAdapter) -> None:
-    """Bind *name* to *adapter* in the module-level registry.
-
-    Args:
-        name: The store name to register under.
-        adapter: The MnesticAdapter instance to associate with *name*.
-    """
+    """Bind *name* to *adapter* in the module-level registry."""
     _registry[name] = adapter
 
 
 def lookup(name: str) -> MnesticAdapter:
-    """Return the MnesticAdapter registered under *name*.
-
-    Args:
-        name: The store name to look up.
-
-    Returns:
-        The registered MnesticAdapter instance.
-
-    Raises:
-        KeyError: If *name* has not been registered.
-    """
-    try:
-        return _registry[name]
-    except KeyError:
-        raise KeyError(f"Unknown mnestic store: '{name}'") from None
+    """Return the MnesticAdapter registered under *name*."""
+    return _registry[name]
 
 
 # ---------------------------------------------------------------------------

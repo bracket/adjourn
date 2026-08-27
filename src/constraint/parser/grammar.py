@@ -60,7 +60,7 @@ PROLOG_GRAMMAR = r"""
             | term1000
     
     // Precedence 1000: , (conjunction)
-    term1000: term1000 "," term900 -> op_comma
+    term1000: term900 "," term1000 -> op_comma
             | term900
     
     // Precedence 900: \+ (negation)

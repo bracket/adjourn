@@ -33,14 +33,16 @@ collect_derived([Goal|Goals], Seen, Rules) :-
         findall(rule(Head, ProcessedBody),
                 (   functor(Head, Name, Arity),
                     user:query_rule(Head, Body),
-                    process_body(Body, ProcessedBody)
+                    conj_to_list(Body, BodyList),
+                    process_body(BodyList, ProcessedBody)
                 ),
                 Clauses),
         % Find sub-goals from all clause bodies for transitive closure
         findall(SubGoal,
                 (   functor(Head, Name, Arity),
                     user:query_rule(Head, Body),
-                    member(SubGoal, Body)
+                    conj_to_list(Body, BodyList),
+                    member(SubGoal, BodyList)
                 ),
                 SubGoals),
         NewSeen = [Name/Arity|Seen],
@@ -58,3 +60,18 @@ process_body([], []).
 process_body([Goal|Rest], [Processed|ProcessedRest]) :-
     classify_goal(Goal, _Tag, Processed),
     process_body(Rest, ProcessedRest).
+
+% conj_to_list(+Body, -List)
+% Flatten a rule body into a flat goal list. Handles conjunctions
+% (A,B,...), a body already given as a list, and a single goal.
+conj_to_list(Body, Body) :-
+    is_list(Body),
+    !.
+
+conj_to_list((A, B), Goals) :-
+    !,
+    conj_to_list(A, GA),
+    conj_to_list(B, GB),
+    append(GA, GB, Goals).
+
+conj_to_list(Goal, [Goal]).
