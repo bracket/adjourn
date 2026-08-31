@@ -428,6 +428,65 @@ class TestInitCommand:
         assert result.exit_code != 0
         assert "cannot start with '@'" in result.output
 
+    def test_init_json_format(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """init --format json should emit a compact JSON projection."""
+        state_file = tmp_path / "state.json"
+        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
+        result = runner.invoke(
+            main,
+            [
+                "init", "true", str(state_file),
+                "--ruleset", "test_rules",
+                "--config", str(config_path),
+                "--format", "json",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert set(payload.keys()) == {"status", "label", "ruleset_hash", "resume_hash"}
+        assert payload["status"] == "running"
+        assert payload["label"] is None
+        assert isinstance(payload["ruleset_hash"], str)
+        assert isinstance(payload["resume_hash"], str)
+
+    def test_init_json_pretty_print(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """init --format json --pretty-print should produce indented JSON."""
+        state_file = tmp_path / "state.json"
+        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
+        result = runner.invoke(
+            main,
+            [
+                "init", "true", str(state_file),
+                "--ruleset", "test_rules",
+                "--config", str(config_path),
+                "--format", "json",
+                "--pretty-print",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert result.output.startswith('{\n  "')
+
+    def test_init_raw_format_no_output(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """init --format raw (default) should produce no stdout output on success."""
+        state_file = tmp_path / "state.json"
+        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
+        result = runner.invoke(
+            main,
+            [
+                "init", "true", str(state_file),
+                "--ruleset", "test_rules",
+                "--config", str(config_path),
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert result.output == ""
+
 
 class TestResumeCommand:
     """Tests for the ``resume`` subcommand."""
@@ -733,6 +792,162 @@ class TestResumeCommand:
 
         assert result.exit_code != 0
         assert "empty program" in result.output
+
+    def test_resume_json_format(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """resume --format json should emit a compact JSON projection of the post-step state."""
+        state_file = tmp_path / "state.json"
+        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
+        runner.invoke(
+            main,
+            [
+                "init", "true", str(state_file),
+                "--ruleset", "test_rules",
+                "--config", str(config_path),
+            ],
+        )
+        out_file = tmp_path / "out.json"
+        result = runner.invoke(
+            main,
+            [
+                "resume", str(state_file), str(out_file),
+                "--config", str(config_path),
+                "--format", "json",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert set(payload.keys()) == {"status", "label", "ruleset_hash", "resume_hash"}
+        assert payload["status"] == "solution"
+        assert payload["label"] is None
+        assert isinstance(payload["ruleset_hash"], str)
+        assert isinstance(payload["resume_hash"], str)
+
+    def test_resume_json_suspended_label(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """resume --format json on a suspended state should surface the label."""
+        state_file = tmp_path / "state.json"
+        config_path = _write_config(
+            tmp_path,
+            {"test_rules": "rule(my_yield_goal, yield(checkpoint)).\n"},
+            prolog_modes={"test_rules": "strict"},
+        )
+        runner.invoke(
+            main,
+            [
+                "init", "my_yield_goal", str(state_file),
+                "--ruleset", "test_rules",
+                "--config", str(config_path),
+            ],
+        )
+        out_file = tmp_path / "out.json"
+        result = runner.invoke(
+            main,
+            [
+                "resume", str(state_file), str(out_file),
+                "--config", str(config_path),
+                "--format", "json",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert payload["status"] == "suspended"
+        assert payload["label"] == "checkpoint"
+
+    def test_resume_json_done_state(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """resume --format json on a done state should surface status: done."""
+        state_file = tmp_path / "state.json"
+        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
+        runner.invoke(
+            main,
+            [
+                "init", "true", str(state_file),
+                "--ruleset", "test_rules",
+                "--config", str(config_path),
+            ],
+        )
+        out_file = tmp_path / "out.json"
+        # Drive to solution
+        runner.invoke(
+            main,
+            ["resume", str(state_file), str(out_file), "--config", str(config_path)],
+        )
+        # Drive to done
+        runner.invoke(
+            main,
+            ["resume", str(out_file), str(out_file), "--config", str(config_path)],
+        )
+        # Now resume the done state with --format json
+        result = runner.invoke(
+            main,
+            [
+                "resume", str(out_file), str(out_file),
+                "--config", str(config_path),
+                "--format", "json",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert payload["status"] == "done"
+        assert payload["label"] is None
+
+    def test_resume_json_pretty_print(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """resume --format json --pretty-print should produce indented JSON."""
+        state_file = tmp_path / "state.json"
+        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
+        runner.invoke(
+            main,
+            [
+                "init", "true", str(state_file),
+                "--ruleset", "test_rules",
+                "--config", str(config_path),
+            ],
+        )
+        out_file = tmp_path / "out.json"
+        result = runner.invoke(
+            main,
+            [
+                "resume", str(state_file), str(out_file),
+                "--config", str(config_path),
+                "--format", "json",
+                "--pretty-print",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert result.output.startswith('{\n  "')
+
+    def test_resume_raw_format_unchanged(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """resume --format raw (default) should produce the same output as before."""
+        state_file = tmp_path / "state.json"
+        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
+        runner.invoke(
+            main,
+            [
+                "init", "true", str(state_file),
+                "--ruleset", "test_rules",
+                "--config", str(config_path),
+            ],
+        )
+        out_file = tmp_path / "out.json"
+        result = runner.invoke(
+            main,
+            [
+                "resume", str(state_file), str(out_file),
+                "--config", str(config_path),
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert "status:" in result.output
+        assert "ruleset_hash:" in result.output
+        assert "resume_hash:" in result.output
 
 
 class TestCLIRegistration:
