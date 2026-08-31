@@ -27,6 +27,10 @@ dev = [
     "types-PyYAML>=6.0",
 ]
 
+mcp = [
+    "fastmcp>=3.4.7",
+]
+
 [project.scripts]
 constraint = "constraint.cli.__main__:main"
 

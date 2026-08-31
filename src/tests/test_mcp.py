@@ -9,6 +9,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+mcp = pytest.importorskip("constraint.mcp")
+
 from constraint.cli.__main__ import main as cli_main
 from constraint.mcp import (
     _allocate_session_id,
