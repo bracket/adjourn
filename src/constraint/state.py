@@ -124,7 +124,8 @@ def init_state(
 
         - ``version`` (int): schema version, always ``0``.
         - ``original_goal`` (str): the *goal* string, unchanged.
-        - ``branches`` (list[dict]): one-element list ``[{"goals": [goal]}]``.
+        - ``branches`` (list[dict]): one-element list
+          ``[{"orig_goal": goal, "goals": [goal]}]``.
         - ``status`` (str): always ``"running"``.
         - ``ruleset_hash`` (str): the resolved ruleset content hash.
         - ``resume_hash`` (str): same as ``ruleset_hash``.
@@ -133,7 +134,7 @@ def init_state(
     return {
         "version": 0,
         "original_goal": goal,
-        "branches": [{"goals": [goal]}],
+        "branches": [{"orig_goal": goal, "goals": [goal]}],
         "status": "running",
         "ruleset_hash": h,
         "resume_hash": h,

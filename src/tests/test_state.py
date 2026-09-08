@@ -185,7 +185,7 @@ class TestInitState:
         state = init_state("true", "test_rules", store, config)
         assert state["version"] == 0
         assert state["original_goal"] == "true"
-        assert state["branches"] == [{"goals": ["true"]}]
+        assert state["branches"] == [{"orig_goal": "true", "goals": ["true"]}]
         assert state["status"] == "running"
 
     def test_ruleset_hash_and_resume_hash_equal(self, tmp_path: Path) -> None:

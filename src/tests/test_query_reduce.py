@@ -77,7 +77,8 @@ def _load_helpers() -> None:
         "\n"
         "step_until_solution(State) :-\n"
         "    constraint_meta:step(State, Event, State1),\n"
-        "    (   Event = solution -> true\n"
+        "    (   Event = solution(_) -> true\n"
+        "    ;   Event = done -> fail\n"
         "    ;   step_until_solution(State1)\n"
         "    ).\n"
     )

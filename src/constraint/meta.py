@@ -14,7 +14,7 @@ State file schema (v0)::
         "version": 0,
         "original_goal": "<prolog term string>",
         "branches": [
-            { "goals": ["<goal string>", ...] }
+            { "orig_goal": "<goal string>", "goals": ["<goal string>", ...] }
         ],
         "status": "running | suspended | solution | done",
         "suspension": { "label": "<term string>" },  # only when suspended
@@ -25,16 +25,14 @@ State file schema (v0)::
 
 Notes on variable bindings
 --------------------------
-The meta-interpreter uses ``findall/3`` internally to make all choice points
-explicit.  ``findall/3`` copies variables, which means variable bindings
-established during rule matching cannot propagate back to variables in the
-original goal in general.  The ``bindings`` field is populated on a
-best-effort basis via ``extract_bindings_str/4`` in ``meta.pl``, which
-unifies the original goal with the bound goal in the packed solution atom.
-When variables survive through a direct (non-``findall``) path — for instance
-when a solution is produced in the same step where the packed atom's
-``OrigGoal`` is still ground — the bindings will be present.  Otherwise
-``bindings`` is the empty dict.
+Each branch carries its own copy of the original goal (``orig_goal``) whose
+variables are shared with that branch's resolvent goals.  When a branch's
+resolvent empties, ``meta.pl`` emits ``solution(SolvedOrigGoal)`` and
+``step_packed/4`` recovers the bindings by unifying the top-level
+``original_goal`` (which retains the user's variable names because it is
+rebuilt from the state dict's string every step) against the solved branch's
+bound goal.  Distinct branches therefore bind the goal's variables to distinct
+values, and multi-solution goals yield one ``solution`` event per branch.
 """
 
 from __future__ import annotations
@@ -192,11 +190,20 @@ def _build_packed_atom(state: dict[str, Any]) -> str:
     branches = state.get("branches", [])
     branch_terms = []
     for branch in branches:
+        # Each branch carries its OWN copy of the goal ("orig_goal") whose
+        # variables are shared with that branch's resolvent goals.  This is
+        # what lets distinct branches bind the goal's variables to distinct
+        # values and have those bindings survive the pack round-trip.  Older
+        # state dicts without "orig_goal" fall back to the top-level goal.
+        branch_orig_goal = branch.get("orig_goal", orig_goal)
         goals = branch.get("goals", [])
         goals_list = "[" + ",".join(goals) + "]"
-        branch_terms.append(f"branch({goals_list})")
+        # Parenthesise the goal: a goal whose principal functor is an operator
+        # (e.g. a ','-conjunction, priority 1000) would otherwise be parsed as
+        # extra arguments of branch/N when embedded in an argument position.
+        branch_terms.append(f"branch(({branch_orig_goal}), {goals_list})")
     branches_list = "[" + ",".join(branch_terms) + "]"
-    return f"constraint_meta_pack({orig_goal}, state({branches_list}))"
+    return f"constraint_meta_pack(({orig_goal}), state({branches_list}))"
 
 
 def _parse_branches_from_packed(packed_out: str) -> list[dict[str, Any]]:
@@ -209,7 +216,7 @@ def _parse_branches_from_packed(packed_out: str) -> list[dict[str, Any]]:
         packed_out: The packed atom string returned by ``step_packed/4``.
 
     Returns:
-        List of ``{"goals": [...]}`` dicts.
+        List of ``{"orig_goal": "...", "goals": [...]}`` dicts.
     """
     result = janus.query_once(
         "parse_packed_branches(PA, FGL)",
@@ -222,18 +229,28 @@ def _parse_branches_from_packed(packed_out: str) -> list[dict[str, Any]]:
 
 
 def _unflatten_branches(flat: list[Any]) -> list[dict[str, Any]]:
-    """Convert a flat ``[branch_start, goal, ...]`` list to branch dicts."""
+    """Convert a flat ``[branch_start, orig_goal, goal, ...]`` list to branch dicts.
+
+    Immediately after each ``branch_start`` marker comes that branch's own
+    copy of the original goal (``orig_goal``), followed by its resolvent goals.
+    """
     branches: list[dict[str, Any]] = []
-    current: list[str] | None = None
+    current: dict[str, Any] | None = None
+    expect_orig_goal = False
     for item in flat:
         if item == "branch_start":
             if current is not None:
-                branches.append({"goals": current})
-            current = []
+                branches.append(current)
+            current = {"orig_goal": None, "goals": []}
+            expect_orig_goal = True
         elif current is not None:
-            current.append(str(item))
+            if expect_orig_goal:
+                current["orig_goal"] = str(item)
+                expect_orig_goal = False
+            else:
+                current["goals"].append(str(item))
     if current is not None:
-        branches.append({"goals": current})
+        branches.append(current)
     return branches
 
 

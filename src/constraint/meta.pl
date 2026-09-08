@@ -24,12 +24,18 @@
 
 % --- State representation ---
 % state(Branches)
-% Branches is a list of branch(Goals), each Goals is a list representing
-% the resolvent (the remaining goals to prove).
+% Branches is a list of branch(OrigGoal, Goals).  Goals is the resolvent
+% (the remaining goals to prove) for this branch.  OrigGoal is this branch's
+% OWN copy of the original goal term; its variables are shared with the goals
+% in this branch's resolvent, so bindings established while reducing the
+% resolvent are reflected in OrigGoal.  Carrying OrigGoal per-branch (rather
+% than once globally) is what lets distinct branches bind the goal's variables
+% to distinct values, and lets those bindings survive serialization.
 
 % init(+Goal, -State)
-% Construct the initial interpreter state for a single goal.
-init(Goal, state([branch([Goal])])).
+% Construct the initial interpreter state for a single goal.  The sole branch
+% shares its OrigGoal with its resolvent (both are Goal, the same term).
+init(Goal, state([branch(Goal, [Goal])])).
 
 % run/3 is a convenience alias for step/3.
 run(State0, Event, State1) :- step(State0, Event, State1).
@@ -42,51 +48,53 @@ run(State0, Event, State1) :- step(State0, Event, State1).
 
 step(state([]), done, state([])) :- !.
 
-% First branch has no remaining goals: emit a solution.
-step(state([branch([])|Rest]), solution, state(Rest)) :- !.
+% First branch has no remaining goals: emit a solution.  The branch's OrigGoal
+% is now fully bound and is dropped along with the (empty) resolvent.
+step(state([branch(SolvedOrigGoal, [])|Rest]), solution(SolvedOrigGoal), state(Rest)) :- !.
 
-% Otherwise, reduce one goal from the head of the current resolvent.
-step(state([branch([G|Gs])|RestBranches]), Event, State1) :-
-    reduce_goal(G, Gs, RestBranches, Event, State1).
+% Otherwise, reduce one goal from the head of the current resolvent, carrying
+% this branch's OrigGoal so newly-created branches keep sharing its variables.
+step(state([branch(OrigGoal, [G|Gs])|RestBranches]), Event, State1) :-
+    reduce_goal(OrigGoal, G, Gs, RestBranches, Event, State1).
 
 % --- Goal reduction rules (continuation style) ---
 
 % true: trivially succeeds; drop it and continue.
-reduce_goal(true, Gs, Rest, Event, State1) :-
-    step(state([branch(Gs)|Rest]), Event, State1).
+reduce_goal(OrigGoal, true, Gs, Rest, Event, State1) :-
+    step(state([branch(OrigGoal, Gs)|Rest]), Event, State1).
 
 % conjunction: flatten (A,B) into [A, B | Gs].
-reduce_goal((A,B), Gs, Rest, Event, State1) :-
-    step(state([branch([A,B|Gs])|Rest]), Event, State1).
+reduce_goal(OrigGoal, (A,B), Gs, Rest, Event, State1) :-
+    step(state([branch(OrigGoal, [A,B|Gs])|Rest]), Event, State1).
 
 % unification built-in: X = Y
-reduce_goal((X=Y), Gs, Rest, Event, State1) :-
+reduce_goal(OrigGoal, (X=Y), Gs, Rest, Event, State1) :-
     X = Y,
-    step(state([branch(Gs)|Rest]), Event, State1).
+    step(state([branch(OrigGoal, Gs)|Rest]), Event, State1).
 
 % cooperative suspension point:
 % yield(Label) causes the interpreter to suspend and return
 % suspended(Label).  The yield/1 goal has already been removed from
 % the resolvent, so resuming from this state continues "after" it.
-reduce_goal(yield(Label), Gs, Rest, suspended(Label), state([branch(Gs)|Rest])) :- !.
+reduce_goal(OrigGoal, yield(Label), Gs, Rest, suspended(Label), state([branch(OrigGoal, Gs)|Rest])) :- !.
 
 % foreign callout: invoke a registered Python function synchronously.
 % py_call/2 is provided by library(janus) and calls into the Python runtime.
-reduce_goal(foreign(Fn, In, Out), Gs, Rest, Event, State1) :-
+reduce_goal(OrigGoal, foreign(Fn, In, Out), Gs, Rest, Event, State1) :-
     py_call(constraint_foreign:dispatch(Fn, In), Out),
-    step(state([branch(Gs)|Rest]), Event, State1).
+    step(state([branch(OrigGoal, Gs)|Rest]), Event, State1).
 
 
 % query/3: compile and reduce via foreign/3 callout.
 % Placed before the general user:rule/2 dispatch clause.
-reduce_goal(query(Store:Template, Query, Bag), Gs, Rest, Event, State1) :-
+reduce_goal(OrigGoal, query(Store:Template, Query, Bag), Gs, Rest, Event, State1) :-
     query_compiler:compile_query(query(Store:Template, Query, Bag), CompiledAtom, Obligations),
     term_to_atom(Obligations, ObligationsAtom),
     Template =.. [F|_],
     % Reduce foreign(mnestic_query, ...) through the existing foreign/3 path
     % by calling step on a state with the foreign goal.  The continuation
     % builds result terms from the returned rows then proceeds with Gs.
-    step(state([branch([
+    step(state([branch(OrigGoal, [
         foreign(mnestic_query, [CompiledAtom, ObligationsAtom], Rows),
         build_query_results(F, Rows, Bag)
       | Gs]) | Rest]), Event, State1).
@@ -97,15 +105,32 @@ reduce_goal(query(Store:Template, Query, Bag), Gs, Rest, Event, State1) :-
 % checkpoint(Label): persist the continuation and continue.
 % Emits checkpoint(Label) event; the checkpoint goal is removed from the
 % resolvent so resuming continues past it.
-reduce_goal(checkpoint(Label), Gs, Rest, checkpoint(Label), state([branch(Gs)|Rest])) :- !.
-reduce_goal(G, Gs, Rest, Event, State1) :-
+reduce_goal(OrigGoal, checkpoint(Label), Gs, Rest, checkpoint(Label), state([branch(OrigGoal, Gs)|Rest])) :- !.
+reduce_goal(OrigGoal, G, Gs, Rest, Event, State1) :-
     % Strip module qualification if present.
     (G = _Module:Goal -> UnqualifiedGoal = Goal ; UnqualifiedGoal = G),
-    ( user:rule(UnqualifiedGoal, _) ->
-        findall(branch(NewGoals),
-                ( user:rule(UnqualifiedGoal, Body),
+    % Test for a rule of this functor/arity using a fresh skeleton, NOT the
+    % goal instance itself.  This distinguishes "defined predicate, but no
+    % clause matches this instance" (an ordinary failure: the branch dies and
+    % we backtrack) from "no such predicate at all" (an error, below).  It also
+    % must not bind any variables of the goal, since they are shared with
+    % OrigGoal and the continuation Gs.
+    functor(UnqualifiedGoal, Functor, Arity),
+    functor(Skeleton, Functor, Arity),
+    ( \+ \+ user:rule(Skeleton, _) ->
+        % One branch per matching rule.  When no clause matches this instance
+        % NewBranches is [] and the branch simply drops out of the state.  findall/3 copies each template, which
+        % is exactly what we want here: distinct alternatives must be able to
+        % bind the goal's variables to distinct values.  We include OrigGoal
+        % (and the head goal G) INSIDE the copied template as OGCopy/GCopy, so
+        % each branch gets its own OrigGoal copy whose variables are shared,
+        % through the head unification, with that branch's resolvent.  This is
+        % what lets a solution recover the goal's bindings for that branch.
+        findall(branch(OGCopy, NewGoals),
+                ( copy_term(OrigGoal-G-Gs, OGCopy-GCopy-GsCopy),
+                  user:rule(GCopy, Body),
                   body_to_goals(Body, BodyGoals),
-                  append(BodyGoals, Gs, NewGoals)
+                  append(BodyGoals, GsCopy, NewGoals)
                 ),
                 NewBranches),
         % DFS order: explore the first alternative first, keep the rest for later.
@@ -113,10 +138,10 @@ reduce_goal(G, Gs, Rest, Event, State1) :-
         step(state(NextBranches), Event, State1)
     ; predicate_property(user:UnqualifiedGoal, visible) ->
         ( once(user:UnqualifiedGoal) ->
-            step(state([branch(Gs)|Rest]), Event, State1)
+            step(state([branch(OrigGoal, Gs)|Rest]), Event, State1)
         ; step(state(Rest), Event, State1)
         )
-    ; throw(error(unknown_goal(UnqualifiedGoal), context(reduce_goal/5, G)))
+    ; throw(error(unknown_goal(UnqualifiedGoal), context(reduce_goal/6, G)))
     ).
 
 % body_to_goals(+Body, -Goals)
@@ -170,11 +195,23 @@ step_packed(PackedAtom, EventAtom, PackedOutAtom, BindingFlatList) :-
                         [variable_names(VarNames)]),
     nb_setval(constraint_orig_goal, OrigGoal),
     step(State, Event, StateOut),
-    term_to_atom(Event, EventAtom),
     term_to_atom(constraint_meta_pack(OrigGoal, StateOut), PackedOutAtom),
-    (Event = solution ->
-        extract_named_bindings_flat(VarNames, BindingFlatList)
+    ( Event = solution(SolvedOrigGoal) ->
+        % Normalise the external event atom to bare 'solution' (the Python side
+        % matches on the string 'solution').
+        EventAtom = solution,
+        % Recover bindings by unifying the top-level OrigGoal (which still
+        % carries the user's variable NAMES from VarNames) against the solved
+        % branch's bound OrigGoal.  Copy first so we don't disturb anything.
+        ( catch(( copy_term(OrigGoal-VarNames, OGCopy-VNCopy),
+                  OGCopy = SolvedOrigGoal,
+                  extract_named_bindings_flat(VNCopy, BindingFlatList)
+                ), _, fail)
+        -> true
+        ;  BindingFlatList = []
+        )
     ;
+        term_to_atom(Event, EventAtom),
         BindingFlatList = []
     ).
 
@@ -192,9 +229,11 @@ interleave_lists([X|Xs], [Y|Ys], [X,Y|Zs]) :- interleave_lists(Xs, Ys, Zs).
 
 % parse_packed_branches(+PackedAtom, -FlatGoalList)
 %
-% Parse a packed atom and return all goals as a flat list of atoms, with
-% the atom 'branch_start' separating branches.  Format:
-%   [branch_start, goal1, goal2, ..., branch_start, goal3, ...]
+% Parse a packed atom and return all branches as a flat list of atoms, with
+% the atom 'branch_start' separating branches.  Immediately after each
+% 'branch_start' marker comes that branch's OrigGoal atom, then its goals:
+%   [branch_start, OrigGoal1, goal1, goal2, ...,
+%    branch_start, OrigGoal2, goal3, ...]
 %
 % Returns [] for an empty state (done).
 parse_packed_branches(PackedAtom, FlatGoalList) :-
@@ -202,15 +241,19 @@ parse_packed_branches(PackedAtom, FlatGoalList) :-
                         constraint_meta_pack(_, State),
                         []),
     State = state(Branches),
-    maplist(goals_as_atoms, Branches, BranchAtomLists),
+    maplist(branch_as_atoms, Branches, BranchAtomLists),
     flatten_with_markers(BranchAtomLists, FlatGoalList).
 
-goals_as_atoms(branch(Goals), GoalAtoms) :-
+% branch_as_atoms(+branch(OrigGoal, Goals), -[OrigGoalAtom, GoalAtom...])
+% The OrigGoal atom is emitted first so the Python side can peel it back off
+% into the branch dict's "orig_goal" field.
+branch_as_atoms(branch(OrigGoal, Goals), [OrigGoalAtom|GoalAtoms]) :-
+    term_to_atom(OrigGoal, OrigGoalAtom),
     maplist(term_to_atom, Goals, GoalAtoms).
 
 flatten_with_markers([], []).
-flatten_with_markers([Goals|Rest], [branch_start|Flat]) :-
-    append(Goals, RestFlat, Flat),
+flatten_with_markers([Items|Rest], [branch_start|Flat]) :-
+    append(Items, RestFlat, Flat),
     flatten_with_markers(Rest, RestFlat).
 
 % extract_bindings_str(+OrigGoalStr, +PackedSolAtom, -VarNameList, -VarValueList)

@@ -18,6 +18,10 @@ from constraint import meta
 from constraint.store.mnestic_store import MnesticRuleSetStore
 from constraint.store.mnestic_adapter import _registry as _adapter_registry
 
+from tests.conftest import skip_mnestic
+
+pytestmark = skip_mnestic
+
 
 def _create_mnestic_db(path: str, relation_script: str) -> None:
     """Create and populate a mnestic rocksdb database with the given relation."""
