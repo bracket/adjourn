@@ -8,6 +8,7 @@ import yaml
 from click.testing import CliRunner
 
 from constraint.cli.__main__ import main
+from constraint.config import Config
 from constraint.store import AggregateRuleSetStore, FileRuleSetStore
 
 NONEMPTY_RULESET = "rule(test_fixture_placeholder, true).\n"
@@ -1455,3 +1456,25 @@ class TestRulesCommand:
         assert result.exit_code == 0, result.output
         config = yaml.safe_load(config_path.read_text())
         assert config["stores"][0]["path"] == "rules/rel.pl"
+
+    def test_rules_add_path_with_spaces_preserved(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """A path containing spaces and special characters is stored verbatim."""
+        rules_dir = tmp_path / "my rules"
+        rules_dir.mkdir()
+        rules_path = rules_dir / "foo bar (1).pl"
+        rules_path.write_text(NONEMPTY_RULESET)
+        config_path = tmp_path / ".constraint" / "config.yaml"
+
+        result = runner.invoke(
+            main, ["rules", "add", str(rules_path), "--config", str(config_path)]
+        )
+
+        assert result.exit_code == 0, result.output
+        config = yaml.safe_load(config_path.read_text())
+        assert config["stores"][0]["path"] == str(rules_path)
+        assert config["stores"][0]["name"] == "foo bar (1)"
+        # Config loads and includes the new store.
+        reloaded = Config(config_path)
+        assert reloaded.store_configs[0]["path"] == str(rules_path)

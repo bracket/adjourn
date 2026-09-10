@@ -202,3 +202,33 @@ class TestAppendFileStore:
 
         with pytest.raises(OSError):
             config.append_file_store("rules.pl")
+
+    def test_append_file_store_verbatim_path(self, tmp_path: Path) -> None:
+        """The path string must be stored exactly as given, not normalized."""
+        config_path = _write_config(tmp_path, {"stores": [], "aliases": {}})
+        config = Config(config_path)
+
+        result = config.append_file_store("./rules/rel.pl")
+
+        assert result.changed is True
+        assert result["path"] == "./rules/rel.pl"
+        # The on-disk YAML must contain the verbatim path too.
+        assert "./rules/rel.pl" in config_path.read_text()
+        reloaded = Config(config_path)
+        assert reloaded.store_configs[0]["path"] == "./rules/rel.pl"
+
+    def test_append_file_store_path_with_spaces_and_special_chars(
+        self, tmp_path: Path
+    ) -> None:
+        """Paths with spaces and special characters are preserved and named."""
+        config_path = _write_config(tmp_path, {"stores": [], "aliases": {}})
+        config = Config(config_path)
+
+        result = config.append_file_store("my rules/foo bar (1).pl")
+
+        assert result.changed is True
+        assert result["path"] == "my rules/foo bar (1).pl"
+        assert result["name"] == "foo bar (1)"
+        reloaded = Config(config_path)
+        assert reloaded.store_configs[0]["path"] == "my rules/foo bar (1).pl"
+        assert reloaded.store_configs[0]["name"] == "foo bar (1)"
