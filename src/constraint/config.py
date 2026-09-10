@@ -71,7 +71,7 @@ class Config:
         )
         self._data = self._load()
 
-    def append_file_store(self, path: str) -> dict[str, Any]:
+    def append_file_store(self, path: str) -> _AppendFileStoreResult:
         """Append a ``file`` store entry for *path* and persist the config.
 
         The store name is derived from ``Path(path).stem`` and auto-suffixed
