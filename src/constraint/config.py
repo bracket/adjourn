@@ -4,6 +4,20 @@ from typing import Any
 import yaml
 
 
+class _AppendFileStoreResult(dict):
+    """Store config dict returned by :meth:`Config.append_file_store`.
+
+    Behaves as a plain mapping of the store configuration while also
+    carrying a ``changed`` flag so callers can tell whether the config
+    file was modified (``True``) or the store was already configured
+    (``False``).
+    """
+
+    def __init__(self, store_config: dict[str, Any], changed: bool) -> None:
+        super().__init__(store_config)
+        self.changed = changed
+
+
 class Config:
     """Read and validate a project rule-store configuration file."""
 
@@ -24,7 +38,8 @@ class Config:
     @property
     def foreign_plugins(self) -> list[str]:
         """Return the list of foreign plugin module names, or [] if absent."""
-        return list(self._data["foreign_plugins"])
+        foreign = self._data.get("foreign") or {}
+        return list(foreign.get("plugins", []))
 
     @property
     def base_dir(self) -> Path:
@@ -39,6 +54,84 @@ class Config:
             return self._data["aliases"][name]
         except KeyError as exc:
             raise ValueError(f"Unknown ruleset alias: {name}") from exc
+
+    def _create_if_missing(self) -> None:
+        """Create the config file with an empty ``stores`` list if missing.
+
+        Parent directories are created as needed.  When the file is created,
+        ``self._data`` is refreshed from disk so property reads reflect the
+        newly created (empty) configuration.
+        """
+        if self.path.exists():
+            return
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(
+            yaml.safe_dump({"stores": []}, default_flow_style=False),
+            encoding="utf-8",
+        )
+        self._data = self._load()
+
+    def append_file_store(self, path: str) -> dict[str, Any]:
+        """Append a ``file`` store entry for *path* and persist the config.
+
+        The store name is derived from ``Path(path).stem`` and auto-suffixed
+        (``-2``, ``-3``, ...) until it is unique among existing store names
+        and alias keys.  If a store with the identical ``path`` string is
+        already configured, the existing entry is returned with
+        ``changed`` set to ``False`` and the file is not rewritten.
+
+        Args:
+            path: The ruleset file path, stored verbatim.
+
+        Returns:
+            The added (or already existing) store configuration dict.  The
+            returned dict carries a ``changed`` attribute that is ``True``
+            when the config file was modified and ``False`` when the store
+            was already configured (idempotent no-op).
+
+        Raises:
+            ValueError: If a store name cannot be derived from *path*.
+            OSError: If the config file cannot be written.
+        """
+        self._create_if_missing()
+
+        name = Path(path).stem
+        if not name:
+            raise ValueError(f"Cannot derive a store name from path: {path!r}")
+
+        stores = self._data.setdefault("stores", [])
+        for store in stores:
+            if store.get("path") == path:
+                return _AppendFileStoreResult(store, False)
+
+        used_names = {
+            store["name"] for store in stores if "name" in store
+        }
+        used_names.update(self._data.setdefault("aliases", {}).keys())
+
+        derived_name = name
+        suffix = 2
+        while derived_name in used_names:
+            derived_name = f"{name}-{suffix}"
+            suffix += 1
+
+        store_config: dict[str, Any] = {
+            "type": "file",
+            "path": path,
+            "prolog": "constraint",
+            "name": derived_name,
+        }
+        stores.append(store_config)
+        self._write()
+        return _AppendFileStoreResult(store_config, True)
+
+    def _write(self) -> None:
+        """Persist ``self._data`` to ``self.path`` as YAML."""
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(
+            yaml.safe_dump(self._data, default_flow_style=False),
+            encoding="utf-8",
+        )
 
     def _load(self) -> dict[str, Any]:
         if not self.path.exists():
@@ -138,7 +231,6 @@ class Config:
             validated_stores.append(validated_store)
 
         foreign = raw_data.get("foreign")
-        validated_plugins: list[str] = []
         if foreign is not None:
             if not isinstance(foreign, dict):
                 raise ValueError(
@@ -155,6 +247,9 @@ class Config:
                         raise ValueError(
                             f"Invalid config file {self.path}: 'foreign.plugins[{i}]' must be a string"
                         )
-                validated_plugins = list(plugins)
 
-        return {"stores": validated_stores, "aliases": validated_aliases, "foreign_plugins": validated_plugins}
+        return {
+            "stores": validated_stores,
+            "aliases": validated_aliases,
+            "foreign": foreign if foreign is not None else {},
+        }
