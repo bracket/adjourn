@@ -330,7 +330,7 @@ def rules_group() -> None:
 )
 def cmd_rules_add(
     path: str,
-    config_path: Optional[Path],
+    config_path: Path | None,
     output_format: str,
     pretty_print: bool,
 ) -> None:
