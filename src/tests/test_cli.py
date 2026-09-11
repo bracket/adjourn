@@ -8,6 +8,7 @@ import yaml
 from click.testing import CliRunner
 
 from constraint.cli.__main__ import main
+from constraint.config import Config
 from constraint.store import AggregateRuleSetStore, FileRuleSetStore
 
 NONEMPTY_RULESET = "rule(test_fixture_placeholder, true).\n"
@@ -1241,3 +1242,239 @@ class TestSetResumeCommand:
             ],
         )
         assert result.exit_code != 0
+
+
+class TestRulesCommand:
+    """Tests for the ``rules`` command group."""
+
+    def test_rules_registered_in_main_help(self, runner: CliRunner) -> None:
+        """rules should appear in main --help."""
+        result = runner.invoke(main, ["--help"])
+        assert result.exit_code == 0
+        assert "rules" in result.output
+
+    def test_rules_add_help(self, runner: CliRunner) -> None:
+        """rules add --help should display usage information."""
+        result = runner.invoke(main, ["rules", "add", "--help"])
+        assert result.exit_code == 0
+        assert "PATH" in result.output
+        assert "--config" in result.output
+        assert "--format" in result.output
+        assert "--pretty-print" in result.output
+
+    def test_rules_add_creates_config_when_missing(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """rules add should create the config file when it does not exist."""
+        rules_path = tmp_path / "my_rules.pl"
+        rules_path.write_text(NONEMPTY_RULESET)
+        config_path = tmp_path / ".constraint" / "config.yaml"
+
+        result = runner.invoke(
+            main, ["rules", "add", str(rules_path), "--config", str(config_path)]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert config_path.exists()
+        assert f"Added file store 'my_rules' at path '{rules_path}'." in result.output
+        config = yaml.safe_load(config_path.read_text())
+        assert config["stores"] == [
+            {
+                "type": "file",
+                "path": str(rules_path),
+                "prolog": "constraint",
+                "name": "my_rules",
+            }
+        ]
+
+    def test_rules_add_appends_to_existing_config(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """rules add should append a store to an existing config."""
+        rules_path = tmp_path / "my_rules.pl"
+        rules_path.write_text(NONEMPTY_RULESET)
+        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
+
+        result = runner.invoke(
+            main, ["rules", "add", str(rules_path), "--config", str(config_path)]
+        )
+
+        assert result.exit_code == 0, result.output
+        config = yaml.safe_load(config_path.read_text())
+        assert config["stores"][-1]["path"] == str(rules_path)
+        assert config["stores"][-1]["name"] == "my_rules"
+
+    def test_rules_add_duplicate_path_is_unchanged(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """Adding an already-registered path should report no change and exit 0."""
+        rules_path = tmp_path / "my_rules.pl"
+        rules_path.write_text(NONEMPTY_RULESET)
+        config_path = tmp_path / ".constraint" / "config.yaml"
+
+        first = runner.invoke(
+            main, ["rules", "add", str(rules_path), "--config", str(config_path)]
+        )
+        assert first.exit_code == 0, first.output
+        before = config_path.read_text()
+
+        second = runner.invoke(
+            main, ["rules", "add", str(rules_path), "--config", str(config_path)]
+        )
+
+        assert second.exit_code == 0, second.output
+        assert f"Store with path '{rules_path}' already registered." in second.output
+        assert config_path.read_text() == before
+
+    def test_rules_add_nonexistent_path_fails(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """Adding a nonexistent path should print an error and exit non-zero."""
+        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
+        missing = tmp_path / "missing.pl"
+
+        result = runner.invoke(
+            main, ["rules", "add", str(missing), "--config", str(config_path)]
+        )
+
+        assert result.exit_code != 0
+        assert "does not exist" in result.output
+
+    def test_rules_add_json_added(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """rules add --format json should emit status 'added' with the store."""
+        rules_path = tmp_path / "my_rules.pl"
+        rules_path.write_text(NONEMPTY_RULESET)
+        config_path = tmp_path / ".constraint" / "config.yaml"
+
+        result = runner.invoke(
+            main,
+            [
+                "rules", "add", str(rules_path),
+                "--config", str(config_path),
+                "--format", "json",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert payload["status"] == "added"
+        assert payload["store"] == {
+            "type": "file",
+            "path": str(rules_path),
+            "prolog": "constraint",
+            "name": "my_rules",
+        }
+
+    def test_rules_add_json_unchanged(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """rules add --format json on a duplicate should emit status 'unchanged'."""
+        rules_path = tmp_path / "my_rules.pl"
+        rules_path.write_text(NONEMPTY_RULESET)
+        config_path = tmp_path / ".constraint" / "config.yaml"
+
+        runner.invoke(
+            main, ["rules", "add", str(rules_path), "--config", str(config_path)]
+        )
+        result = runner.invoke(
+            main,
+            [
+                "rules", "add", str(rules_path),
+                "--config", str(config_path),
+                "--format", "json",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert payload["status"] == "unchanged"
+        assert payload["store"]["name"] == "my_rules"
+
+    def test_rules_add_json_pretty_print(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """rules add --format json --pretty-print should produce indented JSON."""
+        rules_path = tmp_path / "my_rules.pl"
+        rules_path.write_text(NONEMPTY_RULESET)
+        config_path = tmp_path / ".constraint" / "config.yaml"
+
+        result = runner.invoke(
+            main,
+            [
+                "rules", "add", str(rules_path),
+                "--config", str(config_path),
+                "--format", "json",
+                "--pretty-print",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert result.output.startswith('{\n  "')
+
+    def test_rules_add_name_collision_auto_suffixes(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """A name collision should auto-suffix and reflect the name in the message."""
+        first = tmp_path / "rules" / "foo.pl"
+        second = tmp_path / "other" / "foo.pl"
+        first.parent.mkdir()
+        second.parent.mkdir()
+        first.write_text(NONEMPTY_RULESET)
+        second.write_text(NONEMPTY_RULESET)
+        config_path = tmp_path / ".constraint" / "config.yaml"
+
+        runner.invoke(
+            main, ["rules", "add", str(first), "--config", str(config_path)]
+        )
+        result = runner.invoke(
+            main, ["rules", "add", str(second), "--config", str(config_path)]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "Added file store 'foo-2'" in result.output
+        config = yaml.safe_load(config_path.read_text())
+        assert config["stores"][-1]["name"] == "foo-2"
+
+    def test_rules_add_preserves_relative_path_verbatim(
+        self, runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A relative path should be stored verbatim, not absolutized."""
+        rules_dir = tmp_path / "rules"
+        rules_dir.mkdir()
+        rules_path = rules_dir / "rel.pl"
+        rules_path.write_text(NONEMPTY_RULESET)
+        config_path = tmp_path / ".constraint" / "config.yaml"
+
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(
+            main,
+            ["rules", "add", "rules/rel.pl", "--config", str(config_path)],
+        )
+
+        assert result.exit_code == 0, result.output
+        config = yaml.safe_load(config_path.read_text())
+        assert config["stores"][0]["path"] == "rules/rel.pl"
+
+    def test_rules_add_path_with_spaces_preserved(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """A path containing spaces and special characters is stored verbatim."""
+        rules_dir = tmp_path / "my rules"
+        rules_dir.mkdir()
+        rules_path = rules_dir / "foo bar (1).pl"
+        rules_path.write_text(NONEMPTY_RULESET)
+        config_path = tmp_path / ".constraint" / "config.yaml"
+
+        result = runner.invoke(
+            main, ["rules", "add", str(rules_path), "--config", str(config_path)]
+        )
+
+        assert result.exit_code == 0, result.output
+        config = yaml.safe_load(config_path.read_text())
+        assert config["stores"][0]["path"] == str(rules_path)
+        assert config["stores"][0]["name"] == "foo bar (1)"
+        # Config loads and includes the new store.
+        reloaded = Config(config_path)
+        assert reloaded.store_configs[0]["path"] == str(rules_path)

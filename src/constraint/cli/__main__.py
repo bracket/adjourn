@@ -300,6 +300,85 @@ def cmd_store_list(
     click.echo(_format_store_info_raw(store_info))
 
 
+@main.group("rules")
+def rules_group() -> None:
+    """Manage rule stores."""
+
+
+@rules_group.command("add")
+@click.argument("path", type=click.Path(exists=False))
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Path to the project config file.",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["raw", "json"], case_sensitive=False),
+    default="raw",
+    show_default=True,
+    help="Output format.",
+)
+@click.option(
+    "--pretty-print",
+    is_flag=True,
+    default=False,
+    help="Pretty-print JSON output.",
+)
+def cmd_rules_add(
+    path: str,
+    config_path: Path | None,
+    output_format: str,
+    pretty_print: bool,
+) -> None:
+    """Register a file-based ruleset store.
+
+    PATH is the path to a ruleset file to register as a ``file`` store in
+    the project config.  The path is stored verbatim in the config file.
+
+    Examples:
+
+        constraint rules add rules/my_rules.pl
+        constraint rules add rules/my_rules.pl --format json
+    """
+    resolved_config_path = _resolve_config_path(config_path)
+
+    if not os.path.exists(path):
+        click.echo(f"Error: Path '{path}' does not exist.", err=True)
+        sys.exit(1)
+
+    try:
+        try:
+            config = Config(resolved_config_path)
+        except FileNotFoundError:
+            config = Config.__new__(Config)
+            config.path = Path(resolved_config_path)
+            config._data = {"stores": [], "aliases": {}, "foreign": {}}
+            config._create_if_missing()
+
+        store_config = config.append_file_store(path)
+    except (OSError, ValueError, KeyError) as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+    if output_format == "json":
+        status = "added" if store_config.changed else "unchanged"
+        payload = {"status": status, "store": dict(store_config)}
+        if pretty_print:
+            click.echo(json.dumps(payload, indent=2))
+        else:
+            click.echo(json.dumps(payload))
+        return
+
+    if store_config.changed:
+        click.echo(f"Added file store '{store_config['name']}' at path '{path}'.")
+    else:
+        click.echo(f"Store with path '{path}' already registered.")
+
+
 def _print_status_summary(state: dict[str, Any]) -> None:
     """Print a one-line human-readable summary of the state status.
 
