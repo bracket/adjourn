@@ -30,7 +30,10 @@ def register(name: str, adapter: MnesticAdapter) -> None:
 
 def lookup(name: str) -> MnesticAdapter:
     """Return the MnesticAdapter registered under *name*."""
-    return _registry[name]
+    try:
+        return _registry[name]
+    except KeyError:
+        raise KeyError(f"Unknown mnestic store: {name!r}") from None
 
 
 # ---------------------------------------------------------------------------

@@ -11,7 +11,6 @@ import yaml
 
 from constraint.config import Config
 from constraint.parser.ast import Atom, Clause, Compound
-from tests.conftest import skip_mnestic
 from constraint.store import (
     AggregateRuleSetStore,
     FileRuleSetStore,
@@ -494,7 +493,6 @@ def _create_mnestic_db(path: str, relation_script: str) -> None:
     db.close()
 
 
-@skip_mnestic
 class TestMnesticStore:
     """Tests for the MnesticRuleSetStore and its integration."""
 
@@ -812,7 +810,6 @@ class TestMnesticStore:
 
 
 
-@skip_mnestic
 class TestMnesticAdapterRegistry:
     """Tests for the store-name → MnesticAdapter registry."""
 
@@ -854,7 +851,6 @@ class TestMnesticAdapterRegistry:
 # ---------------------------------------------------------------------------
 
 
-@skip_mnestic
 class TestMnesticAdapterQueryCompile:
     """Tests for MnesticAdapter.parse_compiled_query()."""
 
@@ -1154,7 +1150,6 @@ class TestMnesticAdapterQueryCompile:
 # ---------------------------------------------------------------------------
 
 
-@skip_mnestic
 class TestMnesticAdapterAssembly:
     """Tests for MnesticAdapter CozoScript assembly and compile_and_run."""
 
@@ -1334,7 +1329,6 @@ class TestMnesticAdapterAssembly:
         assert rows[0][0] == 1
 
 
-@skip_mnestic
 class TestMnesticQueryCallout:
     """Tests for the _mnestic_query foreign callout."""
 

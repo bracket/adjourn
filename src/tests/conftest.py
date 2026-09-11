@@ -5,15 +5,6 @@ import constraint.runner as runner_mod
 from constraint.runner import Runner
 
 
-# Temporarily disabled: the mnestic (CozoDB fork) backed tests are currently
-# failing.  Remove this marker to re-enable them.
-#   pytestmark = skip_mnestic            (whole module)
-#   @skip_mnestic                        (class or function)
-skip_mnestic = pytest.mark.skip(
-    reason="mnestic-backed tests temporarily disabled",
-)
-
-
 @pytest.fixture(autouse=True)
 def runner_isolation() -> None:
     """Ensure every test starts with a fresh Runner singleton.

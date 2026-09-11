@@ -18,10 +18,6 @@ from constraint import meta
 from constraint.store.mnestic_store import MnesticRuleSetStore
 from constraint.store.mnestic_adapter import _registry as _adapter_registry
 
-from tests.conftest import skip_mnestic
-
-pytestmark = skip_mnestic
-
 
 def _create_mnestic_db(path: str, relation_script: str) -> None:
     """Create and populate a mnestic rocksdb database with the given relation."""
@@ -78,7 +74,8 @@ def _load_helpers(store_name: str) -> None:
         "\n"
         "step_until_solution(State) :-\n"
         "    constraint_meta:step(State, Event, State1),\n"
-        "    (   Event = solution -> true\n"
+        "    (   Event = solution(_) -> true\n"
+        "    ;   Event = done -> fail\n"
         "    ;   step_until_solution(State1)\n"
         "    ).\n"
     )
