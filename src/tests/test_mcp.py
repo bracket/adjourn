@@ -20,6 +20,7 @@ from constraint.mcp import (
     _server_dir,
     _session_path,
     _sessions_dir,
+    _write_rules_file,
     constraint_add_rules,
     constraint_init,
     constraint_resume,
@@ -119,6 +120,17 @@ class TestMCPSessionHelpers:
         (tmp_path / "rules_010.pl").write_text("")
         (tmp_path / "rules_003.pl").write_text("")
         assert _allocate_rules_filename(tmp_path) == "rules_011.pl"
+
+    def test_write_rules_file_skips_existing_filename(self, tmp_path: Path) -> None:
+        """_write_rules_file should create the next free numbered rules file."""
+        existing = tmp_path / "rules_001.pl"
+        existing.write_text("rule(existing, true).\n")
+
+        created = _write_rules_file(tmp_path, "rule(new_rule, true).\n")
+
+        assert created == "rules_002.pl"
+        assert existing.read_text() == "rule(existing, true).\n"
+        assert (tmp_path / created).read_text() == "rule(new_rule, true).\n"
 
 
 class TestMCPServerTools:
@@ -306,6 +318,52 @@ class TestMCPServerTools:
         finally:
             mcp_mod._SESSIONS_DIR = old_sessions_dir
             mcp_mod._CONFIG_PATH = old_config_path
+
+    def test_constraint_add_rules_leaves_written_file_on_cli_failure(
+        self, tmp_path: Path
+    ) -> None:
+        """constraint_add_rules should preserve the new rules file if a CLI step fails."""
+        import constraint.mcp as mcp_mod
+
+        sessions_dir = tmp_path / "sessions"
+        sessions_dir.mkdir()
+        state_path = sessions_dir / "session.json"
+        state_path.write_text(
+            json.dumps(
+                {
+                    "version": 0,
+                    "original_goal": "true",
+                    "branches": [{"orig_goal": "true", "goals": ["true"]}],
+                    "status": "running",
+                    "ruleset_hash": "a" * 64,
+                    "resume_hash": "a" * 64,
+                }
+            )
+        )
+
+        config_path = tmp_path / ".constraint" / "config.yaml"
+        config_path.parent.mkdir()
+        config_path.write_text(yaml.safe_dump({"stores": [], "aliases": {}}))
+
+        old_sessions_dir = mcp_mod._SESSIONS_DIR
+        old_config_path = mcp_mod._CONFIG_PATH
+        old_run_cli = mcp_mod._run_cli
+        mcp_mod._SESSIONS_DIR = sessions_dir
+        mcp_mod._CONFIG_PATH = config_path
+
+        def failing_run_cli(args: list[str], cwd: Path | None = None) -> dict:
+            del args, cwd
+            raise RuntimeError("boom")
+
+        mcp_mod._run_cli = failing_run_cli
+        try:
+            with pytest.raises(RuntimeError, match="boom"):
+                constraint_add_rules("session", "rule(extra_rule, true).\n")
+            assert (tmp_path / "rules_001.pl").read_text() == "rule(extra_rule, true).\n"
+        finally:
+            mcp_mod._SESSIONS_DIR = old_sessions_dir
+            mcp_mod._CONFIG_PATH = old_config_path
+            mcp_mod._run_cli = old_run_cli
 
     def test_constraint_resume_advances_state(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

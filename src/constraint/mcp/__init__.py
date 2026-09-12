@@ -75,6 +75,19 @@ def _allocate_rules_filename(server_dir: Path) -> str:
     return f"rules_{next_index:03d}.pl"
 
 
+def _write_rules_file(server_dir: Path, rules: str) -> str:
+    """Write *rules* to a uniquely created ``rules_NNN.pl`` file."""
+    while True:
+        rules_filename = _allocate_rules_filename(server_dir)
+        rules_path = server_dir / rules_filename
+        try:
+            with rules_path.open("x", encoding="utf-8") as handle:
+                handle.write(rules)
+        except FileExistsError:
+            continue
+        return rules_filename
+
+
 def _allocate_session_id() -> str:
     """Allocate a fresh session id (UUID hex)."""
     return uuid.uuid4().hex
@@ -209,9 +222,7 @@ def constraint_add_rules(session: str, rules: str) -> dict:
     state_path = _require_session_state(session).resolve()
     config_path = _config_path()
     server_dir = _server_dir()
-    rules_filename = _allocate_rules_filename(server_dir)
-    rules_path = server_dir / rules_filename
-    rules_path.write_text(rules, encoding="utf-8")
+    rules_filename = _write_rules_file(server_dir, rules)
 
     _run_cli(
         [
