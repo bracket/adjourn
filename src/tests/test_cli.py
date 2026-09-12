@@ -554,7 +554,11 @@ class TestResumeCommand:
         assert result.exit_code == 0, result.output
         # Check that both hash lines are present with 12-char values
         lines = result.output.strip().split(chr(10))
-        hash_lines = [l for l in lines if l.startswith('ruleset_hash:') or l.startswith('resume_hash:')]
+        hash_lines = [
+            line
+            for line in lines
+            if line.startswith(("ruleset_hash:", "resume_hash:"))
+        ]
         assert len(hash_lines) == 2
         for line in hash_lines:
             # resume_hash has two spaces after colon for alignment

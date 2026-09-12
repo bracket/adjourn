@@ -4,16 +4,14 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Optional
-import subprocess
+from typing import Any
 
 import click
 
 from constraint.config import Config
 from constraint.constraint_foreign import load_foreign_plugins
-from constraint.meta import resume_state
-from constraint.state import init_state, set_resume_hash, resolve_ruleset_hash
 from constraint.runner import Runner
+from constraint.state import init_state, set_resume_hash
 from constraint.state_store import JsonFileStateStore
 from constraint.store import AggregateRuleSetStore, StoreInfo, build_store_from_config
 
@@ -68,7 +66,7 @@ def cmd_init(
     query: str,
     state_file: Path,
     ruleset_name: str,
-    config_path: Optional[Path],
+    config_path: Path | None,
     output_format: str,
     pretty_print: bool,
 ) -> None:
@@ -133,7 +131,7 @@ def cmd_init(
 def cmd_resume(
     state_file: Path,
     output_file: Path,
-    config_path: Optional[Path],
+    config_path: Path | None,
     output_format: str,
     pretty_print: bool,
 ) -> None:
@@ -225,8 +223,8 @@ def cmd_resume(
 def cmd_set_resume(
     ruleset_name: str,
     state_file: Path,
-    output_file: Optional[Path],
-    config_path: Optional[Path],
+    output_file: Path | None,
+    config_path: Path | None,
     output_format: str,
     pretty_print: bool,
 ) -> None:
@@ -304,7 +302,7 @@ def store_group() -> None:
     help="Pretty-print JSON output.",
 )
 def cmd_store_list(
-    config_path: Optional[Path],
+    config_path: Path | None,
     output_format: str,
     pretty_print: bool,
 ) -> None:
@@ -438,7 +436,7 @@ def _print_status_summary(state: dict[str, Any]) -> None:
             click.echo(f"resume_hash:  {resume_hash[:12]}")
 
 
-def _resolve_config_path(config_path: Optional[Path]) -> Path:
+def _resolve_config_path(config_path: Path | None) -> Path:
     """Resolve the config path from CLI flag, env var, or default."""
     if config_path is not None:
         return config_path
@@ -450,7 +448,7 @@ def _resolve_config_path(config_path: Optional[Path]) -> Path:
 
 # TODO: This will contain more than just the store at some point
 
-def _load_store(config_path: Optional[Path]) -> AggregateRuleSetStore:
+def _load_store(config_path: Path | None) -> AggregateRuleSetStore:
     """Load the configured aggregate ruleset store."""
     config = Config(_resolve_config_path(config_path))
     return build_store_from_config(config)
@@ -575,7 +573,7 @@ def _format_state_json(
     default="bash",
     help="Shell type for completion script (default: bash)",
 )
-def complete(output: Optional[Path], shell: str) -> None:
+def complete(output: Path | None, shell: str) -> None:
     """Generate shell completion script.
     
     This command generates a shell completion script that enables

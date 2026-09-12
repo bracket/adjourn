@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import asyncio
+import json
 from pathlib import Path
 
 import pytest
@@ -13,13 +13,13 @@ mcp = pytest.importorskip("constraint.mcp")
 
 from constraint.config import Config
 from constraint.mcp import (
-    _allocate_session_id,
     _allocate_rules_filename,
+    _allocate_session_id,
     _config_path,
+    _run_cli,
+    _server_dir,
     _session_path,
     _sessions_dir,
-    _server_dir,
-    _run_cli,
     constraint_add_rules,
     constraint_init,
     constraint_resume,

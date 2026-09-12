@@ -98,6 +98,7 @@ def _run_cli(args: list[str], cwd: Path | None = None) -> dict:
         result = subprocess.run(
             cmd,
             capture_output=True,
+            check=False,
             text=True,
             timeout=_TIMEOUT,
             cwd=cwd,
