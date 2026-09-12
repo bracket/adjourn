@@ -77,13 +77,16 @@ def _allocate_rules_filename(server_dir: Path) -> str:
 
 def _write_rules_file(server_dir: Path, rules: str) -> str:
     """Write *rules* to a uniquely created ``rules_NNN.pl`` file."""
+    rules_filename = _allocate_rules_filename(server_dir)
+    next_index = int(rules_filename.removeprefix("rules_").removesuffix(".pl"))
     while True:
-        rules_filename = _allocate_rules_filename(server_dir)
+        rules_filename = f"rules_{next_index:03d}.pl"
         rules_path = server_dir / rules_filename
         try:
             with rules_path.open("x", encoding="utf-8") as handle:
                 handle.write(rules)
         except FileExistsError:
+            next_index += 1
             continue
         return rules_filename
 
@@ -207,7 +210,9 @@ def constraint_add_rules(session: str, rules: str) -> dict:
     Writes *rules* verbatim to a newly allocated ``rules_NNN.pl`` file in the
     server directory, registers that relative filename in the configured
     project config, repoints the session's ``resume_hash`` to ``@top``, resumes
-    the session in place, and returns the resulting projection.
+    the session in place, and returns the resulting projection. If a later CLI
+    step fails after the file is written, the numbered rules file is left on
+    disk and the error is propagated.
 
     Args:
         session: The session id returned by ``constraint_init``.
