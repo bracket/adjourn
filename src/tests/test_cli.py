@@ -1137,6 +1137,76 @@ class TestSetResumeCommand:
         assert state_after["resume_hash"] != old_resume_hash
         second_hash = FileRuleSetStore(tmp_path / "rules" / "second_rules.pl").known_rulesets()[0]
         assert state_after["resume_hash"] == second_hash
+        assert result.output == ""
+
+    def test_set_resume_format_json_outputs_projection(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """set-resume --format json should emit the projection used by resume."""
+        config_path = _write_config(
+            tmp_path,
+            {"first_rules": "p(a).\n", "second_rules": "q(b).\n"},
+        )
+        state_file = tmp_path / "state.json"
+        result_init = runner.invoke(
+            main,
+            ["init", "true", str(state_file), "--ruleset", "first_rules", "--config", str(config_path)],
+        )
+        assert result_init.exit_code == 0, result_init.output
+
+        result = runner.invoke(
+            main,
+            [
+                "set-resume",
+                "second_rules",
+                str(state_file),
+                "--config",
+                str(config_path),
+                "--format",
+                "json",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert set(payload.keys()) == {"status", "label", "ruleset_hash", "resume_hash"}
+        state_after = json.loads(state_file.read_text())
+        assert payload == {
+            "status": state_after["status"],
+            "label": state_after.get("suspension", {}).get("label"),
+            "ruleset_hash": state_after["ruleset_hash"],
+            "resume_hash": state_after["resume_hash"],
+        }
+
+    def test_set_resume_format_json_pretty_prints_projection(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """set-resume --format json --pretty-print should indent the projection."""
+        config_path = _write_config(
+            tmp_path,
+            {"first_rules": "p(a).\n", "second_rules": "q(b).\n"},
+        )
+        state_file = tmp_path / "state.json"
+        result_init = runner.invoke(
+            main,
+            ["init", "true", str(state_file), "--ruleset", "first_rules", "--config", str(config_path)],
+        )
+        assert result_init.exit_code == 0, result_init.output
+
+        result = runner.invoke(
+            main,
+            [
+                "set-resume",
+                "second_rules",
+                str(state_file),
+                "--config",
+                str(config_path),
+                "--format",
+                "json",
+                "--pretty-print",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert result.output.startswith("{\n  ")
 
     def test_set_resume_output_to_different_file(
         self, runner: CliRunner, tmp_path: Path

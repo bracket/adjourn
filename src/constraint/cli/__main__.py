@@ -208,11 +208,27 @@ def cmd_resume(
     default=None,
     help="Path to the project config file.",
 )
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["raw", "json"], case_sensitive=False),
+    default="raw",
+    show_default=True,
+    help="Output format.",
+)
+@click.option(
+    "--pretty-print",
+    is_flag=True,
+    default=False,
+    help="Pretty-print JSON output.",
+)
 def cmd_set_resume(
     ruleset_name: str,
     state_file: Path,
     output_file: Optional[Path],
     config_path: Optional[Path],
+    output_format: str,
+    pretty_print: bool,
 ) -> None:
     """Set or update the resume_hash in a state file.
 
@@ -249,15 +265,16 @@ def cmd_set_resume(
     serialized = json.dumps(new_state, indent=2) + "\n"
 
     if output_file is None:
-        # Rewrite in place
         state_file.write_text(serialized)
-    elif str(output_file) == "-":
-        # Print to stdout
-        click.echo(serialized, nl=False)
-    else:
+    elif str(output_file) != "-":
         output_file.parent.mkdir(parents=True, exist_ok=True)
         output_file.write_text(serialized)
 
+    if output_format == "json":
+        projection = _build_state_projection(new_state)
+        click.echo(_format_state_json(projection, pretty_print))
+    elif str(output_file) == "-":
+        click.echo(serialized, nl=False)
 
 @main.group("store")
 def store_group() -> None:
