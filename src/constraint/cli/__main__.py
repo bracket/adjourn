@@ -236,6 +236,11 @@ def cmd_set_resume(
     The resolved ruleset hash is written as the ``resume_hash`` field.
     The ``ruleset_hash`` field is left untouched.
 
+    Under ``--format json``, stdout receives the four-field state projection
+    used by ``resume``. Under the default ``raw`` format, stdout behavior is
+    unchanged: in-place and file outputs are silent, while ``-o -`` writes the
+    rewritten full state JSON.
+
     Examples:
 
         constraint set-resume other-rules state.json
