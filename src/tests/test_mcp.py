@@ -365,6 +365,48 @@ class TestMCPServerTools:
             mcp_mod._CONFIG_PATH = old_config_path
             mcp_mod._run_cli = old_run_cli
 
+    def test_constraint_add_rules_keeps_registered_store_on_late_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """constraint_add_rules should preserve earlier side effects on later failure."""
+        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
+        sessions_dir = tmp_path / "sessions"
+        monkeypatch.setenv("CONSTRAINT_CONFIG", str(config_path))
+        monkeypatch.setenv("CONSTRAINT_MCP_SESSIONS_DIR", str(sessions_dir))
+
+        import constraint.mcp as mcp_mod
+
+        old_sessions_dir = mcp_mod._SESSIONS_DIR
+        old_config_path = mcp_mod._CONFIG_PATH
+        old_run_cli = mcp_mod._run_cli
+        mcp_mod._SESSIONS_DIR = sessions_dir
+        mcp_mod._CONFIG_PATH = config_path
+        try:
+            init_result = constraint_init("true")
+            session_id = init_result["session"]
+            state_path = sessions_dir / f"{session_id}.json"
+            resume_hash_before = json.loads(state_path.read_text())["resume_hash"]
+
+            def fail_on_set_resume(args: list[str], cwd: Path | None = None) -> dict:
+                if args[:2] == ["set-resume", "@top"]:
+                    raise RuntimeError("late failure")
+                return old_run_cli(args, cwd=cwd)
+
+            mcp_mod._run_cli = fail_on_set_resume
+
+            with pytest.raises(RuntimeError, match="late failure"):
+                constraint_add_rules(session_id, "rule(extra_rule, true).\n")
+
+            config = Config(config_path)
+            assert config.store_configs[-1]["path"] == "rules_001.pl"
+            assert (tmp_path / "rules_001.pl").read_text() == "rule(extra_rule, true).\n"
+            state_after = json.loads(state_path.read_text())
+            assert state_after["resume_hash"] == resume_hash_before
+        finally:
+            mcp_mod._SESSIONS_DIR = old_sessions_dir
+            mcp_mod._CONFIG_PATH = old_config_path
+            mcp_mod._run_cli = old_run_cli
+
     def test_constraint_resume_advances_state(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

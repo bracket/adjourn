@@ -210,9 +210,10 @@ def constraint_add_rules(session: str, rules: str) -> dict:
     Writes *rules* verbatim to a newly allocated ``rules_NNN.pl`` file in the
     server directory, registers that relative filename in the configured
     project config, repoints the session's ``resume_hash`` to ``@top``, resumes
-    the session in place, and returns the resulting projection. If a later CLI
-    step fails after the file is written, the numbered rules file is left on
-    disk and the error is propagated.
+    the session in place, and returns the resulting projection. This sequence
+    is not atomic: if a later CLI step fails, the numbered rules file remains
+    on disk, and any earlier config registration also remains in place while
+    the error is propagated.
 
     Args:
         session: The session id returned by ``constraint_init``.
