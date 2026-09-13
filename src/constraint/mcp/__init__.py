@@ -1,14 +1,15 @@
 """MCP server for the constraint resolution system.
 
-Exposes two tools — ``constraint_init`` and ``constraint_resume`` — that let
-an external client drive a resolution as a coroutine by shelling out to the
-CLI per call against disk-backed sessions.
+Exposes three tools — ``constraint_init``, ``constraint_resume``, and
+``constraint_add_rules`` — that let an external client drive a resolution as a
+coroutine by shelling out to the CLI per call against disk-backed sessions.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import uuid
@@ -25,6 +26,7 @@ MCP_PORT = int(os.environ.get("CONSTRAINT_MCP_PORT", "8080"))
 _SESSIONS_DIR = Path(
     os.environ.get("CONSTRAINT_MCP_SESSIONS_DIR", "./.constraint/mcp-sessions")
 )
+_CONFIG_PATH = Path(os.environ.get("CONSTRAINT_CONFIG", ".constraint/config.yaml"))
 _TIMEOUT = int(os.environ.get("CONSTRAINT_MCP_TIMEOUT", "60"))
 _LOG_LEVEL = os.environ.get("CONSTRAINT_MCP_LOG_LEVEL", "WARNING")
 
@@ -51,16 +53,55 @@ def _session_path(session_id: str) -> Path:
     return _sessions_dir() / f"{session_id}.json"
 
 
+def _config_path() -> Path:
+    """Return the configured project config path."""
+    return _CONFIG_PATH
+
+
+def _server_dir() -> Path:
+    """Return the server directory that contains ``.constraint/``."""
+    return _config_path().parent.parent
+
+
+def _allocate_rules_filename(server_dir: Path) -> str:
+    """Allocate the next ``rules_NNN.pl`` filename in *server_dir*."""
+    next_index = 1
+    pattern = re.compile(r"^rules_(\d+)\.pl$")
+    for candidate in server_dir.iterdir():
+        match = pattern.match(candidate.name)
+        if match is None:
+            continue
+        next_index = max(next_index, int(match.group(1)) + 1)
+    return f"rules_{next_index:03d}.pl"
+
+
+def _write_rules_file(server_dir: Path, rules: str) -> str:
+    """Write *rules* to a uniquely created ``rules_NNN.pl`` file."""
+    rules_filename = _allocate_rules_filename(server_dir)
+    next_index = int(rules_filename.removeprefix("rules_").removesuffix(".pl"))
+    while True:
+        rules_filename = f"rules_{next_index:03d}.pl"
+        rules_path = server_dir / rules_filename
+        try:
+            with rules_path.open("x", encoding="utf-8") as handle:
+                handle.write(rules)
+        except FileExistsError:
+            next_index += 1
+            continue
+        return rules_filename
+
+
 def _allocate_session_id() -> str:
     """Allocate a fresh session id (UUID hex)."""
     return uuid.uuid4().hex
 
 
-def _run_cli(args: list[str]) -> dict:
+def _run_cli(args: list[str], cwd: Path | None = None) -> dict:
     """Run the constraint CLI as a subprocess and return the parsed JSON projection.
 
     Args:
         args: CLI arguments (excluding the program name).
+        cwd: Optional working directory for the subprocess.
 
     Returns:
         The parsed JSON projection dict.
@@ -73,8 +114,10 @@ def _run_cli(args: list[str]) -> dict:
         result = subprocess.run(
             cmd,
             capture_output=True,
+            check=False,
             text=True,
             timeout=_TIMEOUT,
+            cwd=cwd,
         )
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(
@@ -89,6 +132,17 @@ def _run_cli(args: list[str]) -> dict:
         )
 
     return json.loads(result.stdout)
+
+
+def _require_session_state(session: str) -> Path:
+    """Return the session state file path or raise if it does not exist."""
+    state_path = _session_path(session)
+    if not state_path.exists():
+        raise RuntimeError(
+            f"Session '{session}' not found (state file {state_path} does not exist). "
+            "Did you call constraint_init first?"
+        )
+    return state_path
 
 
 # ---------------------------------------------------------------------------
@@ -142,13 +196,66 @@ def constraint_resume(session: str) -> dict:
     Raises:
         RuntimeError: If the session state file does not exist.
     """
-    state_path = _session_path(session)
-    if not state_path.exists():
-        raise RuntimeError(
-            f"Session '{session}' not found (state file {state_path} does not exist). "
-            "Did you call constraint_init first?"
-        )
+    state_path = _require_session_state(session)
     projection = _run_cli(
         ["resume", str(state_path), str(state_path), "--format", "json"]
+    )
+    return {"session": session, **projection}
+
+
+@mcp.tool()
+def constraint_add_rules(session: str, rules: str) -> dict:
+    """Add a ruleset file, repoint resume, and advance the session once.
+
+    Writes *rules* verbatim to a newly allocated ``rules_NNN.pl`` file in the
+    server directory, registers that relative filename in the configured
+    project config, repoints the session's ``resume_hash`` to ``@top``, resumes
+    the session in place, and returns the resulting projection. This sequence
+    is not atomic: if a later CLI step fails, the numbered rules file remains
+    on disk, and any earlier config registration also remains in place while
+    the error is propagated.
+
+    Args:
+        session: The session id returned by ``constraint_init``.
+        rules: Opaque Prolog rule text to write verbatim.
+
+    Returns:
+        The updated projection with the session id.
+
+    Raises:
+        RuntimeError: If the session state file does not exist.
+    """
+    state_path = _require_session_state(session).resolve()
+    config_path = _config_path()
+    server_dir = _server_dir()
+    rules_filename = _write_rules_file(server_dir, rules)
+
+    _run_cli(
+        [
+            "rules",
+            "add",
+            rules_filename,
+            "--config",
+            str(config_path),
+            "--format",
+            "json",
+        ],
+        cwd=server_dir,
+    )
+    _run_cli(
+        [
+            "set-resume",
+            "@top",
+            str(state_path),
+            "--config",
+            str(config_path),
+            "--format",
+            "json",
+        ],
+        cwd=server_dir,
+    )
+    projection = _run_cli(
+        ["resume", str(state_path), str(state_path), "--format", "json"],
+        cwd=server_dir,
     )
     return {"session": session, **projection}
