@@ -1,0 +1,10 @@
+registry: ghcr.io/bracket
+images:
+  service-constraint:
+    dockerfile: images/service-constraint/Dockerfile
+    version: "0.1.7"
+    dependencies:
+      - base-service-python-swipl
+    architectures:
+      - amd64
+      - arm64

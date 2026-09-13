@@ -1,0 +1,26 @@
+name: service-constraint
+
+networks:
+  constraint-net:
+    driver: bridge
+
+services:
+  constraint-mcp:
+    image: ghcr.io/bracket/service-constraint:0.1.7
+    build:
+      context: .
+    pull_policy: missing
+    restart: "on-failure"
+    networks:
+      - constraint-net
+    ports:
+      - "32980:32980"
+    expose:
+      - "32980"
+    environment:
+      CONSTRAINT_MCP_HOST: '0.0.0.0'
+      CONSTRAINT_MCP_PORT: '32980'
+      CONSTRAINT_MCP_DEBUG: '1'
+      CONSTRAINT_MCP_AUTH0_DOMAIN: 'dev-7y8xnq18agafiyxv.us.auth0.com'
+      CONSTRAINT_MCP_AUTH0_AUDIENCE: 'https://constraint.bracketzone.com/'
+    command: /opt/venv/bin/python -m constraint.mcp
