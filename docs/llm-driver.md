@@ -3,103 +3,144 @@
 ## Goal
 
 Half 2 of MCP exposure: adjourn acts as its own driver. When a goal
-suspends, adjourn calls an LLM and offers it adjourn's own MCP tools,
-so the LLM can extend the ruleset, manage context, and resume. (Half 1,
-adjourn as an MCP server to a chat agent, is complete.)
+suspends, adjourn calls an LLM and offers it tools so the LLM can extend
+the ruleset, manage context, and resume. (Half 1, adjourn as an MCP server
+to a chat agent, is complete.)
 
 No concrete first use case is fixed yet; the first cut is a proof of the
 loop.
 
-## First-cut architecture
+## Architecture
 
-- The driver is a haft-mcp-host `ChatSession`
-  (`haft/packages/haft-mcp-host/haft/mcp_host/session.py`) pointed directly
-  at the existing adjourn MCP server via `add_mcp_server`. No in-process
-  library API is required for the first cut.
-- The LLM sees the full adjourn MCP tool surface, including sessions,
-  resume hashes, and store names, and chooses which session/suspend point to
-  resume itself.
-- Loop shape:
-  1. Adjourn runs until it suspends.
-  2. The driver calls `ChatSession.send()` with the rendered context stack.
-  3. The LLM calls tools (e.g. `add_rules`, `push_context`) and then
-     resumes.
-  4. Repeat on the next suspension.
-- `resume` remains a separate tool from `add_rules` (which also resumes), so
-  the LLM can resume a suspend point without adding rules.
-- `add_rules` keeps its current (non-atomic) behavior for the first cut.
+Three layers, all in one process:
 
-## Handoff to a human
+- **`Workspace`** (`src/adjourn/tools.py`): the tool operations as methods
+  -- `init`, `resume`, `add_rules` -- holding the sessions directory,
+  config path, and CLI timeout. `Workspace.from_env()` reads the existing
+  `ADJOURN_*` environment variables. All resolution still runs through CLI
+  subprocesses (`_run_cli`), so janus is never loaded in the calling
+  process.
+- **MCP server** (`src/adjourn/mcp/__init__.py`): a thin wrapper over a
+  module-level `Workspace`. Tool names and behavior are unchanged for the
+  chat-agent half. Its `instructions` come from the shared usage text (see
+  Prompt).
+- **Driver** (`src/adjourn/driver.py`): a `Driver` class that uses a
+  haft-mcp-host `ChatSession`
+  (`haft/packages/haft-mcp-host/haft/mcp_host/session.py`) with **local
+  tools only** (`add_local_tool`). There is no MCP transport between the
+  driver and adjourn.
 
-The checkpoint mechanism is the handoff. Both of the following leave the
-session suspended and persisted, and return the state plus the `ChatSession`
-transcript to the caller:
+Rejected: the driver as a `ChatSession` pointed at the adjourn MCP server.
+It split state between the driver and the server (split brain) and
+required running a server. Driving a remote adjourn is out of scope.
 
-- `send()` raises `MaxIterationsExceededError` (the iteration budget).
-- The model finishes its turn while the session is still suspended.
+The entry point for the first cut is the Python API only.
+
+## Driver
+
+- `Driver(workspace, goal, ...)` takes the workspace, the goal, the
+  `ChatSession` model settings, an optional system prompt, `initial_context`,
+  `max_rounds=30`, and `all_solutions=False`.
+- The driver allocates one session and **binds its id**. The LLM's tools
+  carry no session ids or hashes.
+- **LLM tool surface** (local tools):
+  - `resume()` -- runs to the next `yield`, solution, or `done`
+    (`Runner.run`, continuing through checkpoints).
+  - `add_rules(rules)` -- adds the rules and resumes in one call. Stays
+    non-atomic.
+  - `push_context(text)`, `pop_context()` -- see Context stack.
+- **Tool errors:** the tool adapters catch exceptions and return them as
+  error results, so the LLM can correct itself. (haft otherwise re-raises
+  tool exceptions out of `send()`.)
+- **Only the LLM resumes a suspension.**
+
+### Loop
+
+1. Initialize the session and run until suspended, solution, or done.
+2. Each suspension is one **round**: a fresh `ChatSession`, prompted with
+   the rendered context. No transcript carries over between rounds; the
+   context stack is the only memory.
+3. When `send()` returns:
+   - if neither `resume` nor `add_rules` was called during the turn, the
+     session is incorrectly still suspended -> raise `DriverStalledError`;
+   - if the session is suspended at a new point -> next round;
+   - if solution or done -> finish.
+
+### Solutions
+
+- **Once** by default: return on the first solution.
+- `all_solutions=True`: the driver itself (no LLM involvement) resumes past
+  each solution and collects bindings until `done`.
+
+### Limits, errors, results
+
+- `max_rounds` (default 30) caps suspension rounds per drive; exceeding it
+  raises `DriverRoundLimitError`.
+- haft's `MaxIterationsExceededError` is wrapped in a driver error.
+- All driver errors carry the **state**, not the transcript.
+- The result is `DriveResult(status, solutions, state)`. No transcript is
+  returned; transcripts belong in the future event log.
+
+## Context stack
+
+- **Frames are plain text.**
+- **The stack is driver-side only.** Nothing is added to the adjourn
+  language or to the session state: there are no L3 `push_context` /
+  `pop_context` builtins, context is not carried across yield/resume, and
+  backtracking never touches the stack.
+- **Pinned frames** come from `initial_context` (the caller's context, e.g.
+  the session's overall goal). They are a fixed base of the stack and are
+  not poppable.
+- **Pushed frames** come from the LLM via `push_context` / `pop_context`.
+  `pop_context` with only pinned frames left returns an error result.
+- **Persistence:** the stack is saved to
+  `<sessions_dir>/<id>.context.json`, beside the session state. Adjourn
+  never reads it.
+- **Program-author context** for a specific suspension goes in the `yield`
+  label, which is an arbitrary term and reaches the LLM through the state.
+- **Rendering**, per round: pinned frames, then pushed frames oldest-first,
+  then the full state JSON (so the LLM can see what will happen next; trim
+  later if too large). Prompt caching will likely break often; accepted.
+
+Rejected: L3 builtins for context, either native or as a foreign callout.
+Context only matters to the driver, and keeping it out of the language
+avoids driver-specific primitives in L3.
 
 ## Prompt
 
 - Adjourn ships a standard default prompt that instructs the LLM how to
   use adjourn. It is customizable by the caller.
-- The "how to use adjourn" text has a single source of truth shared with
-  the MCP server's instructions to chat agents.
-
-## Context stack
-
-- **Frames are plain text produced by the LLM**, not Prolog terms. The LLM
-  may also manage files whose contents are interpolated into the context.
-- **Context files live in the `.adjourn` directory, not in the store.**
-  This extends the per-session files the MCP server already keeps.
-- **Primitives:**
-  - An MCP tool for pushing context. This is the primary channel for LLM
-    context.
-  - Explicit `push_context/1` / `pop_context/0` builtins at L3. These let
-    the program author supply context from within the metainterpreter (e.g.
-    the initial prompt stating the session's overall goal).
-  - A scoped `with_context/2` will later be built on these primitives; it
-    is not part of the first cut.
-- **The stack is per-session state outside the resolvent.** It is
-  non-logical (like `assert`) and checkpointed with the session.
-- **The stack is not unwound on backtracking.** A failed branch leaves the
-  stack as it is, and its matching `pop_context` simply never runs. Stale
-  frames from failed branches accumulating is accepted for the first cut.
-- **Suspension carries no built-in "question" frame.** The program brackets
-  a suspension manually: push context, suspend, pop context.
-- **Rendering:** at suspend time, the whole stack is rendered and sent to
-  the LLM as the `ChatSession.send()` prompt.
+- The "how to use adjourn" text has a single source of truth,
+  `src/adjourn/prompts/usage.md` (loaded via `importlib.resources`), shared
+  with the MCP server's `instructions`.
 
 ## Invariants
 
 - Only one janus instance may run per process; this is the basis of
-  suspend/resume. Anything that moves adjourn in-process (e.g. the
-  library API below) must respect it.
+  suspend/resume. The driver process never loads janus: all resolution goes
+  through CLI subprocesses. Anything that moves resolution in-process (e.g.
+  calling `Runner` directly) must respect this.
 
 ## Deferred (decided later, own tickets)
 
-- In-process Python library API (session object with init / add_rules /
-  resume, same state shapes as the MCP tools), with the MCP server
-  refactored into a thin wrapper over it. Accepted in principle; not needed
-  for the first cut.
-- One-live-session-per-process enforcement, or janus module reset between
-  sessions.
+- haft: return local tool exceptions as tool results instead of
+  re-raising.
+- Event hooks to notify the user on each suspend/resume (needed for the
+  CLI).
+- Logging / an event log that carries transcripts.
+- A trace tree of rounds tied to the context stack.
+- CLI entry point (`adjourn drive`).
+- Distinguishing human-in-the-loop suspensions from LLM suspensions.
+- In-process resolution (direct `Runner` calls instead of CLI
+  subprocesses), with one-live-session-per-process enforcement or janus
+  module reset.
 - Atomic `add_rules` (validate before consulting, roll back on failure).
-- In-process local tools via `ChatSession.add_local_tool` with a narrowed,
-  hash-free tool surface.
-- Scoped context (`with_context/2`).
-- Opt-in compressed summaries of failed branches retained in context. This
-  depends on scoped context and on cut, which the metalanguage does not yet
-  have.
+- Driving a remote adjourn.
 
 ## Open questions
 
-- The overall mechanism for transferring context between the LLM and
-  adjourn is not settled beyond the stack described here.
-- Can a frame reference a context file (e.g. `push_context(file(Name))`),
-  interpolated at render time, or are files interpolated some other way?
-- Does the LLM also get a pop-context MCP tool, and file read/write tools
-  for context files?
-- Is the transcript returned to the caller only, or also persisted alongside
-  the session?
-- Rendering format of the stack in the prompt.
-- Long-term handling of stale frames left by failed branches.
+- LLM-managed context files interpolated into the prompt, and whether the
+  LLM gets file read/write tools for them.
+- Exact rendering layout beyond ordering, and how to trim the state if it
+  is too large.
+- Long-term handling of prompt caching.
