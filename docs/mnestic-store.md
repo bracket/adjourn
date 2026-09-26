@@ -9,19 +9,19 @@
 >
 > **What v1 covers.** A new `RuleSetStore` type that exposes an
 > externally-populated mnestic term database for *querying* from inside
-> `constraint`, via a `query/3` operator (findall-shaped:
+> `adjourn`, via a `query/3` operator (findall-shaped:
 > `query(Template, Query, Bag)`) that compiles a conjunctive query to
 > CozoScript, runs it, and collects result rows into `Bag`.
 > **Writing/loading is entirely out of scope** — the database is
-> populated offline in a separate process; `constraint` only reads it.
+> populated offline in a separate process; `adjourn` only reads it.
 > The worked example throughout is the treesitter → CST nested-function
 > query proven standalone in prior work; the goal of the first
-> implementation block is to run that same query from *inside* constraint.
+> implementation block is to run that same query from *inside* adjourn.
 
 ## What this doc covers
 
 The architecture of a **mnestic query store**: how an externally-built
-CozoDB term database is attached to a `constraint` program as a store,
+CozoDB term database is attached to a `adjourn` program as a store,
 how the store's relations become queryable Prolog goals, and how a
 conjunctive query is compiled to CozoScript and run with result rows
 collected into a bag (findall-shaped), not threaded into the resolvent.
@@ -34,8 +34,8 @@ not restate them.
 
 ## Framing
 
-`constraint`'s existing stores answer "what clauses define this
-predicate?" from Prolog files ([`FileRuleSetStore`](../src/constraint/store/store.py)).
+`adjourn`'s existing stores answer "what clauses define this
+predicate?" from Prolog files ([`FileRuleSetStore`](../src/adjourn/store/store.py)).
 A **mnestic query store** is a different kind of source: it does not
 contribute `rule/2` clauses to ordinary resolution at all. Instead it
 attaches a **term database** — a set of stored relations populated
@@ -141,8 +141,8 @@ Support-rule bodies use the **same keyed base surface** as `query/3`
 queries — one vocabulary everywhere.
 
 On load these are **wrapped as `query_rule(Head, Body)` facts**, exactly
-analogous to how [`FileRuleSetStore`](../src/constraint/store/store.py)
-wraps ordinary clauses into `rule(Head, Body)` (`_wrap_constraint_clause`)
+analogous to how [`FileRuleSetStore`](../src/adjourn/store/store.py)
+wraps ordinary clauses into `rule(Head, Body)` (`_wrap_clause`)
 so the user can author naturally while the interpreter consumes a
 uniform term. The distinct functor (`query_rule/2` vs `rule/2`) is what
 keeps these out of ordinary dispatch.
@@ -477,14 +477,14 @@ Note: the correct treesitter node kind is **`function_definition`**
 `identifier` child, recovered by the join above.
 
 The compiler block's target is exactly this query's intermediate term and
-obligations. Running it end-to-end from **inside** `constraint` — the
+obligations. Running it end-to-end from **inside** `adjourn` — the
 `query/3` `reduce_goal` clause plus the adapter callout that assembles and
 runs the CozoScript above — follows in the subsequent issues, and returns
 the same row the standalone pipeline produced.
 
 ## Deferred / out of scope for v1
 
-- **Write / load path.** Populating the database from `constraint` is
+- **Write / load path.** Populating the database from `adjourn` is
   entirely out of scope; v1 reads an externally-populated store. When it
   arrives it slots behind the same `run_script(..., immutable)` seam
   (mutating vs read-only), likely as a distinct store-side operation

@@ -1,1 +1,1 @@
-"""subprocess foreign callout subpackage for the constraint meta-interpreter."""
+"""subprocess foreign callout subpackage for the adjourn meta-interpreter."""

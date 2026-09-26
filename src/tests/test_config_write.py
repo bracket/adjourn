@@ -5,12 +5,12 @@ from pathlib import Path
 import pytest
 import yaml
 
-from constraint.config import Config
+from adjourn.config import Config
 
 
 def _write_config(tmp_path: Path, data: dict) -> Path:
     """Write a config file and return its path."""
-    config_dir = tmp_path / ".constraint"
+    config_dir = tmp_path / ".adjourn"
     config_dir.mkdir()
     config_path = config_dir / "config.yaml"
     config_path.write_text(yaml.safe_dump(data))
@@ -29,7 +29,7 @@ class TestCreateIfMissing:
     """Tests for Config._create_if_missing."""
 
     def test_creates_file_with_empty_stores(self, tmp_path: Path) -> None:
-        config_path = tmp_path / ".constraint" / "config.yaml"
+        config_path = tmp_path / ".adjourn" / "config.yaml"
         config = _config_for_missing_path(config_path)
         config._create_if_missing()
         assert config_path.exists()
@@ -60,7 +60,7 @@ class TestAppendFileStore:
         assert result == {
             "type": "file",
             "path": "rules.pl",
-            "prolog": "constraint",
+            "prolog": "wrapped",
             "name": "rules",
         }
         assert isinstance(result, dict)
@@ -71,7 +71,7 @@ class TestAppendFileStore:
         assert reloaded.store_configs == [dict(result)]
 
     def test_creates_missing_config_file(self, tmp_path: Path) -> None:
-        config_path = tmp_path / ".constraint" / "config.yaml"
+        config_path = tmp_path / ".adjourn" / "config.yaml"
         config = _config_for_missing_path(config_path)
 
         result = config.append_file_store("rules.pl")

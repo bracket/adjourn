@@ -9,8 +9,8 @@ from typing import Any
 
 import pytest
 
-from constraint.parser.ast import Clause
-from constraint.parser.parser import parse_file
+from adjourn.parser.ast import Clause
+from adjourn.parser.parser import parse_file
 
 NONEMPTY_RULESET = "rule(test_fixture_placeholder, true).\n"
 
@@ -22,7 +22,7 @@ NONEMPTY_RULESET = "rule(test_fixture_placeholder, true).\n"
 
 def _write_rules(content: str) -> Path:
     """Write Prolog rules to a temporary file and return its Path."""
-    fd, path = tempfile.mkstemp(suffix=".pl", prefix="constraint_test_")
+    fd, path = tempfile.mkstemp(suffix=".pl", prefix="adjourn_test_")
     os.close(fd)
     Path(path).write_text(content)
     return Path(path)
@@ -129,7 +129,7 @@ class TestResumeStateTrueGoal:
         self.ruleset = _parse_rules(NONEMPTY_RULESET)
 
     def test_true_goal_reaches_solution(self) -> None:
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -141,7 +141,7 @@ class TestResumeStateTrueGoal:
         assert result["status"] == "solution"
 
     def test_solution_has_bindings_key(self) -> None:
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -153,7 +153,7 @@ class TestResumeStateTrueGoal:
         assert "bindings" in result
 
     def test_solution_preserves_original_goal(self) -> None:
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -165,7 +165,7 @@ class TestResumeStateTrueGoal:
         assert result["original_goal"] == "true"
 
     def test_solution_has_no_suspension_key(self) -> None:
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -177,7 +177,7 @@ class TestResumeStateTrueGoal:
         assert "suspension" not in result
 
     def test_solution_branches_empty(self) -> None:
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -196,7 +196,7 @@ class TestResumeStateYield:
         self.ruleset = _parse_rules("rule(test_yield, yield(hello)).\n")
 
     def test_yield_produces_suspended_status(self) -> None:
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -208,7 +208,7 @@ class TestResumeStateYield:
         assert result["status"] == "suspended"
 
     def test_suspended_has_label(self) -> None:
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -220,7 +220,7 @@ class TestResumeStateYield:
         assert result["suspension"]["label"] == "hello"
 
     def test_suspended_has_no_bindings_key(self) -> None:
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -233,7 +233,7 @@ class TestResumeStateYield:
 
     def test_resume_from_suspended_reaches_solution(self) -> None:
         """Resuming a suspended state should eventually reach solution/done."""
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -248,7 +248,7 @@ class TestResumeStateYield:
 
     def test_suspended_state_structure_is_valid(self) -> None:
         """The suspended state must have the required schema keys."""
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -268,7 +268,7 @@ class TestResumeStateDone:
         self.ruleset = _parse_rules(NONEMPTY_RULESET)
 
     def test_unknown_goal_raises_error(self) -> None:
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -281,7 +281,7 @@ class TestResumeStateDone:
 
     def test_done_state_is_idempotent(self) -> None:
         """Resuming a done state must return the same state unchanged."""
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -295,7 +295,7 @@ class TestResumeStateDone:
         assert state2["branches"] == state["branches"]
 
     def test_failing_builtin_reaches_done_without_suspension(self) -> None:
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -318,7 +318,7 @@ class TestResumeStateEscapeHatch:
         )
 
     def test_builtin_goal_binds_output(self) -> None:
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -331,7 +331,7 @@ class TestResumeStateEscapeHatch:
         assert result["bindings"]["R"] == "prefixsuffix"
 
     def test_consulted_non_rule_predicate_is_callable(self) -> None:
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -344,7 +344,7 @@ class TestResumeStateEscapeHatch:
         assert result["bindings"]["R"] == "leftright"
 
     def test_builtin_binding_survives_suspend_resume_round_trip(self) -> None:
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -362,7 +362,7 @@ class TestResumeStateEmptyRuleset:
     """Tests for rejecting empty interpreted programs."""
 
     def test_empty_ruleset_raises_value_error(self) -> None:
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -375,7 +375,7 @@ class TestResumeStateEmptyRuleset:
             resume_state(state, [])
 
     def test_done_state_short_circuits_before_empty_ruleset_check(self) -> None:
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -398,7 +398,7 @@ class TestResumeStateMultipleRules:
         )
 
     def test_first_rule_gives_solution(self) -> None:
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -411,7 +411,7 @@ class TestResumeStateMultipleRules:
         assert result["status"] == "solution"
 
     def test_remaining_branches_kept(self) -> None:
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -428,7 +428,7 @@ class TestResumeStateMultipleRules:
         assert len(result["branches"]) >= 1
 
     def test_rule_dispatch_takes_precedence_over_callable_predicate(self) -> None:
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -447,7 +447,7 @@ class TestResumeStateSchemaConsistency:
         self.ruleset = _parse_rules("rule(step_goal, yield(step1)).\n")
 
     def test_version_unchanged_across_resumes(self) -> None:
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -460,7 +460,7 @@ class TestResumeStateSchemaConsistency:
             assert state["version"] == 0
 
     def test_original_goal_unchanged_across_resumes(self) -> None:
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         goal = "step_goal"
         state = {
@@ -490,7 +490,7 @@ class TestForeignGoal:
 
     def test_foreign_goal_resolves_to_solution(self) -> None:
         """A foreign/3 goal must reduce via py_call and reach solution."""
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -503,7 +503,7 @@ class TestForeignGoal:
 
     def test_foreign_goal_solution_has_bindings_key(self) -> None:
         """Solution after foreign/3 reduction must include the bindings key."""
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -516,7 +516,7 @@ class TestForeignGoal:
 
     def test_foreign_goal_no_suspension_key(self) -> None:
         """A foreign/3 reduction must not produce a suspended event."""
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -529,7 +529,7 @@ class TestForeignGoal:
 
     def test_foreign_goal_original_goal_preserved(self) -> None:
         """original_goal must be unchanged after a foreign/3 reduction."""
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         goal = "test_foreign_call"
         state = {
@@ -560,7 +560,7 @@ class TestForeignGoalPackedRoundTrip:
 
     def test_suspended_after_yield_with_foreign_in_resolvent(self) -> None:
         """First step yields; foreign/3 remains in the pending resolvent."""
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -573,7 +573,7 @@ class TestForeignGoalPackedRoundTrip:
 
     def test_foreign_goal_present_after_packed_round_trip(self) -> None:
         """foreign/3 goal must be recoverable from the packed state."""
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -591,7 +591,7 @@ class TestForeignGoalPackedRoundTrip:
 
     def test_foreign_goal_resolves_after_resume_from_suspension(self) -> None:
         """Resuming from the suspension must reduce the foreign/3 goal."""
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -615,7 +615,7 @@ class TestResumeStateCheckpoint:
         )
 
     def test_checkpoint_produces_suspended_status(self) -> None:
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -627,7 +627,7 @@ class TestResumeStateCheckpoint:
         assert result["status"] == "suspended"
 
     def test_checkpoint_has_resume_kind(self) -> None:
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -639,7 +639,7 @@ class TestResumeStateCheckpoint:
         assert result["resume_kind"] == "checkpoint"
 
     def test_checkpoint_has_label(self) -> None:
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -651,7 +651,7 @@ class TestResumeStateCheckpoint:
         assert result["suspension"]["label"] == "foo"
 
     def test_checkpoint_has_no_bindings_key(self) -> None:
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -664,7 +664,7 @@ class TestResumeStateCheckpoint:
 
     def test_resume_from_checkpoint_continues_past(self) -> None:
         """Resuming from a checkpoint must continue past it (not re-encounter it)."""
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -681,7 +681,7 @@ class TestResumeStateCheckpoint:
 
     def test_checkpoint_state_structure_is_valid(self) -> None:
         """The checkpoint state must have the required schema keys."""
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -704,7 +704,7 @@ class TestResumeStateCheckpointMultiple:
 
     def test_checkpoint_does_not_reduce_checkpoint_again(self) -> None:
         """The checkpoint goal must not appear in the continuation."""
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -724,7 +724,7 @@ class TestResumeStateCheckpointMultiple:
         ruleset = _parse_rules(
             "rule(test_ck_yield, (checkpoint(ck), yield(yd))).\n"
         )
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -754,7 +754,7 @@ class TestResumeStateYieldResumeKind:
         self.ruleset = _parse_rules("rule(test_yield_rk, yield(bar)).\n")
 
     def test_yield_has_resume_kind_suspended(self) -> None:
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -767,7 +767,7 @@ class TestResumeStateYieldResumeKind:
         assert result["resume_kind"] == "suspended"
 
     def test_yield_still_has_label(self) -> None:
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,
@@ -786,8 +786,8 @@ class TestResumeHashPreservation:
         self.ruleset = _parse_rules("rule(step_goal, yield(step1)).\n")
 
     def test_resume_hash_survives_multiple_steps(self) -> None:
-        from constraint.meta import resume_state
-        from constraint.store import hash_clauses
+        from adjourn.meta import resume_state
+        from adjourn.store import hash_clauses
 
         ruleset_hash = hash_clauses(self.ruleset)
         resume_hash = "test_resume_hash_value"
@@ -810,8 +810,8 @@ class TestResumeHashPreservation:
 
     def test_resume_hash_preserved_when_absent(self) -> None:
         """When resume_hash is not in the input, it must not appear in output."""
-        from constraint.meta import resume_state
-        from constraint.store import hash_clauses
+        from adjourn.meta import resume_state
+        from adjourn.store import hash_clauses
 
         ruleset_hash = hash_clauses(self.ruleset)
 
@@ -831,7 +831,7 @@ class TestResumeHashPreservation:
 
     def test_resume_hash_preserved_in_done_short_circuit(self) -> None:
         """A done state short-circuits via dict(state), which preserves all keys."""
-        from constraint.meta import resume_state
+        from adjourn.meta import resume_state
 
         state = {
             "version": 0,

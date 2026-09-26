@@ -33,7 +33,7 @@ class StateStore(ABC):
         """Persist the initial state to the segregated init file.
 
         The init file lives directly under the store root (e.g.
-        ``.constraint/state_init.json``), NOT under the ``states/``
+        ``.adjourn/state_init.json``), NOT under the ``states/``
         subdirectory, so it cannot collide with a checkpoint-named file.
 
         Args:

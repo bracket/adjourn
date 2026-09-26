@@ -1,4 +1,4 @@
-"""Main CLI entry point for the constraint checking system."""
+"""Main CLI entry point for adjourn."""
 
 import json
 import os
@@ -8,23 +8,23 @@ from typing import Any
 
 import click
 
-from constraint.config import Config
-from constraint.constraint_foreign import load_foreign_plugins
-from constraint.runner import Runner
-from constraint.state import init_state, set_resume_hash
-from constraint.state_store import JsonFileStateStore
-from constraint.store import AggregateRuleSetStore, StoreInfo, build_store_from_config
+from adjourn.config import Config
+from adjourn.adjourn_foreign import load_foreign_plugins
+from adjourn.runner import Runner
+from adjourn.state import init_state, set_resume_hash
+from adjourn.state_store import JsonFileStateStore
+from adjourn.store import AggregateRuleSetStore, StoreInfo, build_store_from_config
 
 
 @click.group(invoke_without_command=True)
-@click.version_option(version="0.0.0", prog_name="constraint")
+@click.version_option(version="0.0.0", prog_name="adjourn")
 @click.help_option("-h", "--help")
 @click.pass_context
 def main(ctx: click.Context) -> None:
-    """Constraint checking system for validating code repositories against logical rules.
-    
-    This tool validates code repositories against user-defined constraints
-    using Python extractors and Prolog logic rules.
+    """adjourn: a suspendable, resumable Prolog meta-interpreter.
+
+    Queries run until they reach a solution, a suspension point that needs
+    outside input, or exhaustion; state persists to disk between resumes.
     """
     # If no subcommand is provided, show help
     if ctx.invoked_subcommand is None:
@@ -81,7 +81,7 @@ def cmd_init(
 
     Examples:
 
-        constraint init "color(X, Y)" state.json --ruleset coloring
+        adjourn init "color(X, Y)" state.json --ruleset coloring
     """
     try:
         config = Config(_resolve_config_path(config_path))
@@ -92,7 +92,7 @@ def cmd_init(
         state_file.parent.mkdir(parents=True, exist_ok=True)
         state_file.write_text(json.dumps(state, indent=2) + "\n")
 
-        # Also persist through the state seam (writes .constraint/state_init.json).
+        # Also persist through the state seam (writes .adjourn/state_init.json).
         JsonFileStateStore().store_init_state(state)
 
         if output_format == "json":
@@ -149,8 +149,8 @@ def cmd_resume(
 
     Examples:
 
-        constraint resume state.json next_state.json
-        constraint resume state.json state.json   # overwrite in place
+        adjourn resume state.json next_state.json
+        adjourn resume state.json state.json   # overwrite in place
     """
     try:
         raw = state_file.read_text()
@@ -243,9 +243,9 @@ def cmd_set_resume(
 
     Examples:
 
-        constraint set-resume other-rules state.json
-        constraint set-resume other-rules state.json -o updated_state.json
-        constraint set-resume other-rules state.json -o -
+        adjourn set-resume other-rules state.json
+        adjourn set-resume other-rules state.json -o updated_state.json
+        adjourn set-resume other-rules state.json -o -
     """
     try:
         raw = state_file.read_text()
@@ -361,8 +361,8 @@ def cmd_rules_add(
 
     Examples:
 
-        constraint rules add rules/my_rules.pl
-        constraint rules add rules/my_rules.pl --format json
+        adjourn rules add rules/my_rules.pl
+        adjourn rules add rules/my_rules.pl --format json
     """
     resolved_config_path = _resolve_config_path(config_path)
 
@@ -445,10 +445,10 @@ def _resolve_config_path(config_path: Path | None) -> Path:
     """Resolve the config path from CLI flag, env var, or default."""
     if config_path is not None:
         return config_path
-    env_path = os.getenv("CONSTRAINT_CONFIG")
+    env_path = os.getenv("ADJOURN_CONFIG")
     if env_path:
         return Path(env_path)
-    return Path(".constraint/config.yaml")
+    return Path(".adjourn/config.yaml")
 
 
 # TODO: This will contain more than just the store at some point
@@ -582,23 +582,23 @@ def complete(output: Path | None, shell: str) -> None:
     """Generate shell completion script.
     
     This command generates a shell completion script that enables
-    tab-completion for the constraint CLI.
+    tab-completion for the adjourn CLI.
     
     Examples:
     
         # Output to stdout
-        constraint complete
+        adjourn complete
         
         # Save to file
-        constraint complete -o ~/.local/share/bash-completion/completions/constraint
+        adjourn complete -o ~/.local/share/bash-completion/completions/adjourn
         
     After generating the script, source it in your shell configuration:
     
         # For bash, add to ~/.bashrc:
-        source ~/.local/share/bash-completion/completions/constraint
+        source ~/.local/share/bash-completion/completions/adjourn
         
         # Or for immediate use:
-        eval "$(constraint complete)"
+        eval "$(adjourn complete)"
     """
     # Generate completion script using Click's built-in support
     shell_lower = shell.lower()
@@ -623,48 +623,48 @@ def complete(output: Path | None, shell: str) -> None:
 def _get_completion_header(shell: str) -> str:
     """Generate header comment for completion script."""
     if shell == "bash":
-        return """# Bash completion script for constraint CLI
+        return """# Bash completion script for adjourn CLI
 #
 # Installation:
 #   1. Save this file to a completion directory, e.g.:
-#      constraint complete -o ~/.local/share/bash-completion/completions/constraint
+#      adjourn complete -o ~/.local/share/bash-completion/completions/adjourn
 #
 #   2. Source it in your ~/.bashrc:
-#      source ~/.local/share/bash-completion/completions/constraint
+#      source ~/.local/share/bash-completion/completions/adjourn
 #
 #   3. Or load it immediately:
-#      eval "$(constraint complete)"
+#      eval "$(adjourn complete)"
 #
 # Usage:
-#   After installation, type 'constraint <TAB>' to see available commands."""
+#   After installation, type 'adjourn <TAB>' to see available commands."""
     elif shell == "zsh":
-        return """# Zsh completion script for constraint CLI
+        return """# Zsh completion script for adjourn CLI
 #
 # Installation:
 #   1. Save this file to a directory in your $fpath, e.g.:
-#      constraint complete --shell zsh -o ~/.zsh/completions/_constraint
+#      adjourn complete --shell zsh -o ~/.zsh/completions/_adjourn
 #
 #   2. Add to your ~/.zshrc (if not already present):
 #      fpath=(~/.zsh/completions $fpath)
 #      autoload -Uz compinit && compinit
 #
 #   3. Or load it immediately:
-#      eval "$(constraint complete --shell zsh)"
+#      eval "$(adjourn complete --shell zsh)"
 #
 # Usage:
-#   After installation, type 'constraint <TAB>' to see available commands."""
+#   After installation, type 'adjourn <TAB>' to see available commands."""
     elif shell == "fish":
-        return """# Fish completion script for constraint CLI
+        return """# Fish completion script for adjourn CLI
 #
 # Installation:
 #   1. Save this file to Fish's completion directory:
-#      constraint complete --shell fish -o ~/.config/fish/completions/constraint.fish
+#      adjourn complete --shell fish -o ~/.config/fish/completions/adjourn.fish
 #
 #   2. Or load it immediately:
-#      constraint complete --shell fish | source
+#      adjourn complete --shell fish | source
 #
 # Usage:
-#   After installation, type 'constraint <TAB>' to see available commands."""
+#   After installation, type 'adjourn <TAB>' to see available commands."""
     else:
         return f"# Completion script for {shell}"
 
@@ -674,7 +674,7 @@ def generate_completion(shell: str) -> str:
 
     Emits the source-able eval form rather than the rendered completion
     function, so the emitted script stays valid across CLI versions and does
-    not require a `constraint` binary on PATH at generation time.
+    not require a `adjourn` binary on PATH at generation time.
 
     Args:
         shell: One of "bash", "zsh", or "fish".
@@ -684,13 +684,13 @@ def generate_completion(shell: str) -> str:
     """
     if shell == "zsh":
         return (
-            "#compdef constraint\n"
+            "#compdef adjourn\n"
             "\n"
-            'eval "$(_CONSTRAINT_COMPLETE=zsh_source constraint)"\n'
+            'eval "$(_ADJOURN_COMPLETE=zsh_source adjourn)"\n'
         )
     if shell == "fish":
-        return "_CONSTRAINT_COMPLETE=fish_source constraint | source\n"
-    return 'eval "$(_CONSTRAINT_COMPLETE=bash_source constraint)"\n'
+        return "_ADJOURN_COMPLETE=fish_source adjourn | source\n"
+    return 'eval "$(_ADJOURN_COMPLETE=bash_source adjourn)"\n'
 
 
 if __name__ == "__main__":

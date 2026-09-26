@@ -1,12 +1,12 @@
-# Copilot Instructions: constraint
+# Copilot Instructions: adjourn
 
 ## Project Overview
-`constraint` is a Python-based constraint checking system that validates code repositories against user-defined logical rules. The system combines Python 3.11+ for orchestration and CLI with SWI-Prolog (via Janus Python integration) as the logic query engine.
+`adjourn` is a Python-based constraint checking system that validates code repositories against user-defined logical rules. The system combines Python 3.11+ for orchestration and CLI with SWI-Prolog (via Janus Python integration) as the logic query engine.
 
 ### Architecture
 - **Python Layer**: Orchestration, CLI (using Click), knowledge extraction from repositories
 - **Prolog Layer**: Constraint definitions, logical queries, validation rules via SWI-Prolog/Janus
-- **Package Structure**: `constraint` (main package) with `constraint.cli` (CLI submodule)
+- **Package Structure**: `adjourn` (main package) with `adjourn.cli` (CLI submodule)
 - **Core Workflow**:
   1. Extract observed facts from code repositories (Python extractors)
   2. Load expected facts defined in Prolog constraint files
@@ -45,19 +45,19 @@
 ## CLI Structure (Click)
 - Use Click framework for all CLI commands.
 - Structure commands hierarchically: main command with subcommands for different operations.
-- Main entry point: `constraint.cli.__main__:main` (accessible via `constraint` command after installation)
-- Can also be invoked as `python -m constraint.cli`
+- Main entry point: `adjourn.cli.__main__:main` (accessible via `adjourn` command after installation)
+- Can also be invoked as `python -m adjourn.cli`
 - Provide clear help text for all commands and options.
-- Use consistent option naming (e.g., `--repo-path`, `--constraint-file`, `--verbose`).
+- Use consistent option naming (e.g., `--repo-path`, `--adjourn-file`, `--verbose`).
 - Implement graceful error handling with informative messages.
 - Return appropriate exit codes: 0 for success, non-zero for errors/violations.
 
 ### Bash Completion
-- The CLI supports shell completion via the `constraint complete` command
-- Generate completion scripts for bash, zsh, or fish: `constraint complete --shell [bash|zsh|fish]`
+- The CLI supports shell completion via the `adjourn complete` command
+- Generate completion scripts for bash, zsh, or fish: `adjourn complete --shell [bash|zsh|fish]`
 - Output to stdout by default or to a file with `-o/--output` option
 - Generated scripts include commented installation instructions
-- To enable immediately: `eval "$(constraint complete)"`
+- To enable immediately: `eval "$(adjourn complete)"`
 
 ## Knowledge Extraction Workflow
 - **Extractors**: Python modules that scan repositories and generate facts.
@@ -84,12 +84,12 @@
 - **mypy**: Static type checking (development dependency)
 - **ruff**: Fast Python linter (development dependency)
 - **pytest**: Testing framework
-- Debug with `debugpy` on port 5678 (see `.vscode/launch.json`). Use `.vscode/bin/vsdebug` which is configured to run `python -m constraint.cli`.
+- Debug with `debugpy` on port 5678 (see `.vscode/launch.json`). Use `.vscode/bin/vsdebug` which is configured to run `python -m adjourn.cli`.
 - Update `.vscode/settings.json` and `extensions.json` only when necessary for the project; keep defaults minimal.
 
 ### Linting and Type Checking
-- Run type checking: `mypy src/constraint`
-- Run linting: `ruff check src/constraint`
+- Run type checking: `mypy src/adjourn`
+- Run linting: `ruff check src/adjourn`
 - All code must pass both mypy and ruff checks before commit
 
 ## Dependencies

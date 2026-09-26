@@ -5,13 +5,13 @@ from pathlib import Path
 import pytest
 import yaml
 
-from constraint.config import Config
-from constraint.constraint_foreign import _registry, load_foreign_plugins
+from adjourn.config import Config
+from adjourn.adjourn_foreign import _registry, load_foreign_plugins
 
 
 def _write_config(tmp_path: Path, data: dict) -> Path:
     """Write a minimal valid config and return its path."""
-    config_dir = tmp_path / ".constraint"
+    config_dir = tmp_path / ".adjourn"
     config_dir.mkdir()
     config_path = config_dir / "config.yaml"
     base = {"stores": [{"type": "file", "path": "rules.pl"}]}
@@ -64,7 +64,7 @@ class TestLoadForeignPlugins:
 
     def test_unimportable_module_raises(self) -> None:
         with pytest.raises(ImportError):
-            load_foreign_plugins(["_constraint_no_such_module_xyz"])
+            load_foreign_plugins(["_adjourn_no_such_module_xyz"])
 
     def test_valid_module_imported(self) -> None:
         """Importing a module with @register makes its callout dispatchable."""
@@ -78,7 +78,7 @@ class TestLoadForeignPlugins:
         mod_name = "_test_foreign_plugin_xyz"
         mod_path = tmp_path / f"{mod_name}.py"
         mod_path.write_text(
-            "from constraint.constraint_foreign import register\n"
+            "from adjourn.adjourn_foreign import register\n"
             "@register('_test_fn_xyz')\n"
             "def _fn(arg): return 'ok'\n"
         )

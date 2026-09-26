@@ -1,9 +1,9 @@
-"""Runner class for driving the constraint meta-interpreter.
+"""Runner class for driving the adjourn meta-interpreter.
 
-The :class:`Runner` encapsulates a :class:`~constraint.store.RuleSetStore`
+The :class:`Runner` encapsulates a :class:`~adjourn.store.RuleSetStore`
 and provides a step-one-step method that reads a pinned ruleset hash from
 a state dictionary, resolves clauses via the store, and calls
-:func:`~constraint.meta.resume_state` to produce the next state.
+:func:`~adjourn.meta.resume_state` to produce the next state.
 
 The class is an implicit singleton controlled via ``__new__``.  A module-level
 instance holder and an override flag (``RUNNER_ALWAYS_FORCE_NEW``) govern
@@ -15,9 +15,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from constraint.meta import resume_state
-from constraint.state_store import JsonFileStateStore
-from constraint.store import RuleSetStore
+from adjourn.meta import resume_state
+from adjourn.state_store import JsonFileStateStore
+from adjourn.store import RuleSetStore
 
 _logger = logging.getLogger(__name__)
 
@@ -31,9 +31,9 @@ RUNNER_ALWAYS_FORCE_NEW: bool = False
 
 
 class Runner:
-    """Drive one step of the constraint meta-interpreter through a store.
+    """Drive one step of the adjourn meta-interpreter through a store.
 
-    Holds a :class:`~constraint.store.RuleSetStore` and provides a
+    Holds a :class:`~adjourn.store.RuleSetStore` and provides a
     :meth:`step` method that reads the pinned ruleset hash from a state
     dict, resolves clauses via the store, calls ``resume_state``, and
     returns the next state dict.
@@ -41,7 +41,7 @@ class Runner:
     Construction is an implicit singleton -- see ``__new__``.
 
     Args:
-        store: A :class:`~constraint.store.RuleSetStore` instance used to
+        store: A :class:`~adjourn.store.RuleSetStore` instance used to
             resolve clauses for a given ruleset hash.
     """
 
@@ -108,7 +108,7 @@ class Runner:
         ``"resume_hash"`` key when present (strict ``in`` check), falling
         back to the required ``"ruleset_hash"`` key otherwise.  Resolves
         the clauses via the held store, calls
-        :func:`~constraint.meta.resume_state`, and returns the updated state
+        :func:`~adjourn.meta.resume_state`, and returns the updated state
         dict.
 
         Args:

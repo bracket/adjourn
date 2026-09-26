@@ -1,4 +1,4 @@
-"""Unit tests for constraint.state (init_state, set_resume_hash, resolve_ruleset_hash)."""
+"""Unit tests for adjourn.state (init_state, set_resume_hash, resolve_ruleset_hash)."""
 
 from __future__ import annotations
 
@@ -9,9 +9,9 @@ from typing import Any
 import pytest
 import yaml
 
-from constraint.config import Config
-from constraint.state import init_state, resolve_ruleset_hash, set_resume_hash
-from constraint.store import (
+from adjourn.config import Config
+from adjourn.state import init_state, resolve_ruleset_hash, set_resume_hash
+from adjourn.store import (
     AggregateRuleSetStore,
     FileRuleSetStore,
     build_store_from_config,
@@ -33,7 +33,7 @@ def _write_config(
     store_names: dict[str, str] | None = None,
 ) -> Path:
     """Create rules files plus a matching config file."""
-    config_dir = tmp_path / ".constraint"
+    config_dir = tmp_path / ".adjourn"
     rules_dir = tmp_path / "rules"
     config_dir.mkdir()
     rules_dir.mkdir()
@@ -162,7 +162,7 @@ class TestResolveRulesetHash:
             resolve_ruleset_hash("@unknown", store, config)
 
     def test_first_alias_with_no_stores_raises(self, tmp_path: Path) -> None:
-        config_dir = tmp_path / ".constraint"
+        config_dir = tmp_path / ".adjourn"
         config_dir.mkdir()
         config_path = config_dir / "config.yaml"
         config_path.write_text(yaml.safe_dump({"stores": [], "aliases": {}}))

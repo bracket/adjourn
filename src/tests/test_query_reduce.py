@@ -15,9 +15,9 @@ from typing import Any
 import janus_swi as janus
 import pytest
 
-from constraint import meta
-from constraint.constraint_foreign import _registry
-from constraint.store.mnestic_adapter import register as _register_adapter
+from adjourn import meta
+from adjourn.adjourn_foreign import _registry
+from adjourn.store.mnestic_adapter import register as _register_adapter
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -66,17 +66,17 @@ def _load_helpers() -> None:
         "                   outer_id \\= inner_id,\n"
         "                   node(parent_id: outer_id, kind: 'identifier', text: name_text) ),\n"
         "                 Out),\n"
-        "    constraint_meta:init(Goal, State0),\n"
+        "    adjourn_meta:init(Goal, State0),\n"
         "    step_until_solution(State0),\n"
         "    term_to_atom(Out, BagAtom).\n"
         "\n"
         "reduce_query(Goal, BagAtom) :-\n"
-        "    constraint_meta:init(Goal, State0),\n"
+        "    adjourn_meta:init(Goal, State0),\n"
         "    step_until_solution(State0),\n"
         "    term_to_atom(Out, BagAtom).\n"
         "\n"
         "step_until_solution(State) :-\n"
-        "    constraint_meta:step(State, Event, State1),\n"
+        "    adjourn_meta:step(State, Event, State1),\n"
         "    (   Event = solution(_) -> true\n"
         "    ;   Event = done -> fail\n"
         "    ;   step_until_solution(State1)\n"
@@ -112,7 +112,7 @@ class TestQueryReduceWorkedExample:
     def _register_mock_store(self) -> Any:
         """Register a mock adapter for the 'source' store so the
         mnestic_query callout can resolve it."""
-        from constraint.store.mnestic_adapter import MnesticAdapter
+        from adjourn.store.mnestic_adapter import MnesticAdapter
 
         class _MockAdapter:
             """Mock adapter that returns the canned worked-example data."""
@@ -122,7 +122,7 @@ class TestQueryReduceWorkedExample:
         _register_adapter("source", _MockAdapter())  # type: ignore[arg-type]
         yield
         # Clean up the registry
-        from constraint.store.mnestic_adapter import _registry as _adapter_registry
+        from adjourn.store.mnestic_adapter import _registry as _adapter_registry
         _adapter_registry.pop("source", None)
 
     def test_worked_example_reduces_to_solution(self) -> None:

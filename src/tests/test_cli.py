@@ -1,4 +1,4 @@
-"""Tests for the constraint CLI."""
+"""Tests for the adjourn CLI."""
 
 import json
 from pathlib import Path
@@ -7,9 +7,9 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
-from constraint.cli.__main__ import main
-from constraint.config import Config
-from constraint.store import AggregateRuleSetStore, FileRuleSetStore
+from adjourn.cli.__main__ import main
+from adjourn.config import Config
+from adjourn.store import AggregateRuleSetStore, FileRuleSetStore
 
 NONEMPTY_RULESET = "rule(test_fixture_placeholder, true).\n"
 
@@ -29,7 +29,7 @@ def _write_config(
     prolog_modes: dict[str, str] | None = None,
 ) -> Path:
     """Create rules files plus a matching config file."""
-    config_dir = tmp_path / ".constraint"
+    config_dir = tmp_path / ".adjourn"
     rules_dir = tmp_path / "rules"
     config_dir.mkdir()
     rules_dir.mkdir()
@@ -39,7 +39,7 @@ def _write_config(
     for name, content in rules.items():
         rules_path = rules_dir / f"{name}.pl"
         rules_path.write_text(content)
-        prolog_mode = prolog_modes.get(name, "constraint") if prolog_modes else "constraint"
+        prolog_mode = prolog_modes.get(name, "wrapped") if prolog_modes else "wrapped"
         store = FileRuleSetStore(rules_path, prolog=prolog_mode)
         ruleset_hash = store.known_rulesets()[0]
         store_config = {"type": "file", "path": str(Path("rules") / rules_path.name)}
@@ -63,14 +63,14 @@ class TestMainCommand:
         """Test that --help displays help text."""
         result = runner.invoke(main, ["--help"])
         assert result.exit_code == 0
-        assert "Constraint checking system" in result.output
+        assert "suspendable, resumable Prolog meta-interpreter" in result.output
         assert "Commands:" in result.output
 
     def test_help_short_option(self, runner: CliRunner) -> None:
         """Test that -h displays help text."""
         result = runner.invoke(main, ["-h"])
         assert result.exit_code == 0
-        assert "Constraint checking system" in result.output
+        assert "suspendable, resumable Prolog meta-interpreter" in result.output
 
     def test_version_option(self, runner: CliRunner) -> None:
         """Test that --version displays version information."""
@@ -102,22 +102,22 @@ class TestCompleteCommand:
         assert result.exit_code == 0
         assert "# Bash completion script" in result.output
         assert "Installation:" in result.output
-        assert "_CONSTRAINT_COMPLETE=bash_source constraint" in result.output
+        assert "_ADJOURN_COMPLETE=bash_source adjourn" in result.output
 
     def test_complete_stdout_zsh(self, runner: CliRunner) -> None:
         """Test that complete generates zsh completion to stdout."""
         result = runner.invoke(main, ["complete", "--shell", "zsh"])
         assert result.exit_code == 0
         assert "# Zsh completion script" in result.output
-        assert "#compdef constraint" in result.output
-        assert "_CONSTRAINT_COMPLETE=zsh_source constraint" in result.output
+        assert "#compdef adjourn" in result.output
+        assert "_ADJOURN_COMPLETE=zsh_source adjourn" in result.output
 
     def test_complete_stdout_fish(self, runner: CliRunner) -> None:
         """Test that complete generates fish completion to stdout."""
         result = runner.invoke(main, ["complete", "--shell", "fish"])
         assert result.exit_code == 0
         assert "# Fish completion script" in result.output
-        assert "_CONSTRAINT_COMPLETE=fish_source constraint" in result.output
+        assert "_ADJOURN_COMPLETE=fish_source adjourn" in result.output
 
     def test_complete_to_file(self, runner: CliRunner, tmp_path: Path) -> None:
         """Test that complete writes to file with -o option."""
@@ -128,7 +128,7 @@ class TestCompleteCommand:
         assert output_file.exists()
         content = output_file.read_text()
         assert "# Bash completion script" in content
-        assert "_CONSTRAINT_COMPLETE=bash_source constraint" in content
+        assert "_ADJOURN_COMPLETE=bash_source adjourn" in content
 
     def test_complete_to_file_creates_parent_dirs(
         self, runner: CliRunner, tmp_path: Path
@@ -143,7 +143,7 @@ class TestCompleteCommand:
 
     def test_complete_file_with_zsh(self, runner: CliRunner, tmp_path: Path) -> None:
         """Test that complete writes zsh completion to file."""
-        output_file = tmp_path / "_constraint"
+        output_file = tmp_path / "_adjourn"
         result = runner.invoke(
             main, ["complete", "--shell", "zsh", "-o", str(output_file)]
         )
@@ -151,7 +151,7 @@ class TestCompleteCommand:
         assert output_file.exists()
         content = output_file.read_text()
         assert "# Zsh completion script" in content
-        assert "_CONSTRAINT_COMPLETE=zsh_source constraint" in content
+        assert "_ADJOURN_COMPLETE=zsh_source adjourn" in content
 
     def test_complete_has_usage_header(self, runner: CliRunner) -> None:
         """Test that complete output includes usage instructions."""
@@ -366,7 +366,7 @@ class TestInitCommand:
     def test_init_first_system_alias_requires_store(
         self, runner: CliRunner, tmp_path: Path
     ) -> None:
-        config_dir = tmp_path / ".constraint"
+        config_dir = tmp_path / ".adjourn"
         config_dir.mkdir()
         config_path = config_dir / "config.yaml"
         config_path.write_text(yaml.safe_dump({"stores": [], "aliases": {}}))
@@ -391,7 +391,7 @@ class TestInitCommand:
     def test_init_store_name_starting_with_system_prefix_fails(
         self, runner: CliRunner, tmp_path: Path
     ) -> None:
-        config_dir = tmp_path / ".constraint"
+        config_dir = tmp_path / ".adjourn"
         config_dir.mkdir()
         config_path = config_dir / "config.yaml"
         config_path.write_text(
@@ -730,7 +730,7 @@ class TestResumeCommand:
         assert "ruleset_hash" in result.output
 
     def test_init_empty_ruleset_fails(self, runner: CliRunner, tmp_path: Path) -> None:
-        config_dir = tmp_path / ".constraint"
+        config_dir = tmp_path / ".adjourn"
         rules_dir = tmp_path / "rules"
         config_dir.mkdir()
         rules_dir.mkdir()
@@ -763,7 +763,7 @@ class TestResumeCommand:
         assert "empty program" in result.output
 
     def test_resume_empty_ruleset_fails(self, runner: CliRunner, tmp_path: Path) -> None:
-        config_dir = tmp_path / ".constraint"
+        config_dir = tmp_path / ".adjourn"
         rules_dir = tmp_path / "rules"
         config_dir.mkdir()
         rules_dir.mkdir()
@@ -1342,7 +1342,7 @@ class TestRulesCommand:
         """rules add should create the config file when it does not exist."""
         rules_path = tmp_path / "my_rules.pl"
         rules_path.write_text(NONEMPTY_RULESET)
-        config_path = tmp_path / ".constraint" / "config.yaml"
+        config_path = tmp_path / ".adjourn" / "config.yaml"
 
         result = runner.invoke(
             main, ["rules", "add", str(rules_path), "--config", str(config_path)]
@@ -1356,7 +1356,7 @@ class TestRulesCommand:
             {
                 "type": "file",
                 "path": str(rules_path),
-                "prolog": "constraint",
+                "prolog": "wrapped",
                 "name": "my_rules",
             }
         ]
@@ -1384,7 +1384,7 @@ class TestRulesCommand:
         """Adding an already-registered path should report no change and exit 0."""
         rules_path = tmp_path / "my_rules.pl"
         rules_path.write_text(NONEMPTY_RULESET)
-        config_path = tmp_path / ".constraint" / "config.yaml"
+        config_path = tmp_path / ".adjourn" / "config.yaml"
 
         first = runner.invoke(
             main, ["rules", "add", str(rules_path), "--config", str(config_path)]
@@ -1420,7 +1420,7 @@ class TestRulesCommand:
         """rules add --format json should emit status 'added' with the store."""
         rules_path = tmp_path / "my_rules.pl"
         rules_path.write_text(NONEMPTY_RULESET)
-        config_path = tmp_path / ".constraint" / "config.yaml"
+        config_path = tmp_path / ".adjourn" / "config.yaml"
 
         result = runner.invoke(
             main,
@@ -1437,7 +1437,7 @@ class TestRulesCommand:
         assert payload["store"] == {
             "type": "file",
             "path": str(rules_path),
-            "prolog": "constraint",
+            "prolog": "wrapped",
             "name": "my_rules",
         }
 
@@ -1447,7 +1447,7 @@ class TestRulesCommand:
         """rules add --format json on a duplicate should emit status 'unchanged'."""
         rules_path = tmp_path / "my_rules.pl"
         rules_path.write_text(NONEMPTY_RULESET)
-        config_path = tmp_path / ".constraint" / "config.yaml"
+        config_path = tmp_path / ".adjourn" / "config.yaml"
 
         runner.invoke(
             main, ["rules", "add", str(rules_path), "--config", str(config_path)]
@@ -1472,7 +1472,7 @@ class TestRulesCommand:
         """rules add --format json --pretty-print should produce indented JSON."""
         rules_path = tmp_path / "my_rules.pl"
         rules_path.write_text(NONEMPTY_RULESET)
-        config_path = tmp_path / ".constraint" / "config.yaml"
+        config_path = tmp_path / ".adjourn" / "config.yaml"
 
         result = runner.invoke(
             main,
@@ -1497,7 +1497,7 @@ class TestRulesCommand:
         second.parent.mkdir()
         first.write_text(NONEMPTY_RULESET)
         second.write_text(NONEMPTY_RULESET)
-        config_path = tmp_path / ".constraint" / "config.yaml"
+        config_path = tmp_path / ".adjourn" / "config.yaml"
 
         runner.invoke(
             main, ["rules", "add", str(first), "--config", str(config_path)]
@@ -1519,7 +1519,7 @@ class TestRulesCommand:
         rules_dir.mkdir()
         rules_path = rules_dir / "rel.pl"
         rules_path.write_text(NONEMPTY_RULESET)
-        config_path = tmp_path / ".constraint" / "config.yaml"
+        config_path = tmp_path / ".adjourn" / "config.yaml"
 
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(
@@ -1539,7 +1539,7 @@ class TestRulesCommand:
         rules_dir.mkdir()
         rules_path = rules_dir / "foo bar (1).pl"
         rules_path.write_text(NONEMPTY_RULESET)
-        config_path = tmp_path / ".constraint" / "config.yaml"
+        config_path = tmp_path / ".adjourn" / "config.yaml"
 
         result = runner.invoke(
             main, ["rules", "add", str(rules_path), "--config", str(config_path)]

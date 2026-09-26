@@ -1,4 +1,4 @@
-"""Mnestic (CozoDB) adapter for the constraint ruleset store.
+"""Mnestic (CozoDB) adapter for the adjourn ruleset store.
 
 This module provides the schema descriptor dataclasses and MnesticAdapter
 that MnesticRuleSetStore builds against. The adapter opens a read-only
@@ -14,7 +14,7 @@ from typing import Any
 
 from mnestic import CozoDbPy
 
-from constraint.parser import Atom, Compound, Integer, List, Variable, parse_term
+from adjourn.parser import Atom, Compound, Integer, List, Variable, parse_term
 
 # ---------------------------------------------------------------------------
 # Module-level store-name → MnesticAdapter registry

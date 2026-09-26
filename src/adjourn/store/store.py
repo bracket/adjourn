@@ -9,9 +9,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from constraint.parser.ast import Atom, Clause, Compound, Float, Integer, List, Program, String, Variable
-from constraint.parser.parser import parse_file
-from constraint.config import Config
+from adjourn.parser.ast import Atom, Clause, Compound, Float, Integer, List, Program, String, Variable
+from adjourn.parser.parser import parse_file
+from adjourn.config import Config
 
 
 class RuleSetStore(ABC):
@@ -52,7 +52,7 @@ class FileRuleSetStore(RuleSetStore):
         self,
         path: str | Path,
         name: str | None = None,
-        prolog: str = "constraint",
+        prolog: str = "wrapped",
     ) -> None:
         self.path = Path(path)
         self.name = name
@@ -84,8 +84,8 @@ class FileRuleSetStore(RuleSetStore):
             return
         program = parse_file(str(self.path))
         clauses = _program_clauses(program)
-        if self.prolog == "constraint":
-            clauses = [_wrap_constraint_clause(clause) for clause in clauses]
+        if self.prolog == "wrapped":
+            clauses = [_wrap_clause(clause) for clause in clauses]
         if not clauses:
             raise ValueError(
                 f"Ruleset file {self.path} parsed to an empty program: "
@@ -213,7 +213,7 @@ def build_store_from_config(config: Config) -> AggregateRuleSetStore:
                 )
             )
         elif store_type == "mnestic":
-            from constraint.store.mnestic_store import MnesticRuleSetStore
+            from adjourn.store.mnestic_store import MnesticRuleSetStore
             support_val = store_config.get("support")
             support_path: Path | None = None
             if support_val is not None:
@@ -275,8 +275,8 @@ def _program_clauses(program: Program) -> list[Clause]:
     return clauses
 
 
-def _wrap_constraint_clause(clause: Clause) -> Clause:
-    """Wrap clause as a `rule/2` fact for constraint-mode hashing/loading.
+def _wrap_clause(clause: Clause) -> Clause:
+    """Wrap clause as a `rule/2` fact for wrapped-mode hashing/loading.
 
     Facts become ``rule(Head, true)`` and rules become ``rule(Head, Body)``.
     The returned wrapper clause is always a fact (``body=None``).

@@ -1,4 +1,4 @@
-"""Tests for the state storage seam (constraint.state_store)."""
+"""Tests for the state storage seam (adjourn.state_store)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from constraint.state_store import JsonFileStateStore, StateStore
+from adjourn.state_store import JsonFileStateStore, StateStore
 
 
 class TestStateStoreABC:

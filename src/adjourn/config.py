@@ -44,7 +44,7 @@ class Config:
     @property
     def base_dir(self) -> Path:
         """Return the base directory for relative ruleset file paths."""
-        if self.path.parent.name == ".constraint":
+        if self.path.parent.name == ".adjourn":
             return self.path.parent.parent
         return self.path.parent
 
@@ -118,7 +118,7 @@ class Config:
         store_config: dict[str, Any] = {
             "type": "file",
             "path": path,
-            "prolog": "constraint",
+            "prolog": "wrapped",
             "name": derived_name,
         }
         stores.append(store_config)
@@ -198,10 +198,10 @@ class Config:
                         )
                     validated_store["support"] = support
             else:
-                prolog_mode = store.get("prolog", "constraint")
-                if prolog_mode not in {"constraint", "strict"}:
+                prolog_mode = store.get("prolog", "wrapped")
+                if prolog_mode not in {"wrapped", "strict"}:
                     raise ValueError(
-                        f"Invalid config file {self.path}: store #{index} 'prolog' must be 'constraint' or 'strict'"
+                        f"Invalid config file {self.path}: store #{index} 'prolog' must be 'wrapped' or 'strict'"
                     )
                 validated_store = {
                     "type": store_type,

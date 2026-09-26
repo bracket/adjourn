@@ -5,8 +5,8 @@ from typing import Any
 
 import pytest
 
-import constraint.runner as runner_mod
-from constraint.runner import Runner
+import adjourn.runner as runner_mod
+from adjourn.runner import Runner
 
 
 # Lightweight stand-ins for RuleSetStore.
@@ -211,7 +211,7 @@ class TestRunnerStateStore:
         """A freshly constructed Runner has a ``JsonFileStateStore``
         as its default state store."""
         runner = Runner(STORE_A)
-        from constraint.state_store import JsonFileStateStore
+        from adjourn.state_store import JsonFileStateStore
         assert isinstance(runner._state_store, JsonFileStateStore)
 
     def test_set_state_store_replaces_seam(self) -> None:
@@ -406,4 +406,4 @@ class TestRunnerRunIntegration:
         - halts at the yield suspension
         - init state was written at run start
         """
-        from constraint.store import FileRuleSetStore
+        from adjourn.store import FileRuleSetStore

@@ -14,9 +14,9 @@ from pathlib import Path
 import janus_swi as janus
 import pytest
 
-from constraint import meta
-from constraint.store.mnestic_store import MnesticRuleSetStore
-from constraint.store.mnestic_adapter import _registry as _adapter_registry
+from adjourn import meta
+from adjourn.store.mnestic_store import MnesticRuleSetStore
+from adjourn.store.mnestic_adapter import _registry as _adapter_registry
 
 
 def _create_mnestic_db(path: str, relation_script: str) -> None:
@@ -68,12 +68,12 @@ def _load_helpers(store_name: str) -> None:
         "                   outer_id \\= inner_id,\n"
         "                   node(parent_id: outer_id, kind: 'identifier', text: name_text) ),\n"
         "                 Out),\n"
-        "    constraint_meta:init(Goal, State0),\n"
+        "    adjourn_meta:init(Goal, State0),\n"
         "    step_until_solution(State0),\n"
         "    term_to_atom(Out, BagAtom).\n"
         "\n"
         "step_until_solution(State) :-\n"
-        "    constraint_meta:step(State, Event, State1),\n"
+        "    adjourn_meta:step(State, Event, State1),\n"
         "    (   Event = solution(_) -> true\n"
         "    ;   Event = done -> fail\n"
         "    ;   step_until_solution(State1)\n"

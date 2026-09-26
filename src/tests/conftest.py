@@ -1,8 +1,8 @@
-"""Shared fixtures for the constraint test suite."""
+"""Shared fixtures for the adjourn test suite."""
 
 import pytest
-import constraint.runner as runner_mod
-from constraint.runner import Runner
+import adjourn.runner as runner_mod
+from adjourn.runner import Runner
 
 
 @pytest.fixture(autouse=True)

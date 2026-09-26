@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from constraint.parser.ast import Atom, Clause, Compound, Variable
-from constraint.parser.parser import parse_file
-from constraint.store.mnestic_adapter import MnesticAdapter, RelationDescriptor, register
-from constraint.store.store import (
+from adjourn.parser.ast import Atom, Clause, Compound, Variable
+from adjourn.parser.parser import parse_file
+from adjourn.store.mnestic_adapter import MnesticAdapter, RelationDescriptor, register
+from adjourn.store.store import (
     RuleSetStore,
     StoreInfo,
     _program_clauses,

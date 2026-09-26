@@ -1,6 +1,6 @@
-"""subprocess foreign callout for the constraint meta-interpreter.
+"""subprocess foreign callout for the adjourn meta-interpreter.
 
-Registers a ``subprocess`` callout in the ``constraint_foreign`` registry so the
+Registers a ``subprocess`` callout in the ``adjourn_foreign`` registry so the
 Prolog meta-interpreter can invoke it via::
 
     foreign(subprocess, [Cwd, Arg0, Arg1, ...], ExitCode)
@@ -18,7 +18,7 @@ import traceback
 from collections.abc import Iterable
 from typing import Any
 
-from constraint.constraint_foreign import register
+from adjourn.adjourn_foreign import register
 
 
 @register("subprocess")

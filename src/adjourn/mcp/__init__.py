@@ -1,7 +1,7 @@
-"""MCP server for the constraint resolution system.
+"""MCP server for the adjourn resolution system.
 
-Exposes three tools — ``constraint_init``, ``constraint_resume``, and
-``constraint_add_rules`` — that let an external client drive a resolution as a
+Exposes three tools — ``adjourn_init``, ``adjourn_resume``, and
+``adjourn_add_rules`` — that let an external client drive a resolution as a
 coroutine by shelling out to the CLI per call against disk-backed sessions.
 """
 
@@ -21,20 +21,20 @@ from fastmcp import FastMCP
 # Configuration from environment
 # ---------------------------------------------------------------------------
 
-MCP_HOST = os.environ.get("CONSTRAINT_MCP_HOST", "localhost")
-MCP_PORT = int(os.environ.get("CONSTRAINT_MCP_PORT", "8080"))
+MCP_HOST = os.environ.get("ADJOURN_MCP_HOST", "localhost")
+MCP_PORT = int(os.environ.get("ADJOURN_MCP_PORT", "8080"))
 _SESSIONS_DIR = Path(
-    os.environ.get("CONSTRAINT_MCP_SESSIONS_DIR", "./.constraint/mcp-sessions")
+    os.environ.get("ADJOURN_MCP_SESSIONS_DIR", "./.adjourn/mcp-sessions")
 )
-_CONFIG_PATH = Path(os.environ.get("CONSTRAINT_CONFIG", ".constraint/config.yaml"))
-_TIMEOUT = int(os.environ.get("CONSTRAINT_MCP_TIMEOUT", "60"))
-_LOG_LEVEL = os.environ.get("CONSTRAINT_MCP_LOG_LEVEL", "WARNING")
+_CONFIG_PATH = Path(os.environ.get("ADJOURN_CONFIG", ".adjourn/config.yaml"))
+_TIMEOUT = int(os.environ.get("ADJOURN_MCP_TIMEOUT", "60"))
+_LOG_LEVEL = os.environ.get("ADJOURN_MCP_LOG_LEVEL", "WARNING")
 
 # ---------------------------------------------------------------------------
 # FastMCP instance
 # ---------------------------------------------------------------------------
 
-mcp = FastMCP("constraint-mcp")
+mcp = FastMCP("adjourn-mcp")
 
 
 # ---------------------------------------------------------------------------
@@ -59,7 +59,7 @@ def _config_path() -> Path:
 
 
 def _server_dir() -> Path:
-    """Return the server directory that contains ``.constraint/``."""
+    """Return the server directory that contains ``.adjourn/``."""
     return _config_path().parent.parent
 
 
@@ -97,7 +97,7 @@ def _allocate_session_id() -> str:
 
 
 def _run_cli(args: list[str], cwd: Path | None = None) -> dict:
-    """Run the constraint CLI as a subprocess and return the parsed JSON projection.
+    """Run the adjourn CLI as a subprocess and return the parsed JSON projection.
 
     Args:
         args: CLI arguments (excluding the program name).
@@ -109,7 +109,7 @@ def _run_cli(args: list[str], cwd: Path | None = None) -> dict:
     Raises:
         RuntimeError: If the CLI exits with a non-zero status.
     """
-    cmd = [sys.executable, "-m", "constraint.cli"] + args
+    cmd = [sys.executable, "-m", "adjourn.cli"] + args
     try:
         result = subprocess.run(
             cmd,
@@ -140,7 +140,7 @@ def _require_session_state(session: str) -> Path:
     if not state_path.exists():
         raise RuntimeError(
             f"Session '{session}' not found (state file {state_path} does not exist). "
-            "Did you call constraint_init first?"
+            "Did you call adjourn_init first?"
         )
     return state_path
 
@@ -151,10 +151,10 @@ def _require_session_state(session: str) -> Path:
 
 
 @mcp.tool()
-def constraint_init(goal: str) -> dict:
+def adjourn_init(goal: str) -> dict:
     """Initialise a new resolution session.
 
-    Allocates a new disk-backed session, runs ``constraint init`` to produce
+    Allocates a new disk-backed session, runs ``adjourn init`` to produce
     the initial state, and returns the session id together with the initial
     projection.
 
@@ -162,8 +162,8 @@ def constraint_init(goal: str) -> dict:
     ``ruleset_hash``, and ``resume_hash``.
 
     Coroutine loop:
-        1. Call ``constraint_init`` once to create a session.
-        2. Call ``constraint_resume`` repeatedly with the returned session id.
+        1. Call ``adjourn_init`` once to create a session.
+        2. Call ``adjourn_resume`` repeatedly with the returned session id.
         3. ``status`` progresses through ``running`` → ``suspended`` /
            ``solution`` and terminates at ``done``.
         4. ``solution`` is a resumable checkpoint (resuming backtracks for
@@ -178,17 +178,17 @@ def constraint_init(goal: str) -> dict:
 
 
 @mcp.tool()
-def constraint_resume(session: str) -> dict:
+def adjourn_resume(session: str) -> dict:
     """Advance a resolution session by one step.
 
-    Reads the state file for the given *session* id, runs ``constraint resume``
+    Reads the state file for the given *session* id, runs ``adjourn resume``
     in place, and returns the updated projection.
 
     The returned dict has keys ``session``, ``status``, ``label``,
     ``ruleset_hash``, and ``resume_hash``.
 
     Args:
-        session: The session id returned by ``constraint_init``.
+        session: The session id returned by ``adjourn_init``.
 
     Returns:
         The updated projection with the session id.
@@ -204,7 +204,7 @@ def constraint_resume(session: str) -> dict:
 
 
 @mcp.tool()
-def constraint_add_rules(session: str, rules: str) -> dict:
+def adjourn_add_rules(session: str, rules: str) -> dict:
     """Add a ruleset file, repoint resume, and advance the session once.
 
     Writes *rules* verbatim to a newly allocated ``rules_NNN.pl`` file in the
@@ -216,7 +216,7 @@ def constraint_add_rules(session: str, rules: str) -> dict:
     the error is propagated.
 
     Args:
-        session: The session id returned by ``constraint_init``.
+        session: The session id returned by ``adjourn_init``.
         rules: Opaque Prolog rule text to write verbatim.
 
     Returns:

@@ -1,6 +1,6 @@
-# AGENTS.md — working on `constraint`
+# AGENTS.md — working on `adjourn`
 
-Read this before touching any code. `constraint` is a **meta-interpreter
+Read this before touching any code. `adjourn` is a **meta-interpreter
 embedded in Prolog embedded in Python**. There are three levels and they are
 easy to confuse. Most wasted effort here comes from an agent operating at the
 wrong level — especially trying to `use_module`/import at the level between the
@@ -19,7 +19,7 @@ how the levels load each other.
 │     - the real SWI engine that step/3 actually runs in       │
 │     - modules loaded here via :- use_module / janus.consult  │
 ├─────────────────────────────────────────────────────────────┤
-│ L1  Python orchestration       constraint.* package (Janus)  │  ← driver
+│ L1  Python orchestration       adjourn.* package (Janus)  │  ← driver
 │     - CLI, Runner, stores, state (de)serialization           │
 │     - drives L2 through janus_swi                             │
 └─────────────────────────────────────────────────────────────┘
@@ -29,7 +29,7 @@ how the levels load each other.
   all serialization. It calls into L2 via `janus_swi` (`janus.consult`,
   `janus.query_once`, `py_call`).
 - **L2 host Prolog** is the meta-interpreter itself (`meta.pl`, module
-  `constraint_meta`) plus the query-compiler modules (`query_compiler.pl` and
+  `adjourn_meta`) plus the query-compiler modules (`query_compiler.pl` and
   the `qc_*.pl` family). This is a normal SWI-Prolog program. Prolog module
   machinery (`:- module`, `:- use_module`) lives **here and only here**.
 - **L3 interpreted program** is the *user's* logic program: `rule/2` facts that
@@ -55,7 +55,7 @@ If you find yourself trying to "import a module into the interpreter" —
 
 ## L2: how the host Prolog is structured
 
-### `meta.pl` — module `constraint_meta`
+### `meta.pl` — module `adjourn_meta`
 
 The canonical meta-interpreter. It lives inside the Python package source tree
 so it can be reached via `importlib.resources`. Exports: `init/2`, `step/3`,
@@ -104,13 +104,13 @@ rules apply. If you add a `qc_*.pl` file, wire it with `:- use_module` in
 
 ## L1↔L2: loading Prolog from Python (the part agents get wrong)
 
-All Prolog loading happens in **`src/constraint/meta.py`** through explicit,
+All Prolog loading happens in **`src/adjourn/meta.py`** through explicit,
 idempotent `_ensure_*_loaded()` seams gated by a module-level `_consulted` set.
 There is no autoloading, no consult-on-import. If a `.pl` file needs to be
 present in the SWI engine, it needs a seam here:
 
 - `_ensure_meta_loaded()` → consults `meta.pl` via
-  `files("constraint").joinpath("meta.pl")` + `janus.consult`.
+  `files("adjourn").joinpath("meta.pl")` + `janus.consult`.
 - `_ensure_query_compiler_loaded()` → consults `query_compiler.pl` (which
   pulls the `qc_*` modules via its own `use_module` directives — you do **not**
   consult each `qc_*.pl` from Python).
@@ -118,10 +118,10 @@ present in the SWI engine, it needs a seam here:
   file and `janus.consult`s it, hash-guarded so unchanged rulesets don't
   reload. **This is how L3 enters the engine — as consulted `rule/2` facts,
   not as a module.**
-- `_ensure_foreign_loaded()` → registers `constraint.constraint_foreign` in
-  `sys.modules` under the bare name `constraint_foreign` so that the Prolog
-  goal `py_call(constraint_foreign:dispatch(Fn, In), Out)` resolves. **The
-  `constraint_foreign:` here is a Python module reference for `py_call`, not a
+- `_ensure_foreign_loaded()` → registers `adjourn.adjourn_foreign` in
+  `sys.modules` under the bare name `adjourn_foreign` so that the Prolog
+  goal `py_call(adjourn_foreign:dispatch(Fn, In), Out)` resolves. **The
+  `adjourn_foreign:` here is a Python module reference for `py_call`, not a
   Prolog module** — another easy confusion.
 
 Rules for adding a new `.pl` file that Python must load:
@@ -138,8 +138,8 @@ Rules for adding a new `.pl` file that Python must load:
 
 ## L1: Python orchestration
 
-- **CLI:** `constraint.cli.__main__:main` (Click). Also `python -m
-  constraint.cli`. Subcommands include `init` / `resume`.
+- **CLI:** `adjourn.cli.__main__:main` (Click). Also `python -m
+  adjourn.cli`. Subcommands include `init` / `resume`.
 - **`Runner`** (`runner.py`): implicit singleton (`__new__` + module-global
   `instance_`; `RUNNER_ALWAYS_FORCE_NEW` / `force_new` for tests). Reads the
   pinned ruleset hash from a state dict, resolves clauses via a
@@ -153,16 +153,16 @@ Rules for adding a new `.pl` file that Python must load:
   L1↔L2 boundary passes **atom strings and flat atom lists** only
   (`step_packed/4`, `parse_packed_branches/2`). Keep new interop on that
   atom-string discipline.
-- **Stores:** `constraint.store` — `RuleSetStore`, content-addressed rulesets,
+- **Stores:** `adjourn.store` — `RuleSetStore`, content-addressed rulesets,
   `hash_clauses`; `MnesticRuleSetStore` (CozoDB adapter, read-only) in
   `store/mnestic_store.py` + `store/mnestic_adapter.py`. Design in
   `docs/mnestic-store.md`.
 
 ## Architectural invariant (do not violate)
 
-`constraint` is the **engine**. `enbug` and other consumers push features
+`adjourn` is the **engine**. `enbug` and other consumers push features
 **down into their own layer deliberately** rather than accreting inside
-`constraint`. When a task tempts you to add consumer-specific behavior to the
+`adjourn`. When a task tempts you to add consumer-specific behavior to the
 meta-interpreter or CLI, that is almost always wrong — flag it rather than
 building it.
 
@@ -182,8 +182,8 @@ building it.
 
 ## Housekeeping
 
-- Python 3.11+, type-hinted; ruff + mypy must pass (`ruff check src/constraint`,
-  `mypy src/constraint`). Private helpers `_`-prefixed and colocated.
+- Python 3.11+, type-hinted; ruff + mypy must pass (`ruff check src/adjourn`,
+  `mypy src/adjourn`). Private helpers `_`-prefixed and colocated.
 - Tests: pytest under `src/tests/`; add regression tests with new behavior.
 - Prolog: `:- module` headers on L2 files, meaningful predicate names,
   declarative bodies. Test predicates independently before wiring through Janus.

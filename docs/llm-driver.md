@@ -2,10 +2,10 @@
 
 ## Goal
 
-Half 2 of MCP exposure: constraint acts as its own driver. When a goal
-suspends, constraint calls an LLM and offers it constraint's own MCP tools,
+Half 2 of MCP exposure: adjourn acts as its own driver. When a goal
+suspends, adjourn calls an LLM and offers it adjourn's own MCP tools,
 so the LLM can extend the ruleset, manage context, and resume. (Half 1,
-constraint as an MCP server to a chat agent, is complete.)
+adjourn as an MCP server to a chat agent, is complete.)
 
 No concrete first use case is fixed yet; the first cut is a proof of the
 loop.
@@ -14,13 +14,13 @@ loop.
 
 - The driver is a haft-mcp-host `ChatSession`
   (`haft/packages/haft-mcp-host/haft/mcp_host/session.py`) pointed directly
-  at the existing constraint MCP server via `add_mcp_server`. No in-process
+  at the existing adjourn MCP server via `add_mcp_server`. No in-process
   library API is required for the first cut.
-- The LLM sees the full constraint MCP tool surface, including sessions,
+- The LLM sees the full adjourn MCP tool surface, including sessions,
   resume hashes, and store names, and chooses which session/suspend point to
   resume itself.
 - Loop shape:
-  1. Constraint runs until it suspends.
+  1. Adjourn runs until it suspends.
   2. The driver calls `ChatSession.send()` with the rendered context stack.
   3. The LLM calls tools (e.g. `add_rules`, `push_context`) and then
      resumes.
@@ -40,16 +40,16 @@ transcript to the caller:
 
 ## Prompt
 
-- Constraint ships a standard default prompt that instructs the LLM how to
-  use constraint. It is customizable by the caller.
-- The "how to use constraint" text has a single source of truth shared with
+- Adjourn ships a standard default prompt that instructs the LLM how to
+  use adjourn. It is customizable by the caller.
+- The "how to use adjourn" text has a single source of truth shared with
   the MCP server's instructions to chat agents.
 
 ## Context stack
 
 - **Frames are plain text produced by the LLM**, not Prolog terms. The LLM
   may also manage files whose contents are interpolated into the context.
-- **Context files live in the `.constraint` directory, not in the store.**
+- **Context files live in the `.adjourn` directory, not in the store.**
   This extends the per-session files the MCP server already keeps.
 - **Primitives:**
   - An MCP tool for pushing context. This is the primary channel for LLM
@@ -72,7 +72,7 @@ transcript to the caller:
 ## Invariants
 
 - Only one janus instance may run per process; this is the basis of
-  suspend/resume. Anything that moves constraint in-process (e.g. the
+  suspend/resume. Anything that moves adjourn in-process (e.g. the
   library API below) must respect it.
 
 ## Deferred (decided later, own tickets)
@@ -94,7 +94,7 @@ transcript to the caller:
 ## Open questions
 
 - The overall mechanism for transferring context between the LLM and
-  constraint is not settled beyond the stack described here.
+  adjourn is not settled beyond the stack described here.
 - Can a frame reference a context file (e.g. `push_context(file(Name))`),
   interpolated at render time, or are files interpolated some other way?
 - Does the LLM also get a pop-context MCP tool, and file read/write tools

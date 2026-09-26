@@ -10,11 +10,11 @@ import jwt
 
 
 def _default_host() -> str:
-    return os.environ.get("CONSTRAINT_MCP_HOST", "localhost")
+    return os.environ.get("ADJOURN_MCP_HOST", "localhost")
 
 
 def _default_port() -> str:
-    return os.environ.get("CONSTRAINT_MCP_PORT", "8080")
+    return os.environ.get("ADJOURN_MCP_PORT", "8080")
 
 
 class OAuthMiddleware:
@@ -106,7 +106,7 @@ class OAuthMiddleware:
         """Send a 401 response with the MCP-required WWW-Authenticate header."""
         metadata_url = self._resource_metadata_url(scope)
         authenticate = (
-            f'Bearer realm="constraint", resource_metadata="{metadata_url}"'
+            f'Bearer realm="adjourn", resource_metadata="{metadata_url}"'
         ).encode()
         payload = {"error": "unauthorized", "error_description": reason}
         body = json.dumps(payload).encode()
@@ -143,7 +143,7 @@ class OAuthMiddleware:
 
     def _base_url(self, scope: dict) -> str:
         """Return the request base URL, honoring reverse-proxy protocol headers."""
-        configured = os.environ.get("CONSTRAINT_MCP_URL")
+        configured = os.environ.get("ADJOURN_MCP_URL")
         if configured:
             split = urlsplit(configured.rstrip("/"))
             if split.netloc:

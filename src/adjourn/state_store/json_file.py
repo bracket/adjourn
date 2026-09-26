@@ -6,18 +6,18 @@ import json
 from pathlib import Path
 from typing import Any
 
-from constraint.state_store.base import StateStore
+from adjourn.state_store.base import StateStore
 
 
 class JsonFileStateStore(StateStore):
     """Concrete state store that persists state as JSON files.
 
     States are written to ``<root>/states/state_<name>.json``.
-    The root directory defaults to ``.constraint`` but can be overridden
+    The root directory defaults to ``.adjourn`` but can be overridden
     (e.g. with a ``tmp_path`` in tests).
     """
 
-    def __init__(self, root: str | Path = ".constraint") -> None:
+    def __init__(self, root: str | Path = ".adjourn") -> None:
         self._root = Path(root)
 
     def store_state(self, name: str, state: dict) -> None:

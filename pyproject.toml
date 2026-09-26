@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "adjourn"
 version = "0.1.8"
-description = "A Python-based constraint checking system for validating code repositories against logical rules"
+description = "A suspendable, resumable Prolog meta-interpreter for long-running queries that interleave machine and human/LLM resolution."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [

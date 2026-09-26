@@ -1,4 +1,4 @@
-"""Meta-interpreter helpers for the constraint package.
+"""Meta-interpreter helpers for the adjourn package.
 
 This module provides Python-side helpers for driving the continuation-style
 Prolog meta-interpreter defined in ``meta.pl``.  Two public functions are
@@ -45,14 +45,14 @@ from typing import Any
 
 import janus_swi as janus  # type: ignore[import-untyped]
 
-from constraint.parser.ast import Clause
-from constraint.store import hash_clauses
+from adjourn.parser.ast import Clause
+from adjourn.store import hash_clauses
 
 # Track which files have already been consulted in this process to avoid
 # redundant reloading (SWI-Prolog is stateful within a process).
 _consulted: set[str] = set()
 _loaded_ruleset_hash: str | None = None
-_ruleset_file_path = Path(tempfile.gettempdir()) / "constraint_runtime_ruleset.pl"
+_ruleset_file_path = Path(tempfile.gettempdir()) / "adjourn_runtime_ruleset.pl"
 
 
 def resume_state(state: dict[str, Any], clauses: list[Clause]) -> dict[str, Any]:
@@ -115,10 +115,10 @@ def resume_state(state: dict[str, Any], clauses: list[Clause]) -> dict[str, Any]
 
 def _ensure_meta_loaded() -> None:
     """Consult ``meta.pl`` into SWI-Prolog if not already loaded."""
-    key = "<constraint_meta.pl>"
+    key = "<adjourn_meta.pl>"
     if key in _consulted:
         return
-    ref = files("constraint").joinpath("meta.pl")
+    ref = files("adjourn").joinpath("meta.pl")
     with as_file(ref) as pl_path:
         janus.consult(str(pl_path))
     _consulted.add(key)
@@ -126,27 +126,27 @@ def _ensure_meta_loaded() -> None:
 
 def _ensure_query_compiler_loaded() -> None:
     """Consult ``query_compiler.pl`` into SWI-Prolog if not already loaded."""
-    key = "<constraint_query_compiler.pl>"
+    key = "<adjourn_query_compiler.pl>"
     if key in _consulted:
         return
-    ref = files("constraint").joinpath("query_compiler.pl")
+    ref = files("adjourn").joinpath("query_compiler.pl")
     with as_file(ref) as pl_path:
         janus.consult(str(pl_path))
     _consulted.add(key)
 
 
 def _ensure_foreign_loaded() -> None:
-    """Register ``constraint_foreign`` in ``sys.modules`` for janus ``py_call``.
+    """Register ``adjourn_foreign`` in ``sys.modules`` for janus ``py_call``.
 
-    The Prolog clause ``py_call(constraint_foreign:dispatch(Fn, In), Out)``
-    resolves the module named ``constraint_foreign`` via Python's import
+    The Prolog clause ``py_call(adjourn_foreign:dispatch(Fn, In), Out)``
+    resolves the module named ``adjourn_foreign`` via Python's import
     machinery.  This function ensures the module is importable under that
     short name by registering it in ``sys.modules`` the first time it is
     needed.
     """
-    if "constraint_foreign" not in sys.modules:
-        import constraint.constraint_foreign as _cf
-        sys.modules["constraint_foreign"] = _cf
+    if "adjourn_foreign" not in sys.modules:
+        import adjourn.adjourn_foreign as _cf
+        sys.modules["adjourn_foreign"] = _cf
 
 
 def _ensure_ruleset_loaded(clauses: list[Clause]) -> None:
@@ -169,7 +169,7 @@ def _write_ruleset_file(clauses: list[Clause]) -> None:
 
 
 def _build_packed_atom(state: dict[str, Any]) -> str:
-    """Build a ``constraint_meta_pack(OrigGoal, State)`` atom string.
+    """Build a ``adjourn_meta_pack(OrigGoal, State)`` atom string.
 
     By combining the original goal and the state branches into a SINGLE Prolog
     term string, variable names that appear in both the original goal and the
@@ -184,7 +184,7 @@ def _build_packed_atom(state: dict[str, Any]) -> str:
 
     Returns:
         Atom string of the form
-        ``"constraint_meta_pack(<goal>, state([branch([...]), ...]))"``
+        ``"adjourn_meta_pack(<goal>, state([branch([...]), ...]))"``
     """
     orig_goal = state["original_goal"]
     branches = state.get("branches", [])
@@ -203,7 +203,7 @@ def _build_packed_atom(state: dict[str, Any]) -> str:
         # extra arguments of branch/N when embedded in an argument position.
         branch_terms.append(f"branch(({branch_orig_goal}), {goals_list})")
     branches_list = "[" + ",".join(branch_terms) + "]"
-    return f"constraint_meta_pack(({orig_goal}), state({branches_list}))"
+    return f"adjourn_meta_pack(({orig_goal}), state({branches_list}))"
 
 
 def _parse_branches_from_packed(packed_out: str) -> list[dict[str, Any]]:

@@ -1,12 +1,12 @@
-"""Foreign Python function registry for the constraint meta-interpreter.
+"""Foreign Python function registry for the adjourn meta-interpreter.
 
 Provides a decorator-based registry of named Python callables that can be
 invoked synchronously from Prolog via janus
-``py_call(constraint_foreign:dispatch(Fn, In), Out)``.
+``py_call(adjourn_foreign:dispatch(Fn, In), Out)``.
 
 Usage (Python side)::
 
-    from constraint.constraint_foreign import register
+    from adjourn.adjourn_foreign import register
 
     @register("my_fn")
     def _my_fn(arg):
@@ -47,7 +47,7 @@ def dispatch(fn_name: str, arg: Any) -> Any:
     """Look up *fn_name* in the registry and call it with *arg*.
 
     Called by the Prolog meta-interpreter via
-    ``py_call(constraint_foreign:dispatch(Fn, In), Out)``.
+    ``py_call(adjourn_foreign:dispatch(Fn, In), Out)``.
 
     Args:
         fn_name: Atom name of the registered function (marshalled by janus
@@ -83,7 +83,7 @@ def load_foreign_plugins(names: list[str]) -> None:
 # fire at module load time and populate the registry.
 # ---------------------------------------------------------------------------
 
-import constraint.subprocess.subprocess as _subprocess_module  # noqa: F401
+import adjourn.subprocess.subprocess as _subprocess_module  # noqa: F401
 
 # ---------------------------------------------------------------------------
 # Built-in POC callout: git rev-parse
@@ -116,8 +116,8 @@ def _git_rev_parse(arg: Any) -> str:
 # Mnestic query callout (query/3 reduction)
 # ---------------------------------------------------------------------------
 
-from constraint.parser import Compound, parse_term
-from constraint.store.mnestic_adapter import MnesticAdapter, lookup
+from adjourn.parser import Compound, parse_term
+from adjourn.store.mnestic_adapter import MnesticAdapter, lookup
 
 
 @register("mnestic_query")

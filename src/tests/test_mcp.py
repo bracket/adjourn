@@ -1,4 +1,4 @@
-"""Tests for the constraint MCP server tools."""
+"""Tests for the adjourn MCP server tools."""
 
 from __future__ import annotations
 
@@ -9,10 +9,10 @@ from pathlib import Path
 import pytest
 import yaml
 
-mcp = pytest.importorskip("constraint.mcp")
+mcp = pytest.importorskip("adjourn.mcp")
 
-from constraint.config import Config
-from constraint.mcp import (
+from adjourn.config import Config
+from adjourn.mcp import (
     _allocate_rules_filename,
     _allocate_session_id,
     _config_path,
@@ -21,11 +21,11 @@ from constraint.mcp import (
     _session_path,
     _sessions_dir,
     _write_rules_file,
-    constraint_add_rules,
-    constraint_init,
-    constraint_resume,
+    adjourn_add_rules,
+    adjourn_init,
+    adjourn_resume,
 )
-from constraint.store import FileRuleSetStore
+from adjourn.store import FileRuleSetStore
 
 NONEMPTY_RULESET = "rule(test_fixture_placeholder, true).\n"
 
@@ -39,7 +39,7 @@ def _write_config(
     prolog_modes: dict[str, str] | None = None,
 ) -> Path:
     """Create rules files plus a matching config file."""
-    config_dir = tmp_path / ".constraint"
+    config_dir = tmp_path / ".adjourn"
     rules_dir = tmp_path / "rules"
     config_dir.mkdir()
     rules_dir.mkdir()
@@ -49,7 +49,7 @@ def _write_config(
     for name, content in rules.items():
         rules_path = rules_dir / f"{name}.pl"
         rules_path.write_text(content)
-        prolog_mode = prolog_modes.get(name, "constraint") if prolog_modes else "constraint"
+        prolog_mode = prolog_modes.get(name, "wrapped") if prolog_modes else "wrapped"
         store = FileRuleSetStore(rules_path, prolog=prolog_mode)
         ruleset_hash = store.known_rulesets()[0]
         store_config = {"type": "file", "path": str(Path("rules") / rules_path.name)}
@@ -87,7 +87,7 @@ class TestMCPSessionHelpers:
     def test_sessions_dir_created(self, tmp_path: Path) -> None:
         """_sessions_dir() should create the directory if missing."""
         # Point sessions dir to tmp_path subdir
-        import constraint.mcp as mcp_mod
+        import adjourn.mcp as mcp_mod
         old_dir = mcp_mod._SESSIONS_DIR
         test_dir = tmp_path / "mcp-sessions"
         mcp_mod._SESSIONS_DIR = test_dir
@@ -100,11 +100,11 @@ class TestMCPSessionHelpers:
             mcp_mod._SESSIONS_DIR = old_dir
 
     def test_server_dir_uses_config_parent_parent(self, tmp_path: Path) -> None:
-        """_server_dir() should resolve the directory that contains .constraint."""
-        import constraint.mcp as mcp_mod
+        """_server_dir() should resolve the directory that contains .adjourn."""
+        import adjourn.mcp as mcp_mod
 
         old_config_path = mcp_mod._CONFIG_PATH
-        config_path = tmp_path / ".constraint" / "config.yaml"
+        config_path = tmp_path / ".adjourn" / "config.yaml"
         mcp_mod._CONFIG_PATH = config_path
         try:
             assert _config_path() == config_path
@@ -136,29 +136,29 @@ class TestMCPSessionHelpers:
 class TestMCPServerTools:
     """End-to-end tests for the MCP server tools."""
 
-    def test_constraint_add_rules_is_registered(self) -> None:
-        """constraint_add_rules should be exposed as an MCP tool."""
+    def test_adjourn_add_rules_is_registered(self) -> None:
+        """adjourn_add_rules should be exposed as an MCP tool."""
         tools = asyncio.run(mcp.mcp.list_tools())
         tool_names = {tool.name for tool in tools}
-        assert "constraint_init" in tool_names
-        assert "constraint_resume" in tool_names
-        assert "constraint_add_rules" in tool_names
+        assert "adjourn_init" in tool_names
+        assert "adjourn_resume" in tool_names
+        assert "adjourn_add_rules" in tool_names
 
-    def test_constraint_init_returns_session_and_projection(
+    def test_adjourn_init_returns_session_and_projection(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """constraint_init should return a session id and a projection with status."""
+        """adjourn_init should return a session id and a projection with status."""
         # Set up config and sessions dir
         config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
         sessions_dir = tmp_path / "sessions"
-        monkeypatch.setenv("CONSTRAINT_CONFIG", str(config_path))
-        monkeypatch.setenv("CONSTRAINT_MCP_SESSIONS_DIR", str(sessions_dir))
+        monkeypatch.setenv("ADJOURN_CONFIG", str(config_path))
+        monkeypatch.setenv("ADJOURN_MCP_SESSIONS_DIR", str(sessions_dir))
 
-        import constraint.mcp as mcp_mod
+        import adjourn.mcp as mcp_mod
         old_sessions_dir = mcp_mod._SESSIONS_DIR
         mcp_mod._SESSIONS_DIR = sessions_dir
         try:
-            result = constraint_init("true")
+            result = adjourn_init("true")
             assert "session" in result
             assert isinstance(result["session"], str)
             assert len(result["session"]) > 0
@@ -174,27 +174,27 @@ class TestMCPServerTools:
         finally:
             mcp_mod._SESSIONS_DIR = old_sessions_dir
 
-    def test_constraint_add_rules_writes_registers_and_resumes(
+    def test_adjourn_add_rules_writes_registers_and_resumes(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """constraint_add_rules should write a numbered file and repoint resume_hash."""
+        """adjourn_add_rules should write a numbered file and repoint resume_hash."""
         config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
         sessions_dir = tmp_path / "sessions"
-        monkeypatch.setenv("CONSTRAINT_CONFIG", str(config_path))
-        monkeypatch.setenv("CONSTRAINT_MCP_SESSIONS_DIR", str(sessions_dir))
+        monkeypatch.setenv("ADJOURN_CONFIG", str(config_path))
+        monkeypatch.setenv("ADJOURN_MCP_SESSIONS_DIR", str(sessions_dir))
 
-        import constraint.mcp as mcp_mod
+        import adjourn.mcp as mcp_mod
 
         old_sessions_dir = mcp_mod._SESSIONS_DIR
         old_config_path = mcp_mod._CONFIG_PATH
         mcp_mod._SESSIONS_DIR = sessions_dir
         mcp_mod._CONFIG_PATH = config_path
         try:
-            init_result = constraint_init("true")
+            init_result = adjourn_init("true")
             session_id = init_result["session"]
             before_resume_hash = init_result["resume_hash"]
 
-            result = constraint_add_rules(session_id, "rule(extra_rule, true).\n")
+            result = adjourn_add_rules(session_id, "rule(extra_rule, true).\n")
 
             assert result["session"] == session_id
             assert result["status"] == "solution"
@@ -209,18 +209,18 @@ class TestMCPServerTools:
             state = json.loads((sessions_dir / f"{session_id}.json").read_text())
             assert state["resume_hash"] == result["resume_hash"]
 
-            follow_up = constraint_resume(session_id)
+            follow_up = adjourn_resume(session_id)
             assert follow_up["status"] == "done"
             assert follow_up["resume_hash"] == result["resume_hash"]
         finally:
             mcp_mod._SESSIONS_DIR = old_sessions_dir
             mcp_mod._CONFIG_PATH = old_config_path
 
-    def test_constraint_add_rules_uses_server_dir_for_all_cli_calls(
+    def test_adjourn_add_rules_uses_server_dir_for_all_cli_calls(
         self, tmp_path: Path
     ) -> None:
-        """constraint_add_rules should invoke every CLI step from the server directory."""
-        import constraint.mcp as mcp_mod
+        """adjourn_add_rules should invoke every CLI step from the server directory."""
+        import adjourn.mcp as mcp_mod
 
         sessions_dir = tmp_path / "sessions"
         sessions_dir.mkdir()
@@ -238,7 +238,7 @@ class TestMCPServerTools:
             )
         )
 
-        config_path = tmp_path / ".constraint" / "config.yaml"
+        config_path = tmp_path / ".adjourn" / "config.yaml"
         config_path.parent.mkdir()
         config_path.write_text(yaml.safe_dump({"stores": [], "aliases": {}}))
 
@@ -261,7 +261,7 @@ class TestMCPServerTools:
 
         mcp_mod._run_cli = fake_run_cli
         try:
-            result = constraint_add_rules("session", "rule(extra_rule, true).\n")
+            result = adjourn_add_rules("session", "rule(extra_rule, true).\n")
             assert result["status"] == "done"
             assert [call[0][:2] for call in calls] == [
                 ["rules", "add"],
@@ -275,42 +275,42 @@ class TestMCPServerTools:
             mcp_mod._CONFIG_PATH = old_config_path
             mcp_mod._run_cli = old_run_cli
 
-    def test_constraint_add_rules_missing_session_raises(
+    def test_adjourn_add_rules_missing_session_raises(
         self, tmp_path: Path
     ) -> None:
-        """constraint_add_rules should mirror constraint_resume for missing sessions."""
-        import constraint.mcp as mcp_mod
+        """adjourn_add_rules should mirror adjourn_resume for missing sessions."""
+        import adjourn.mcp as mcp_mod
 
         old_sessions_dir = mcp_mod._SESSIONS_DIR
         mcp_mod._SESSIONS_DIR = tmp_path / "sessions"
         try:
             with pytest.raises(RuntimeError, match="Session 'missing' not found"):
-                constraint_add_rules("missing", "rule(extra_rule, true).\n")
+                adjourn_add_rules("missing", "rule(extra_rule, true).\n")
         finally:
             mcp_mod._SESSIONS_DIR = old_sessions_dir
 
-    def test_constraint_add_rules_on_done_session_returns_done(
+    def test_adjourn_add_rules_on_done_session_returns_done(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """constraint_add_rules should return done when resuming a done session."""
+        """adjourn_add_rules should return done when resuming a done session."""
         config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
         sessions_dir = tmp_path / "sessions"
-        monkeypatch.setenv("CONSTRAINT_CONFIG", str(config_path))
-        monkeypatch.setenv("CONSTRAINT_MCP_SESSIONS_DIR", str(sessions_dir))
+        monkeypatch.setenv("ADJOURN_CONFIG", str(config_path))
+        monkeypatch.setenv("ADJOURN_MCP_SESSIONS_DIR", str(sessions_dir))
 
-        import constraint.mcp as mcp_mod
+        import adjourn.mcp as mcp_mod
 
         old_sessions_dir = mcp_mod._SESSIONS_DIR
         old_config_path = mcp_mod._CONFIG_PATH
         mcp_mod._SESSIONS_DIR = sessions_dir
         mcp_mod._CONFIG_PATH = config_path
         try:
-            init_result = constraint_init("true")
+            init_result = adjourn_init("true")
             session_id = init_result["session"]
-            assert constraint_resume(session_id)["status"] == "solution"
-            assert constraint_resume(session_id)["status"] == "done"
+            assert adjourn_resume(session_id)["status"] == "solution"
+            assert adjourn_resume(session_id)["status"] == "done"
 
-            result = constraint_add_rules(session_id, "rule(done_rule, true).\n")
+            result = adjourn_add_rules(session_id, "rule(done_rule, true).\n")
 
             assert result["session"] == session_id
             assert result["status"] == "done"
@@ -319,11 +319,11 @@ class TestMCPServerTools:
             mcp_mod._SESSIONS_DIR = old_sessions_dir
             mcp_mod._CONFIG_PATH = old_config_path
 
-    def test_constraint_add_rules_leaves_written_file_on_cli_failure(
+    def test_adjourn_add_rules_leaves_written_file_on_cli_failure(
         self, tmp_path: Path
     ) -> None:
-        """constraint_add_rules should preserve the new rules file if a CLI step fails."""
-        import constraint.mcp as mcp_mod
+        """adjourn_add_rules should preserve the new rules file if a CLI step fails."""
+        import adjourn.mcp as mcp_mod
 
         sessions_dir = tmp_path / "sessions"
         sessions_dir.mkdir()
@@ -341,7 +341,7 @@ class TestMCPServerTools:
             )
         )
 
-        config_path = tmp_path / ".constraint" / "config.yaml"
+        config_path = tmp_path / ".adjourn" / "config.yaml"
         config_path.parent.mkdir()
         config_path.write_text(yaml.safe_dump({"stores": [], "aliases": {}}))
 
@@ -358,23 +358,23 @@ class TestMCPServerTools:
         mcp_mod._run_cli = failing_run_cli
         try:
             with pytest.raises(RuntimeError, match="boom"):
-                constraint_add_rules("session", "rule(extra_rule, true).\n")
+                adjourn_add_rules("session", "rule(extra_rule, true).\n")
             assert (tmp_path / "rules_001.pl").read_text() == "rule(extra_rule, true).\n"
         finally:
             mcp_mod._SESSIONS_DIR = old_sessions_dir
             mcp_mod._CONFIG_PATH = old_config_path
             mcp_mod._run_cli = old_run_cli
 
-    def test_constraint_add_rules_keeps_registered_store_on_late_failure(
+    def test_adjourn_add_rules_keeps_registered_store_on_late_failure(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """constraint_add_rules should preserve earlier side effects on later failure."""
+        """adjourn_add_rules should preserve earlier side effects on later failure."""
         config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
         sessions_dir = tmp_path / "sessions"
-        monkeypatch.setenv("CONSTRAINT_CONFIG", str(config_path))
-        monkeypatch.setenv("CONSTRAINT_MCP_SESSIONS_DIR", str(sessions_dir))
+        monkeypatch.setenv("ADJOURN_CONFIG", str(config_path))
+        monkeypatch.setenv("ADJOURN_MCP_SESSIONS_DIR", str(sessions_dir))
 
-        import constraint.mcp as mcp_mod
+        import adjourn.mcp as mcp_mod
 
         old_sessions_dir = mcp_mod._SESSIONS_DIR
         old_config_path = mcp_mod._CONFIG_PATH
@@ -382,7 +382,7 @@ class TestMCPServerTools:
         mcp_mod._SESSIONS_DIR = sessions_dir
         mcp_mod._CONFIG_PATH = config_path
         try:
-            init_result = constraint_init("true")
+            init_result = adjourn_init("true")
             session_id = init_result["session"]
             state_path = sessions_dir / f"{session_id}.json"
             resume_hash_before = json.loads(state_path.read_text())["resume_hash"]
@@ -395,7 +395,7 @@ class TestMCPServerTools:
             mcp_mod._run_cli = fail_on_set_resume
 
             with pytest.raises(RuntimeError, match="late failure"):
-                constraint_add_rules(session_id, "rule(extra_rule, true).\n")
+                adjourn_add_rules(session_id, "rule(extra_rule, true).\n")
 
             config = Config(config_path)
             assert config.store_configs[-1]["path"] == "rules_001.pl"
@@ -407,31 +407,31 @@ class TestMCPServerTools:
             mcp_mod._CONFIG_PATH = old_config_path
             mcp_mod._run_cli = old_run_cli
 
-    def test_constraint_resume_advances_state(
+    def test_adjourn_resume_advances_state(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """constraint_resume should advance the state and return updated projection."""
+        """adjourn_resume should advance the state and return updated projection."""
         config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
         sessions_dir = tmp_path / "sessions"
-        monkeypatch.setenv("CONSTRAINT_CONFIG", str(config_path))
-        monkeypatch.setenv("CONSTRAINT_MCP_SESSIONS_DIR", str(sessions_dir))
+        monkeypatch.setenv("ADJOURN_CONFIG", str(config_path))
+        monkeypatch.setenv("ADJOURN_MCP_SESSIONS_DIR", str(sessions_dir))
 
-        import constraint.mcp as mcp_mod
+        import adjourn.mcp as mcp_mod
         old_sessions_dir = mcp_mod._SESSIONS_DIR
         mcp_mod._SESSIONS_DIR = sessions_dir
         try:
             # Init
-            init_result = constraint_init("true")
+            init_result = adjourn_init("true")
             session_id = init_result["session"]
             assert init_result["status"] == "running"
 
             # Resume once — should reach solution
-            resume_result = constraint_resume(session_id)
+            resume_result = adjourn_resume(session_id)
             assert resume_result["session"] == session_id
             assert resume_result["status"] in ("solution", "suspended", "running", "done")
 
             # Resume again — should eventually reach done
-            resume_result2 = constraint_resume(session_id)
+            resume_result2 = adjourn_resume(session_id)
             assert resume_result2["session"] == session_id
             # For 'true' goal, after solution we should get done
             assert resume_result2["status"] in ("solution", "suspended", "running", "done")
@@ -444,27 +444,27 @@ class TestMCPServerTools:
         """Drive a session from init through resume to done."""
         config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
         sessions_dir = tmp_path / "sessions"
-        monkeypatch.setenv("CONSTRAINT_CONFIG", str(config_path))
-        monkeypatch.setenv("CONSTRAINT_MCP_SESSIONS_DIR", str(sessions_dir))
+        monkeypatch.setenv("ADJOURN_CONFIG", str(config_path))
+        monkeypatch.setenv("ADJOURN_MCP_SESSIONS_DIR", str(sessions_dir))
 
-        import constraint.mcp as mcp_mod
+        import adjourn.mcp as mcp_mod
         old_sessions_dir = mcp_mod._SESSIONS_DIR
         mcp_mod._SESSIONS_DIR = sessions_dir
         try:
-            result = constraint_init("true")
+            result = adjourn_init("true")
             session_id = result["session"]
             assert result["status"] == "running"
 
             # Resume to solution
-            r1 = constraint_resume(session_id)
+            r1 = adjourn_resume(session_id)
             assert r1["status"] == "solution"
 
             # Resume to done
-            r2 = constraint_resume(session_id)
+            r2 = adjourn_resume(session_id)
             assert r2["status"] == "done"
 
             # Resuming done is idempotent
-            r3 = constraint_resume(session_id)
+            r3 = adjourn_resume(session_id)
             assert r3["status"] == "done"
         finally:
             mcp_mod._SESSIONS_DIR = old_sessions_dir
@@ -473,12 +473,12 @@ class TestMCPServerTools:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Resuming a non-existent session should raise RuntimeError."""
-        import constraint.mcp as mcp_mod
+        import adjourn.mcp as mcp_mod
         old_sessions_dir = mcp_mod._SESSIONS_DIR
         mcp_mod._SESSIONS_DIR = Path("/tmp/nonexistent-sessions-dir-12345")
         try:
             with pytest.raises(RuntimeError, match="not found"):
-                constraint_resume("nonexistent-session-id")
+                adjourn_resume("nonexistent-session-id")
         finally:
             mcp_mod._SESSIONS_DIR = old_sessions_dir
 
@@ -493,14 +493,14 @@ class TestMCPServerTools:
         """Session state should persist on disk (no in-memory map)."""
         config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
         sessions_dir = tmp_path / "sessions"
-        monkeypatch.setenv("CONSTRAINT_CONFIG", str(config_path))
-        monkeypatch.setenv("CONSTRAINT_MCP_SESSIONS_DIR", str(sessions_dir))
+        monkeypatch.setenv("ADJOURN_CONFIG", str(config_path))
+        monkeypatch.setenv("ADJOURN_MCP_SESSIONS_DIR", str(sessions_dir))
 
-        import constraint.mcp as mcp_mod
+        import adjourn.mcp as mcp_mod
         old_sessions_dir = mcp_mod._SESSIONS_DIR
         mcp_mod._SESSIONS_DIR = sessions_dir
         try:
-            result = constraint_init("true")
+            result = adjourn_init("true")
             session_id = result["session"]
             state_path = sessions_dir / f"{session_id}.json"
             assert state_path.exists()
@@ -510,7 +510,7 @@ class TestMCPServerTools:
             assert state["status"] == "running"
 
             # Resume via file
-            r1 = constraint_resume(session_id)
+            r1 = adjourn_resume(session_id)
             state2 = json.loads(state_path.read_text())
             assert state2["status"] == r1["status"]
         finally:

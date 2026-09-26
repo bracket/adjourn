@@ -18,14 +18,14 @@
 
 ## What this doc covers
 
-How the `constraint` meta-interpreter retrieves and dispatches clauses
+How the `adjourn` meta-interpreter retrieves and dispatches clauses
 at resolution time — the mechanism behind `reduce_goal`. The "what must
 be supported" lives in [`rule-scoping.md`](rule-scoping.md); this doc
 records "how it works."
 
 ## Prolog / Python split
 
-`constraint` is not intended to run as a standalone Prolog program.
+`adjourn` is not intended to run as a standalone Prolog program.
 Python is an integral orchestration layer: I/O, databases, LLM-generated
 rules, and the (eventual) clause-selection policy all live there
 natively. The architecture reflects this:
@@ -115,7 +115,7 @@ the same resolution behavior.
 
 Content hashes use canonical-parsed-term form, computed **Python-side and
 authoritatively** (`canonical_clause` / `hash_clauses` in
-`constraint.store`): a pure AST walk renumbers variables by first
+`adjourn.store`): a pure AST walk renumbers variables by first
 occurrence (`_V0`, `_V1`, …) and emits a tagged serialization, which is
 SHA-256 hashed. A Prolog-side implementation (`copy_term` + `numbervars`)
 is permitted only if byte-identical to the Python output; none exists in

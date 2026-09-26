@@ -3,11 +3,11 @@
 % Continuation-style meta-interpreter with explicit suspension/resumption.
 % The interpreted program is given by rule/2 facts loaded separately.
 %
-% This module is the canonical meta-interpreter for the constraint package.
+% This module is the canonical meta-interpreter for the adjourn package.
 % It is located inside the Python package source tree so it is accessible
 % via importlib.resources.
 
-:- module(constraint_meta, [
+:- module(adjourn_meta, [
     init/2,
     step/3,
     run/3,
@@ -81,7 +81,7 @@ reduce_goal(OrigGoal, yield(Label), Gs, Rest, suspended(Label), state([branch(Or
 % foreign callout: invoke a registered Python function synchronously.
 % py_call/2 is provided by library(janus) and calls into the Python runtime.
 reduce_goal(OrigGoal, foreign(Fn, In, Out), Gs, Rest, Event, State1) :-
-    py_call(constraint_foreign:dispatch(Fn, In), Out),
+    py_call(adjourn_foreign:dispatch(Fn, In), Out),
     step(state([branch(OrigGoal, Gs)|Rest]), Event, State1).
 
 
@@ -170,7 +170,7 @@ user:build_query_results(F, Rows, Bag) :-
 %
 % The "packed" representation is a single atom string of the form:
 %
-%   constraint_meta_pack(OrigGoal, State)
+%   adjourn_meta_pack(OrigGoal, State)
 %
 % Packing OrigGoal and State into ONE term (and hence one atom) ensures
 % that identically-named variables in OrigGoal and the branch goals are
@@ -180,9 +180,9 @@ user:build_query_results(F, Rows, Bag) :-
 
 % step_packed(+PackedAtom, -EventAtom, -PackedOutAtom, -BindingFlatList)
 %
-%   PackedAtom      — atom encoding constraint_meta_pack(OrigGoal, State)
+%   PackedAtom      — atom encoding adjourn_meta_pack(OrigGoal, State)
 %   EventAtom       — atom encoding the reduction event
-%   PackedOutAtom   — atom encoding constraint_meta_pack(OrigGoal, StateOut)
+%   PackedOutAtom   — atom encoding adjourn_meta_pack(OrigGoal, StateOut)
 %   BindingFlatList — flat list [Name1, Val1, Name2, Val2, ...] (solution only)
 %
 % BindingFlatList is populated only when EventAtom = 'solution'.
@@ -191,11 +191,11 @@ user:build_query_results(F, Rows, Bag) :-
 % Use extract_bindings_str/4 to recover original user-defined names.
 step_packed(PackedAtom, EventAtom, PackedOutAtom, BindingFlatList) :-
     read_term_from_atom(PackedAtom,
-                        constraint_meta_pack(OrigGoal, State),
+                        adjourn_meta_pack(OrigGoal, State),
                         [variable_names(VarNames)]),
-    nb_setval(constraint_orig_goal, OrigGoal),
+    nb_setval(adjourn_orig_goal, OrigGoal),
     step(State, Event, StateOut),
-    term_to_atom(constraint_meta_pack(OrigGoal, StateOut), PackedOutAtom),
+    term_to_atom(adjourn_meta_pack(OrigGoal, StateOut), PackedOutAtom),
     ( Event = solution(SolvedOrigGoal) ->
         % Normalise the external event atom to bare 'solution' (the Python side
         % matches on the string 'solution').
@@ -238,7 +238,7 @@ interleave_lists([X|Xs], [Y|Ys], [X,Y|Zs]) :- interleave_lists(Xs, Ys, Zs).
 % Returns [] for an empty state (done).
 parse_packed_branches(PackedAtom, FlatGoalList) :-
     read_term_from_atom(PackedAtom,
-                        constraint_meta_pack(_, State),
+                        adjourn_meta_pack(_, State),
                         []),
     State = state(Branches),
     maplist(branch_as_atoms, Branches, BranchAtomLists),
@@ -264,7 +264,7 @@ flatten_with_markers([Items|Rest], [branch_start|Flat]) :-
 %
 % OrigGoalStr   — original goal as string, e.g. "color(X, Y)"
 % PackedSolAtom — packed atom after solution,
-%                 e.g. "constraint_meta_pack(color(red,blue),state([]))"
+%                 e.g. "adjourn_meta_pack(color(red,blue),state([]))"
 % VarNameList   — list of original variable name atoms, e.g. ['X', 'Y']
 % VarValueList  — list of bound value atoms, e.g. ['red', 'blue']
 %
@@ -273,7 +273,7 @@ flatten_with_markers([Items|Rest], [branch_start|Flat]) :-
 extract_bindings_str(OrigGoalStr, PackedSolAtom, VarNameList, VarValueList) :-
     (   read_term_from_atom(OrigGoalStr, OrigGoal, [variable_names(VN)]),
         read_term_from_atom(PackedSolAtom,
-                            constraint_meta_pack(SolGoal, _),
+                            adjourn_meta_pack(SolGoal, _),
                             []),
         OrigGoal = SolGoal,
         include([_Name=Var]>>(ground(Var)), VN, BoundPairs),

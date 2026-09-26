@@ -9,9 +9,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-from constraint.config import Config
-from constraint.parser.ast import Atom, Clause, Compound
-from constraint.store import (
+from adjourn.config import Config
+from adjourn.parser.ast import Atom, Clause, Compound
+from adjourn.store import (
     AggregateRuleSetStore,
     FileRuleSetStore,
     RuleSetStore,
@@ -74,7 +74,7 @@ class TestConfig:
     """Config loading tests."""
 
     def test_loads_valid_yaml(self, tmp_path: Path) -> None:
-        config_path = tmp_path / ".constraint" / "config.yaml"
+        config_path = tmp_path / ".adjourn" / "config.yaml"
         config_path.parent.mkdir()
         config_path.write_text(
             yaml.safe_dump(
@@ -88,12 +88,12 @@ class TestConfig:
         config = Config(config_path)
 
         assert config.store_configs == [
-            {"type": "file", "path": "rules/test.pl", "prolog": "constraint"}
+            {"type": "file", "path": "rules/test.pl", "prolog": "wrapped"}
         ]
         assert config.aliases == {"test_rules": "abc123"}
 
     def test_loads_store_name(self, tmp_path: Path) -> None:
-        config_path = tmp_path / ".constraint" / "config.yaml"
+        config_path = tmp_path / ".adjourn" / "config.yaml"
         config_path.parent.mkdir()
         config_path.write_text(
             yaml.safe_dump(
@@ -111,7 +111,7 @@ class TestConfig:
                 "type": "file",
                 "path": "rules/test.pl",
                 "name": "test",
-                "prolog": "constraint",
+                "prolog": "wrapped",
             }
         ]
 
@@ -149,7 +149,7 @@ class TestConfig:
 
         with pytest.raises(
             ValueError,
-            match="'prolog' must be 'constraint' or 'strict'",
+            match="'prolog' must be 'wrapped' or 'strict'",
         ):
             Config(config_path)
 
@@ -244,7 +244,7 @@ class TestStores:
         with pytest.raises(ValueError, match="empty program"):
             store.known_rulesets()
 
-    def test_constraint_mode_wraps_bare_clauses(self, tmp_path: Path) -> None:
+    def test_wrapped_mode_wraps_bare_clauses(self, tmp_path: Path) -> None:
         rules_path = _write_rules(tmp_path, "rules.pl", "foo.\nbar :- baz.\n")
         store = FileRuleSetStore(rules_path)
         ruleset_hash = store.known_rulesets()[0]
@@ -269,11 +269,11 @@ class TestStores:
             ),
         ]
 
-    def test_constraint_and_strict_modes_produce_equal_hash_for_equivalent_rules(
+    def test_wrapped_and_strict_modes_produce_equal_hash_for_equivalent_rules(
         self, tmp_path: Path
     ) -> None:
-        constraint_store = FileRuleSetStore(
-            _write_rules(tmp_path, "constraint.pl", "foo.\nbar :- baz.\n"),
+        wrapped_store = FileRuleSetStore(
+            _write_rules(tmp_path, "wrapped.pl", "foo.\nbar :- baz.\n"),
         )
         strict_store = FileRuleSetStore(
             _write_rules(
@@ -284,7 +284,7 @@ class TestStores:
             prolog="strict",
         )
 
-        assert constraint_store.ruleset_hash == strict_store.ruleset_hash
+        assert wrapped_store.ruleset_hash == strict_store.ruleset_hash
 
     def test_strict_mode_keeps_rule_clauses_unmodified(self, tmp_path: Path) -> None:
         rules_path = _write_rules(tmp_path, "rules.pl", "rule(foo, true).\n")
@@ -295,7 +295,7 @@ class TestStores:
 
         assert clauses == [Clause(head=Compound("rule", [Atom("foo"), Atom("true")]))]
 
-    def test_constraint_mode_rejects_directives(self, tmp_path: Path) -> None:
+    def test_wrapped_mode_rejects_directives(self, tmp_path: Path) -> None:
         rules_path = _write_rules(tmp_path, "rules.pl", ":- dynamic foo/0.\nfoo.\n")
         store = FileRuleSetStore(rules_path)
 
@@ -393,7 +393,7 @@ rule(foo, true).
             store.clauses_for("missing")
 
     def test_build_store_from_config_uses_project_root_paths(self, tmp_path: Path) -> None:
-        config_dir = tmp_path / ".constraint"
+        config_dir = tmp_path / ".adjourn"
         rules_dir = tmp_path / "rules"
         config_dir.mkdir()
         rules_dir.mkdir()
@@ -416,7 +416,7 @@ rule(foo, true).
         assert aggregate.clauses_for(ruleset_hash)
 
     def test_build_store_from_config_passes_store_name(self, tmp_path: Path) -> None:
-        config_dir = tmp_path / ".constraint"
+        config_dir = tmp_path / ".adjourn"
         rules_dir = tmp_path / "rules"
         config_dir.mkdir()
         rules_dir.mkdir()
@@ -466,7 +466,7 @@ rule(foo, true).
 # ---------------------------------------------------------------------------
 
 
-from constraint.store import (
+from adjourn.store import (
     MnesticAdapter,
     MnesticRuleSetStore,
     ColumnDescriptor,
@@ -475,7 +475,7 @@ from constraint.store import (
     DerivedLiteral,
     Guard,
 )
-from constraint.parser.ast import Variable
+from adjourn.parser.ast import Variable
 
 
 def _create_mnestic_db(path: str, relation_script: str) -> None:
@@ -522,7 +522,7 @@ class TestMnesticStore:
         )
 
         # Write a config pointing at the mnestic database
-        config_dir = tmp_path / ".constraint"
+        config_dir = tmp_path / ".adjourn"
         config_dir.mkdir()
         config_path = config_dir / "config.yaml"
         config_path.write_text(
@@ -607,7 +607,7 @@ class TestMnesticStore:
 
     def test_mnestic_config_validates_without_prolog(self, tmp_path: Path) -> None:
         """A mnestic config entry must validate without a 'prolog' key."""
-        config_dir = tmp_path / ".constraint"
+        config_dir = tmp_path / ".adjourn"
         config_dir.mkdir()
         config_path = config_dir / "config.yaml"
 
@@ -636,7 +636,7 @@ class TestMnesticStore:
     def test_mnestic_config_carries_optional_support(self, tmp_path: Path) -> None:
         """A mnestic config entry with an optional 'support' field carries
         it through onto the validated store dict."""
-        config_dir = tmp_path / ".constraint"
+        config_dir = tmp_path / ".adjourn"
         config_dir.mkdir()
         config_path = config_dir / "config.yaml"
 
@@ -782,7 +782,7 @@ class TestMnesticStore:
         support_file = tmp_path / "support.pl"
         support_file.write_text("foo(X) :- item(X, _).\n")
 
-        config_dir = tmp_path / ".constraint"
+        config_dir = tmp_path / ".adjourn"
         config_dir.mkdir()
         config_path = config_dir / "config.yaml"
         config_path.write_text(
@@ -1375,8 +1375,8 @@ class TestMnesticQueryCallout:
 
     def test_callout_success_path(self, tmp_path: Path) -> None:
         """_mnestic_query returns correct rows for a registered store."""
-        from constraint.constraint_foreign import _mnestic_query
-        from constraint.store.mnestic_adapter import register, MnesticAdapter
+        from adjourn.adjourn_foreign import _mnestic_query
+        from adjourn.store.mnestic_adapter import register, MnesticAdapter
 
         db_path = self._make_node_db_with_data(tmp_path)
         adapter = MnesticAdapter(db_path)
@@ -1411,7 +1411,7 @@ class TestMnesticQueryCallout:
 
     def test_callout_unregistered_store_raises(self) -> None:
         """_mnestic_query raises ValueError for an unregistered store name."""
-        from constraint.constraint_foreign import _mnestic_query
+        from adjourn.adjourn_foreign import _mnestic_query
 
         compiled_atom = (
             "compiled_query("
@@ -1430,14 +1430,14 @@ class TestMnesticQueryCallout:
 
     def test_callout_malformed_arg_raises(self) -> None:
         """_mnestic_query raises ValueError for a malformed argument."""
-        from constraint.constraint_foreign import _mnestic_query
+        from adjourn.adjourn_foreign import _mnestic_query
 
         with pytest.raises(ValueError, match="2-element list"):
             _mnestic_query("not_a_list")
 
     def test_callout_malformed_compiled_term_raises(self) -> None:
         """_mnestic_query raises ValueError for a malformed compiled term."""
-        from constraint.constraint_foreign import _mnestic_query
+        from adjourn.adjourn_foreign import _mnestic_query
 
         with pytest.raises(ValueError, match="compiled_query"):
             _mnestic_query(["not_a_compiled_query", "obligations([])"])

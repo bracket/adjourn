@@ -1,4 +1,4 @@
-"""Prolog parser submodule for the constraint checking system.
+"""Prolog parser submodule for adjourn.
 
 This module provides parsing capabilities for Prolog terms, clauses, and programs
 using the Lark parser generator. It converts Prolog source code into Python AST
@@ -41,7 +41,7 @@ __all__ = [
     "Program",
 ]
 
-from constraint.parser.ast import (
+from adjourn.parser.ast import (
     Atom,
     Clause,
     Compound,
@@ -56,7 +56,7 @@ from constraint.parser.ast import (
     from_dict,
     print_term,
 )
-from constraint.parser.parser import (
+from adjourn.parser.parser import (
     parse_clause,
     parse_file,
     parse_program,

@@ -1,5 +1,5 @@
-"""Command-line interface for the constraint checking system."""
+"""Command-line interface for adjourn."""
 
 __all__ = ["main"]
 
-from constraint.cli.__main__ import main
+from adjourn.cli.__main__ import main

@@ -11,7 +11,7 @@ from typing import Any
 
 from lark import Lark, Transformer, Token
 
-from constraint.parser.ast import (
+from adjourn.parser.ast import (
     Atom,
     Clause,
     Compound,
@@ -23,7 +23,7 @@ from constraint.parser.ast import (
     String,
     Variable,
 )
-from constraint.parser.grammar import PROLOG_GRAMMAR
+from adjourn.parser.grammar import PROLOG_GRAMMAR
 
 
 class PrologTransformer(Transformer):

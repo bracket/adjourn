@@ -1,7 +1,7 @@
 registry: ghcr.io/bracket
 images:
-  service-constraint:
-    dockerfile: images/service-constraint/Dockerfile
+  service-adjourn:
+    dockerfile: images/service-adjourn/Dockerfile
     version: "0.1.7"
     dependencies:
       - base-service-python-swipl

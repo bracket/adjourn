@@ -1,4 +1,4 @@
-# Rule Scoping in `constraint`
+# Rule Scoping in `adjourn`
 
 > Status: requirements settled. R7's original "union, commutative" framing
 > is superseded by `chain` (ordered, non-commutative); R1 and R2 tightened
@@ -34,7 +34,7 @@ only with versioned content-addressed scoping.
 
 ### R1 — Named rule sets
 A **rule set** is a name bound to a set of clauses (rules defining terms).
-Naming is a first-class `constraint` concept, conceptually transparent as
+Naming is a first-class `adjourn` concept, conceptually transparent as
 `name = { ordered sequence of rules }`. It is explicitly DISTINCT from
 SWIPL/Janus modules; those modules may be used to *implement* rule sets
 but are not the user-facing model.
@@ -57,7 +57,7 @@ The content hash of an atomic rule set is computed over its clauses in
 authored order, after each clause has been **canonicalized**: variables
 renumbered by first occurrence, then the resulting term serialized and
 hashed. **Canonicalization is defined Python-side and is authoritative**
-(`canonical_clause` / `hash_clauses` in `constraint.store`): a pure AST
+(`canonical_clause` / `hash_clauses` in `adjourn.store`): a pure AST
 walk that renumbers variables by first occurrence (`_V0`, `_V1`, …) and
 emits a tagged serialization. A Prolog-side implementation (e.g.
 `copy_term` + `numbervars`) is permitted only if it reproduces the Python
@@ -207,7 +207,7 @@ config order. It is a `RuleSetStore` in its own right:
   dispatches to the owning child. The aggregate `owns` both its composite
   hash and every child hash.
   resolves to zero clauses is a hard error, carrying forward the
-  empty-ruleset guard from bracket/constraint#30. An explicit empty-ruleset
+  empty-ruleset guard from bracket/adjourn#30. An explicit empty-ruleset
   constant may be added later if a real need appears.
 
 ### `@top` system alias
@@ -227,7 +227,7 @@ flat ruleset and filters internally exactly as it does today.
 ### D1 — Observed KB vs Expected KB distinction
 Not a scoping primitive. Expressible as a convention over named rule
 sets (R1) and `chain` (R7). Treating it as primitive would bake the
-original repo-validation framing into the core; `constraint` is
+original repo-validation framing into the core; `adjourn` is
 intended to generalize beyond that.
 
 ### D2 — Rule provenance / origin tracking

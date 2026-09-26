@@ -1,4 +1,4 @@
-# constraint
+# adjourn
 
 **A suspendable, resumable Prolog meta-interpreter with content-addressed
 rulesets and a Python orchestration layer, for long-running queries that
@@ -6,7 +6,7 @@ interleave machine and human/LLM resolution.**
 
 ## Overview
 
-`constraint` runs logic-programming queries that are not expected to finish in
+`adjourn` runs logic-programming queries that are not expected to finish in
 a single sitting. A query can pause mid-resolution, persist its exact state to
 disk, and resume later — possibly in a different process, possibly after a
 human or an LLM has supplied an answer that the program could not derive on its
@@ -26,14 +26,14 @@ Concretely, the system provides:
   hash of its clauses, so a persisted query pins the precise ruleset it was
   running against and rulesets can be composed and versioned deterministically.
 
-> **Note:** `constraint` is a general meta-interpreter with tracking and
+> **Note:** `adjourn` is a general meta-interpreter with tracking and
 > suspension. Earlier revisions of this project were aimed at a narrower
 > repository-validation use case; that framing is obsolete and does not
 > describe the current system.
 
 ## Architecture
 
-`constraint` deliberately splits responsibilities between a Prolog kernel and a
+`adjourn` deliberately splits responsibilities between a Prolog kernel and a
 Python orchestration layer. It is **not** intended to run as a standalone
 Prolog program — Python is an integral part of the design, owning I/O,
 persistence, ruleset dispatch, and the driver loop.
@@ -114,12 +114,12 @@ common rulesets convenient to refer to from the command line.
 Requires Python 3.11+ and an embedded SWI-Prolog runtime (via Janus).
 
 ```bash
-git clone https://github.com/bracket/constraint.git
-cd constraint
+git clone https://github.com/bracket/adjourn.git
+cd adjourn
 pip install -e ".[dev]"
 ```
 
-This installs the `constraint` package and its command-line tool.
+This installs the `adjourn` package and its command-line tool.
 
 ## Usage
 
@@ -129,11 +129,11 @@ externally-observable step at a time.
 
 ```bash
 # Create an initial state for a query, pinned to a ruleset, written to disk.
-constraint init "<goal>" state.json --ruleset <alias-or-hash>
+adjourn init "<goal>" state.json --ruleset <alias-or-hash>
 
 # Advance the query: auto-continues across checkpoints and halts at the next
 # solution, suspension, or exhaustion. Writes the resulting state out.
-constraint resume state.json next_state.json
+adjourn resume state.json next_state.json
 ```
 
 `init` is pure bookkeeping — it constructs and writes the starting state
@@ -146,21 +146,21 @@ external actor between resume calls.
 Configured rulesets can be inspected with:
 
 ```bash
-constraint store list
+adjourn store list
 ```
 
 ## Relationship to other projects
 
-`constraint` is designed to be embedded as the resolution engine for other
+`adjourn` is designed to be embedded as the resolution engine for other
 systems. In particular, a separate coding harness is being built on top of it,
 encoding an agent loop as rules and using suspension points as the seams where
 an LLM or a human resolves goals the program cannot discharge automatically. The
-harness is a consumer of `constraint`, not part of it; `constraint` itself is
+harness is a consumer of `adjourn`, not part of it; `adjourn` itself is
 agnostic about what drives it.
 
 ## Project status
 
-`constraint` is under active development. The core is functional: the
+`adjourn` is under active development. The core is functional: the
 meta-interpreter, explicit suspend/resume, content-addressed rulesets with chain
 composition, and the state-persistence layer are all in place and driven through
 the CLI. Additional ruleset backends, a richer query surface, and lower-level
@@ -172,8 +172,8 @@ documentation aimed at automated agents are in progress.
 pip install -e ".[dev]"
 
 pytest              # run the test suite
-mypy src/constraint # type checking
-ruff check src/constraint  # linting
+mypy src/adjourn # type checking
+ruff check src/adjourn  # linting
 ```
 
 ## Contributing

@@ -1,0 +1,26 @@
+name: service-adjourn
+
+networks:
+  adjourn-net:
+    driver: bridge
+
+services:
+  adjourn-mcp:
+    image: ghcr.io/bracket/service-adjourn:0.1.7
+    build:
+      context: .
+    pull_policy: missing
+    restart: "on-failure"
+    networks:
+      - adjourn-net
+    ports:
+      - "32980:32980"
+    expose:
+      - "32980"
+    environment:
+      ADJOURN_MCP_HOST: '0.0.0.0'
+      ADJOURN_MCP_PORT: '32980'
+      ADJOURN_MCP_DEBUG: '1'
+      ADJOURN_MCP_AUTH0_DOMAIN: 'dev-7y8xnq18agafiyxv.us.auth0.com'
+      ADJOURN_MCP_AUTH0_AUDIENCE: 'https://constraint.bracketzone.com/'
+    command: /opt/venv/bin/python -m adjourn.mcp

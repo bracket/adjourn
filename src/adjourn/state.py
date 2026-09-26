@@ -1,8 +1,8 @@
-"""State construction and ruleset-hash resolution for the constraint package.
+"""State construction and ruleset-hash resolution for the adjourn package.
 
 This module provides pure-Python functions for constructing initial state
 dicts and resolving ruleset names to content hashes.  It does **not** import
-``janus_swi``, ``constraint.meta``, or ``constraint.runner``.
+``janus_swi``, ``adjourn.meta``, or ``adjourn.runner``.
 
 Public functions:
 
@@ -17,8 +17,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from constraint.config import Config
-from constraint.store import AggregateRuleSetStore, StoreInfo
+from adjourn.config import Config
+from adjourn.store import AggregateRuleSetStore, StoreInfo
 
 
 def resolve_ruleset_hash(

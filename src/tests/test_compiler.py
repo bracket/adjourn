@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 import janus_swi as janus
 
-from constraint import meta
+from adjourn import meta
 
 
 # ---------------------------------------------------------------------------

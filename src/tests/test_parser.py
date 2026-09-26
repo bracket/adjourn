@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from constraint.parser import (
+from adjourn.parser import (
     Atom,
     Clause,
     Compound,
@@ -580,7 +580,7 @@ class TestJSONRoundTrip:
 
     def test_atom_json_roundtrip(self) -> None:
         """Test JSON round-trip for atoms."""
-        from constraint.parser import from_dict
+        from adjourn.parser import from_dict
         
         original = Atom("hello")
         json_dict = original.to_dict()
@@ -592,7 +592,7 @@ class TestJSONRoundTrip:
 
     def test_variable_json_roundtrip(self) -> None:
         """Test JSON round-trip for variables."""
-        from constraint.parser import from_dict
+        from adjourn.parser import from_dict
         
         original = Variable("X")
         json_dict = original.to_dict()
@@ -604,7 +604,7 @@ class TestJSONRoundTrip:
 
     def test_integer_json_roundtrip(self) -> None:
         """Test JSON round-trip for integers."""
-        from constraint.parser import from_dict
+        from adjourn.parser import from_dict
         
         original = Integer(42)
         json_dict = original.to_dict()
@@ -616,7 +616,7 @@ class TestJSONRoundTrip:
 
     def test_float_json_roundtrip(self) -> None:
         """Test JSON round-trip for floats."""
-        from constraint.parser import from_dict
+        from adjourn.parser import from_dict
         
         original = Float(3.14)
         json_dict = original.to_dict()
@@ -628,7 +628,7 @@ class TestJSONRoundTrip:
 
     def test_string_json_roundtrip(self) -> None:
         """Test JSON round-trip for strings."""
-        from constraint.parser import from_dict
+        from adjourn.parser import from_dict
         
         original = String("hello world")
         json_dict = original.to_dict()
@@ -640,7 +640,7 @@ class TestJSONRoundTrip:
 
     def test_simple_compound_json_roundtrip(self) -> None:
         """Test JSON round-trip for simple compound terms."""
-        from constraint.parser import from_dict
+        from adjourn.parser import from_dict
         
         original = Compound("f", [Atom("a"), Atom("b")])
         json_dict = original.to_dict()
@@ -653,7 +653,7 @@ class TestJSONRoundTrip:
 
     def test_nested_compound_json_roundtrip(self) -> None:
         """Test JSON round-trip for nested compound terms."""
-        from constraint.parser import from_dict
+        from adjourn.parser import from_dict
         
         original = Compound("f", [
             Compound("g", [Atom("a")]),
@@ -667,7 +667,7 @@ class TestJSONRoundTrip:
 
     def test_simple_list_json_roundtrip(self) -> None:
         """Test JSON round-trip for simple lists."""
-        from constraint.parser import from_dict
+        from adjourn.parser import from_dict
         
         original = List([Atom("a"), Atom("b"), Atom("c")])
         json_dict = original.to_dict()
@@ -680,7 +680,7 @@ class TestJSONRoundTrip:
 
     def test_list_with_tail_json_roundtrip(self) -> None:
         """Test JSON round-trip for lists with tail."""
-        from constraint.parser import from_dict
+        from adjourn.parser import from_dict
         
         original = List([Atom("a"), Atom("b")], tail=Variable("T"))
         json_dict = original.to_dict()
@@ -692,7 +692,7 @@ class TestJSONRoundTrip:
 
     def test_fact_clause_json_roundtrip(self) -> None:
         """Test JSON round-trip for fact clauses."""
-        from constraint.parser import from_dict
+        from adjourn.parser import from_dict
         
         original = Clause(head=Compound("parent", [Atom("alice"), Atom("bob")]))
         json_dict = original.to_dict()
@@ -704,7 +704,7 @@ class TestJSONRoundTrip:
 
     def test_rule_clause_json_roundtrip(self) -> None:
         """Test JSON round-trip for rule clauses."""
-        from constraint.parser import from_dict
+        from adjourn.parser import from_dict
         
         original = Clause(
             head=Compound("ancestor", [Variable("X"), Variable("Y")]),
@@ -719,7 +719,7 @@ class TestJSONRoundTrip:
 
     def test_directive_json_roundtrip(self) -> None:
         """Test JSON round-trip for directives."""
-        from constraint.parser import from_dict
+        from adjourn.parser import from_dict
         
         original = Directive(term=Compound("module", [Atom("test")]))
         json_dict = original.to_dict()
@@ -730,7 +730,7 @@ class TestJSONRoundTrip:
 
     def test_program_json_roundtrip(self) -> None:
         """Test JSON round-trip for programs."""
-        from constraint.parser import from_dict
+        from adjourn.parser import from_dict
         
         original = Program(items=[
             Clause(head=Compound("fact", [Atom("a")])),
@@ -745,7 +745,7 @@ class TestJSONRoundTrip:
 
     def test_parsed_term_json_roundtrip(self) -> None:
         """Test JSON round-trip for a parsed term."""
-        from constraint.parser import from_dict
+        from adjourn.parser import from_dict
         
         original = parse_term("f(g(a), h(1, X))")
         json_dict = original.to_dict()
@@ -755,7 +755,7 @@ class TestJSONRoundTrip:
 
     def test_parsed_clause_json_roundtrip(self) -> None:
         """Test JSON round-trip for a parsed clause."""
-        from constraint.parser import from_dict
+        from adjourn.parser import from_dict
         
         original = parse_clause("ancestor(X, Y) :- parent(X, Y).")
         json_dict = original.to_dict()
@@ -782,7 +782,7 @@ class TestTermPrettyPrint:
 
     def test_format_atom(self) -> None:
         """Test formatting an atom."""
-        from constraint.parser import format_term
+        from adjourn.parser import format_term
         
         term = Atom("hello")
         result = format_term(term)
@@ -790,7 +790,7 @@ class TestTermPrettyPrint:
 
     def test_format_variable(self) -> None:
         """Test formatting a variable."""
-        from constraint.parser import format_term
+        from adjourn.parser import format_term
         
         term = Variable("X")
         result = format_term(term)
@@ -798,7 +798,7 @@ class TestTermPrettyPrint:
 
     def test_format_integer(self) -> None:
         """Test formatting an integer."""
-        from constraint.parser import format_term
+        from adjourn.parser import format_term
         
         term = Integer(42)
         result = format_term(term)
@@ -806,7 +806,7 @@ class TestTermPrettyPrint:
 
     def test_format_float(self) -> None:
         """Test formatting a float."""
-        from constraint.parser import format_term
+        from adjourn.parser import format_term
         
         term = Float(3.14)
         result = format_term(term)
@@ -814,7 +814,7 @@ class TestTermPrettyPrint:
 
     def test_format_string(self) -> None:
         """Test formatting a string."""
-        from constraint.parser import format_term
+        from adjourn.parser import format_term
         
         term = String("hello")
         result = format_term(term)
@@ -822,7 +822,7 @@ class TestTermPrettyPrint:
 
     def test_format_simple_compound(self) -> None:
         """Test formatting a simple compound with one arg."""
-        from constraint.parser import format_term
+        from adjourn.parser import format_term
         
         term = Compound("f", [Atom("a")])
         result = format_term(term)
@@ -830,7 +830,7 @@ class TestTermPrettyPrint:
 
     def test_format_compound_no_args(self) -> None:
         """Test formatting a compound with no args."""
-        from constraint.parser import format_term
+        from adjourn.parser import format_term
         
         term = Compound("f", [])
         result = format_term(term)
@@ -838,7 +838,7 @@ class TestTermPrettyPrint:
 
     def test_format_multiarg_compound(self) -> None:
         """Test formatting a compound with multiple args."""
-        from constraint.parser import format_term
+        from adjourn.parser import format_term
         
         term = Compound("f", [Atom("a"), Atom("b"), Atom("c")])
         result = format_term(term)
@@ -852,7 +852,7 @@ class TestTermPrettyPrint:
 
     def test_format_nested_compound(self) -> None:
         """Test formatting nested compound terms."""
-        from constraint.parser import format_term
+        from adjourn.parser import format_term
         
         term = Compound("f", [
             Compound("g", [Atom("a")]),
@@ -868,7 +868,7 @@ class TestTermPrettyPrint:
 
     def test_format_empty_list(self) -> None:
         """Test formatting an empty list."""
-        from constraint.parser import format_term
+        from adjourn.parser import format_term
         
         term = List([])
         result = format_term(term)
@@ -876,7 +876,7 @@ class TestTermPrettyPrint:
 
     def test_format_single_element_list(self) -> None:
         """Test formatting a list with one element."""
-        from constraint.parser import format_term
+        from adjourn.parser import format_term
         
         term = List([Atom("a")])
         result = format_term(term)
@@ -884,7 +884,7 @@ class TestTermPrettyPrint:
 
     def test_format_multielement_list(self) -> None:
         """Test formatting a list with multiple elements."""
-        from constraint.parser import format_term
+        from adjourn.parser import format_term
         
         term = List([Atom("a"), Atom("b"), Atom("c")])
         result = format_term(term)
@@ -898,7 +898,7 @@ class TestTermPrettyPrint:
 
     def test_format_list_with_tail(self) -> None:
         """Test formatting a list with tail."""
-        from constraint.parser import format_term
+        from adjourn.parser import format_term
         
         term = List([Atom("a"), Atom("b")], tail=Variable("T"))
         result = format_term(term)
@@ -911,7 +911,7 @@ class TestTermPrettyPrint:
 
     def test_format_parsed_list_with_tail_has_no_extra_comma(self) -> None:
         """Test formatting parsed [H|T] list has no comma before tail bar."""
-        from constraint.parser import format_term
+        from adjourn.parser import format_term
 
         term = parse_term("[H|T]")
         result = format_term(term)
@@ -919,7 +919,7 @@ class TestTermPrettyPrint:
 
     def test_format_parsed_member_list_tail(self) -> None:
         """Test formatting parsed member/2 renders list tail correctly."""
-        from constraint.parser import format_term
+        from adjourn.parser import format_term
 
         term = parse_term("member(X, [H|T])")
         result = format_term(term)
@@ -928,7 +928,7 @@ class TestTermPrettyPrint:
 
     def test_format_parsed_clause_with_infix_body(self) -> None:
         """Test formatting parsed clause renders conjunction body as infix."""
-        from constraint.parser import format_term
+        from adjourn.parser import format_term
 
         clause = parse_clause("a :- b, c.")
         result = format_term(clause)
@@ -936,7 +936,7 @@ class TestTermPrettyPrint:
 
     def test_format_with_custom_indent(self) -> None:
         """Test formatting with custom indentation."""
-        from constraint.parser import format_term
+        from adjourn.parser import format_term
         
         term = Compound("f", [Atom("a"), Atom("b")])
         result = format_term(term, indent=1, indent_size=4)
@@ -949,7 +949,7 @@ class TestTermPrettyPrint:
 
     def test_print_term_output(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Test that print_term outputs the formatted string."""
-        from constraint.parser import print_term
+        from adjourn.parser import print_term
         
         term = Atom("hello")
         print_term(term)
@@ -958,7 +958,7 @@ class TestTermPrettyPrint:
 
     def test_format_parsed_term(self) -> None:
         """Test formatting a parsed term."""
-        from constraint.parser import format_term
+        from adjourn.parser import format_term
         
         term = parse_term("f(a, b, c)")
         result = format_term(term)
