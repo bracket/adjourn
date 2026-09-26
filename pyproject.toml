@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "constraint"
+name = "docket"
 version = "0.1.8"
 description = "A Python-based constraint checking system for validating code repositories against logical rules"
 readme = "README.md"
@@ -32,7 +32,7 @@ mcp = [
 ]
 
 [project.scripts]
-constraint = "constraint.cli.__main__:main"
+docket = "docket.cli.__main__:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -41,17 +41,17 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-constraint = ["*.pl"]
+docket = ["*.pl"]
 
 [tool.pytest.ini_options]
 testpaths = ["src/tests"]
 
 [tool.coverage.run]
-source = ["constraint"]
+source = ["docket"]
 branch = true
 
 [tool.mypy]
 # Exclude parser.py due to lark transformer internal typing issues
 [[tool.mypy.overrides]]
-module = "constraint.parser.parser"
+module = "docket.parser.parser"
 ignore_errors = true
