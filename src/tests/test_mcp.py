@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from pathlib import Path
 
 import pytest
@@ -11,21 +10,13 @@ import yaml
 
 mcp = pytest.importorskip("adjourn.mcp")
 
-from adjourn.config import Config
 from adjourn.mcp import (
-    _allocate_rules_filename,
-    _allocate_session_id,
-    _config_path,
-    _run_cli,
-    _server_dir,
-    _session_path,
-    _sessions_dir,
-    _write_rules_file,
     adjourn_add_rules,
     adjourn_init,
     adjourn_resume,
 )
 from adjourn.store import FileRuleSetStore
+from adjourn.tools import Workspace
 
 NONEMPTY_RULESET = "rule(test_fixture_placeholder, true).\n"
 
@@ -66,452 +57,137 @@ def _write_config(
     return config_path
 
 
-class TestMCPSessionHelpers:
-    """Tests for the MCP session helper functions."""
+class TestMCPModuleSurface:
+    """Tests for the MCP module surface and tool registration."""
 
-    def test_allocate_session_id(self) -> None:
-        """Session ids should be non-empty hex strings."""
-        sid = _allocate_session_id()
-        assert isinstance(sid, str)
-        assert len(sid) > 0
-        # UUID hex is 32 chars
-        assert len(sid) == 32
-
-    def test_session_path(self, tmp_path: Path) -> None:
-        """Session path should be <sessions_dir>/<id>.json."""
-        sid = "abc123"
-        path = _session_path(sid)
-        assert path.name == "abc123.json"
-        assert path.parent == _sessions_dir()
-
-    def test_sessions_dir_created(self, tmp_path: Path) -> None:
-        """_sessions_dir() should create the directory if missing."""
-        # Point sessions dir to tmp_path subdir
-        import adjourn.mcp as mcp_mod
-        old_dir = mcp_mod._SESSIONS_DIR
-        test_dir = tmp_path / "mcp-sessions"
-        mcp_mod._SESSIONS_DIR = test_dir
-        try:
-            assert not test_dir.exists()
-            result = _sessions_dir()
-            assert test_dir.exists()
-            assert result == test_dir
-        finally:
-            mcp_mod._SESSIONS_DIR = old_dir
-
-    def test_server_dir_uses_config_parent_parent(self, tmp_path: Path) -> None:
-        """_server_dir() should resolve the directory that contains .adjourn."""
-        import adjourn.mcp as mcp_mod
-
-        old_config_path = mcp_mod._CONFIG_PATH
-        config_path = tmp_path / ".adjourn" / "config.yaml"
-        mcp_mod._CONFIG_PATH = config_path
-        try:
-            assert _config_path() == config_path
-            assert _server_dir() == tmp_path
-        finally:
-            mcp_mod._CONFIG_PATH = old_config_path
-
-    def test_allocate_rules_filename_is_sequential(self, tmp_path: Path) -> None:
-        """rules_NNN allocation should advance from the highest existing number."""
-        assert _allocate_rules_filename(tmp_path) == "rules_001.pl"
-        (tmp_path / "rules_001.pl").write_text("")
-        assert _allocate_rules_filename(tmp_path) == "rules_002.pl"
-        (tmp_path / "rules_010.pl").write_text("")
-        (tmp_path / "rules_003.pl").write_text("")
-        assert _allocate_rules_filename(tmp_path) == "rules_011.pl"
-
-    def test_write_rules_file_skips_existing_filename(self, tmp_path: Path) -> None:
-        """_write_rules_file should create the next free numbered rules file."""
-        existing = tmp_path / "rules_001.pl"
-        existing.write_text("rule(existing, true).\n")
-
-        created = _write_rules_file(tmp_path, "rule(new_rule, true).\n")
-
-        assert created == "rules_002.pl"
-        assert existing.read_text() == "rule(existing, true).\n"
-        assert (tmp_path / created).read_text() == "rule(new_rule, true).\n"
-
-
-class TestMCPServerTools:
-    """End-to-end tests for the MCP server tools."""
-
-    def test_adjourn_add_rules_is_registered(self) -> None:
-        """adjourn_add_rules should be exposed as an MCP tool."""
+    def test_tools_are_registered(self) -> None:
+        """The three tools should be exposed as MCP tools."""
         tools = asyncio.run(mcp.mcp.list_tools())
         tool_names = {tool.name for tool in tools}
         assert "adjourn_init" in tool_names
         assert "adjourn_resume" in tool_names
         assert "adjourn_add_rules" in tool_names
 
-    def test_adjourn_init_returns_session_and_projection(
+    def test_module_workspace_is_workspace(self) -> None:
+        """adjourn.mcp.workspace should be a Workspace instance."""
+        import adjourn.mcp as mcp_mod
+
+        assert isinstance(mcp_mod.workspace, Workspace)
+
+    def test_module_has_no_legacy_helpers(self) -> None:
+        """The module should no longer define the legacy helper globals."""
+        import adjourn.mcp as mcp_mod
+
+        assert not hasattr(mcp_mod, "_SESSIONS_DIR")
+        assert not hasattr(mcp_mod, "_CONFIG_PATH")
+        assert not hasattr(mcp_mod, "_TIMEOUT")
+        assert not hasattr(mcp_mod, "_run_cli")
+
+
+class TestMCPToolDelegation:
+    """Tests that the MCP tools delegate to the module workspace."""
+
+    def test_adjourn_init_delegates_to_workspace(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """adjourn_init should return the swapped workspace's init result."""
+        import adjourn.mcp as mcp_mod
+
+        class StubWorkspace:
+            """Minimal stand-in exposing only the init method."""
+
+            def init(self, goal: str) -> dict:
+                return {"session": "stub", "goal": goal, "status": "running"}
+
+        monkeypatch.setattr(mcp_mod, "workspace", StubWorkspace())
+
+        result = adjourn_init("true")
+
+        assert result == {"session": "stub", "goal": "true", "status": "running"}
+
+    def test_adjourn_resume_delegates_to_workspace(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """adjourn_resume should return the swapped workspace's resume result."""
+        import adjourn.mcp as mcp_mod
+
+        class StubWorkspace:
+            """Minimal stand-in exposing only the resume method."""
+
+            def resume(self, session: str) -> dict:
+                return {"session": session, "status": "done"}
+
+        monkeypatch.setattr(mcp_mod, "workspace", StubWorkspace())
+
+        result = adjourn_resume("abc123")
+
+        assert result == {"session": "abc123", "status": "done"}
+
+    def test_adjourn_add_rules_delegates_to_workspace(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """adjourn_add_rules should return the swapped workspace's add_rules result."""
+        import adjourn.mcp as mcp_mod
+
+        class StubWorkspace:
+            """Minimal stand-in exposing only the add_rules method."""
+
+            def add_rules(self, session: str, rules: str) -> dict:
+                return {"session": session, "rules": rules, "status": "solution"}
+
+        monkeypatch.setattr(mcp_mod, "workspace", StubWorkspace())
+
+        result = adjourn_add_rules("abc123", "rule(extra_rule, true).\n")
+
+        assert result == {
+            "session": "abc123",
+            "rules": "rule(extra_rule, true).\n",
+            "status": "solution",
+        }
+
+    def test_adjourn_resume_missing_session_raises(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """adjourn_init should return a session id and a projection with status."""
-        # Set up config and sessions dir
-        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
-        sessions_dir = tmp_path / "sessions"
-        monkeypatch.setenv("ADJOURN_CONFIG", str(config_path))
-        monkeypatch.setenv("ADJOURN_MCP_SESSIONS_DIR", str(sessions_dir))
-
-        import adjourn.mcp as mcp_mod
-        old_sessions_dir = mcp_mod._SESSIONS_DIR
-        mcp_mod._SESSIONS_DIR = sessions_dir
-        try:
-            result = adjourn_init("true")
-            assert "session" in result
-            assert isinstance(result["session"], str)
-            assert len(result["session"]) > 0
-            assert result["status"] == "running"
-            assert "ruleset_hash" in result
-            assert "resume_hash" in result
-            assert "label" in result
-            # Session file should exist on disk
-            state_path = sessions_dir / f"{result['session']}.json"
-            assert state_path.exists()
-            state = json.loads(state_path.read_text())
-            assert state["status"] == "running"
-        finally:
-            mcp_mod._SESSIONS_DIR = old_sessions_dir
-
-    def test_adjourn_add_rules_writes_registers_and_resumes(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """adjourn_add_rules should write a numbered file and repoint resume_hash."""
-        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
-        sessions_dir = tmp_path / "sessions"
-        monkeypatch.setenv("ADJOURN_CONFIG", str(config_path))
-        monkeypatch.setenv("ADJOURN_MCP_SESSIONS_DIR", str(sessions_dir))
-
+        """Resuming a non-existent session should raise RuntimeError."""
         import adjourn.mcp as mcp_mod
 
-        old_sessions_dir = mcp_mod._SESSIONS_DIR
-        old_config_path = mcp_mod._CONFIG_PATH
-        mcp_mod._SESSIONS_DIR = sessions_dir
-        mcp_mod._CONFIG_PATH = config_path
-        try:
-            init_result = adjourn_init("true")
-            session_id = init_result["session"]
-            before_resume_hash = init_result["resume_hash"]
-
-            result = adjourn_add_rules(session_id, "rule(extra_rule, true).\n")
-
-            assert result["session"] == session_id
-            assert result["status"] == "solution"
-            assert result["resume_hash"] != before_resume_hash
-
-            first_rules_path = tmp_path / "rules_001.pl"
-            assert first_rules_path.read_text() == "rule(extra_rule, true).\n"
-
-            config = Config(config_path)
-            assert config.store_configs[-1]["path"] == "rules_001.pl"
-
-            state = json.loads((sessions_dir / f"{session_id}.json").read_text())
-            assert state["resume_hash"] == result["resume_hash"]
-
-            follow_up = adjourn_resume(session_id)
-            assert follow_up["status"] == "done"
-            assert follow_up["resume_hash"] == result["resume_hash"]
-        finally:
-            mcp_mod._SESSIONS_DIR = old_sessions_dir
-            mcp_mod._CONFIG_PATH = old_config_path
-
-    def test_adjourn_add_rules_uses_server_dir_for_all_cli_calls(
-        self, tmp_path: Path
-    ) -> None:
-        """adjourn_add_rules should invoke every CLI step from the server directory."""
-        import adjourn.mcp as mcp_mod
-
-        sessions_dir = tmp_path / "sessions"
-        sessions_dir.mkdir()
-        state_path = sessions_dir / "session.json"
-        state_path.write_text(
-            json.dumps(
-                {
-                    "version": 0,
-                    "original_goal": "true",
-                    "branches": [{"orig_goal": "true", "goals": ["true"]}],
-                    "status": "running",
-                    "ruleset_hash": "a" * 64,
-                    "resume_hash": "a" * 64,
-                }
-            )
+        ws = Workspace(
+            tmp_path / ".adjourn" / "config.yaml",
+            sessions_dir=tmp_path / "sessions",
         )
+        monkeypatch.setattr(mcp_mod, "workspace", ws)
 
-        config_path = tmp_path / ".adjourn" / "config.yaml"
-        config_path.parent.mkdir()
-        config_path.write_text(yaml.safe_dump({"stores": [], "aliases": {}}))
+        with pytest.raises(RuntimeError, match="not found"):
+            adjourn_resume("missing")
 
-        old_sessions_dir = mcp_mod._SESSIONS_DIR
-        old_config_path = mcp_mod._CONFIG_PATH
-        old_run_cli = mcp_mod._run_cli
-        mcp_mod._SESSIONS_DIR = sessions_dir
-        mcp_mod._CONFIG_PATH = config_path
 
-        calls: list[tuple[list[str], Path | None]] = []
-
-        def fake_run_cli(args: list[str], cwd: Path | None = None) -> dict:
-            calls.append((args, cwd))
-            return {
-                "status": "done",
-                "label": None,
-                "ruleset_hash": "a" * 64,
-                "resume_hash": "b" * 64,
-            }
-
-        mcp_mod._run_cli = fake_run_cli
-        try:
-            result = adjourn_add_rules("session", "rule(extra_rule, true).\n")
-            assert result["status"] == "done"
-            assert [call[0][:2] for call in calls] == [
-                ["rules", "add"],
-                ["set-resume", "@top"],
-                ["resume", str(state_path.resolve())],
-            ]
-            assert all(cwd == tmp_path for _, cwd in calls)
-            assert calls[0][0][2] == "rules_001.pl"
-        finally:
-            mcp_mod._SESSIONS_DIR = old_sessions_dir
-            mcp_mod._CONFIG_PATH = old_config_path
-            mcp_mod._run_cli = old_run_cli
-
-    def test_adjourn_add_rules_missing_session_raises(
-        self, tmp_path: Path
-    ) -> None:
-        """adjourn_add_rules should mirror adjourn_resume for missing sessions."""
-        import adjourn.mcp as mcp_mod
-
-        old_sessions_dir = mcp_mod._SESSIONS_DIR
-        mcp_mod._SESSIONS_DIR = tmp_path / "sessions"
-        try:
-            with pytest.raises(RuntimeError, match="Session 'missing' not found"):
-                adjourn_add_rules("missing", "rule(extra_rule, true).\n")
-        finally:
-            mcp_mod._SESSIONS_DIR = old_sessions_dir
-
-    def test_adjourn_add_rules_on_done_session_returns_done(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """adjourn_add_rules should return done when resuming a done session."""
-        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
-        sessions_dir = tmp_path / "sessions"
-        monkeypatch.setenv("ADJOURN_CONFIG", str(config_path))
-        monkeypatch.setenv("ADJOURN_MCP_SESSIONS_DIR", str(sessions_dir))
-
-        import adjourn.mcp as mcp_mod
-
-        old_sessions_dir = mcp_mod._SESSIONS_DIR
-        old_config_path = mcp_mod._CONFIG_PATH
-        mcp_mod._SESSIONS_DIR = sessions_dir
-        mcp_mod._CONFIG_PATH = config_path
-        try:
-            init_result = adjourn_init("true")
-            session_id = init_result["session"]
-            assert adjourn_resume(session_id)["status"] == "solution"
-            assert adjourn_resume(session_id)["status"] == "done"
-
-            result = adjourn_add_rules(session_id, "rule(done_rule, true).\n")
-
-            assert result["session"] == session_id
-            assert result["status"] == "done"
-            assert (tmp_path / "rules_001.pl").exists()
-        finally:
-            mcp_mod._SESSIONS_DIR = old_sessions_dir
-            mcp_mod._CONFIG_PATH = old_config_path
-
-    def test_adjourn_add_rules_leaves_written_file_on_cli_failure(
-        self, tmp_path: Path
-    ) -> None:
-        """adjourn_add_rules should preserve the new rules file if a CLI step fails."""
-        import adjourn.mcp as mcp_mod
-
-        sessions_dir = tmp_path / "sessions"
-        sessions_dir.mkdir()
-        state_path = sessions_dir / "session.json"
-        state_path.write_text(
-            json.dumps(
-                {
-                    "version": 0,
-                    "original_goal": "true",
-                    "branches": [{"orig_goal": "true", "goals": ["true"]}],
-                    "status": "running",
-                    "ruleset_hash": "a" * 64,
-                    "resume_hash": "a" * 64,
-                }
-            )
-        )
-
-        config_path = tmp_path / ".adjourn" / "config.yaml"
-        config_path.parent.mkdir()
-        config_path.write_text(yaml.safe_dump({"stores": [], "aliases": {}}))
-
-        old_sessions_dir = mcp_mod._SESSIONS_DIR
-        old_config_path = mcp_mod._CONFIG_PATH
-        old_run_cli = mcp_mod._run_cli
-        mcp_mod._SESSIONS_DIR = sessions_dir
-        mcp_mod._CONFIG_PATH = config_path
-
-        def failing_run_cli(args: list[str], cwd: Path | None = None) -> dict:
-            del args, cwd
-            raise RuntimeError("boom")
-
-        mcp_mod._run_cli = failing_run_cli
-        try:
-            with pytest.raises(RuntimeError, match="boom"):
-                adjourn_add_rules("session", "rule(extra_rule, true).\n")
-            assert (tmp_path / "rules_001.pl").read_text() == "rule(extra_rule, true).\n"
-        finally:
-            mcp_mod._SESSIONS_DIR = old_sessions_dir
-            mcp_mod._CONFIG_PATH = old_config_path
-            mcp_mod._run_cli = old_run_cli
-
-    def test_adjourn_add_rules_keeps_registered_store_on_late_failure(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """adjourn_add_rules should preserve earlier side effects on later failure."""
-        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
-        sessions_dir = tmp_path / "sessions"
-        monkeypatch.setenv("ADJOURN_CONFIG", str(config_path))
-        monkeypatch.setenv("ADJOURN_MCP_SESSIONS_DIR", str(sessions_dir))
-
-        import adjourn.mcp as mcp_mod
-
-        old_sessions_dir = mcp_mod._SESSIONS_DIR
-        old_config_path = mcp_mod._CONFIG_PATH
-        old_run_cli = mcp_mod._run_cli
-        mcp_mod._SESSIONS_DIR = sessions_dir
-        mcp_mod._CONFIG_PATH = config_path
-        try:
-            init_result = adjourn_init("true")
-            session_id = init_result["session"]
-            state_path = sessions_dir / f"{session_id}.json"
-            resume_hash_before = json.loads(state_path.read_text())["resume_hash"]
-
-            def fail_on_set_resume(args: list[str], cwd: Path | None = None) -> dict:
-                if args[:2] == ["set-resume", "@top"]:
-                    raise RuntimeError("late failure")
-                return old_run_cli(args, cwd=cwd)
-
-            mcp_mod._run_cli = fail_on_set_resume
-
-            with pytest.raises(RuntimeError, match="late failure"):
-                adjourn_add_rules(session_id, "rule(extra_rule, true).\n")
-
-            config = Config(config_path)
-            assert config.store_configs[-1]["path"] == "rules_001.pl"
-            assert (tmp_path / "rules_001.pl").read_text() == "rule(extra_rule, true).\n"
-            state_after = json.loads(state_path.read_text())
-            assert state_after["resume_hash"] == resume_hash_before
-        finally:
-            mcp_mod._SESSIONS_DIR = old_sessions_dir
-            mcp_mod._CONFIG_PATH = old_config_path
-            mcp_mod._run_cli = old_run_cli
-
-    def test_adjourn_resume_advances_state(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """adjourn_resume should advance the state and return updated projection."""
-        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
-        sessions_dir = tmp_path / "sessions"
-        monkeypatch.setenv("ADJOURN_CONFIG", str(config_path))
-        monkeypatch.setenv("ADJOURN_MCP_SESSIONS_DIR", str(sessions_dir))
-
-        import adjourn.mcp as mcp_mod
-        old_sessions_dir = mcp_mod._SESSIONS_DIR
-        mcp_mod._SESSIONS_DIR = sessions_dir
-        try:
-            # Init
-            init_result = adjourn_init("true")
-            session_id = init_result["session"]
-            assert init_result["status"] == "running"
-
-            # Resume once — should reach solution
-            resume_result = adjourn_resume(session_id)
-            assert resume_result["session"] == session_id
-            assert resume_result["status"] in ("solution", "suspended", "running", "done")
-
-            # Resume again — should eventually reach done
-            resume_result2 = adjourn_resume(session_id)
-            assert resume_result2["session"] == session_id
-            # For 'true' goal, after solution we should get done
-            assert resume_result2["status"] in ("solution", "suspended", "running", "done")
-        finally:
-            mcp_mod._SESSIONS_DIR = old_sessions_dir
+class TestMCPCoroutineLoop:
+    """End-to-end coroutine loop through the MCP tool functions."""
 
     def test_full_coroutine_loop_to_done(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Drive a session from init through resume to done."""
         config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
-        sessions_dir = tmp_path / "sessions"
         monkeypatch.setenv("ADJOURN_CONFIG", str(config_path))
-        monkeypatch.setenv("ADJOURN_MCP_SESSIONS_DIR", str(sessions_dir))
 
         import adjourn.mcp as mcp_mod
-        old_sessions_dir = mcp_mod._SESSIONS_DIR
-        mcp_mod._SESSIONS_DIR = sessions_dir
-        try:
-            result = adjourn_init("true")
-            session_id = result["session"]
-            assert result["status"] == "running"
 
-            # Resume to solution
-            r1 = adjourn_resume(session_id)
-            assert r1["status"] == "solution"
+        ws = Workspace(config_path, sessions_dir=tmp_path / "sessions")
+        monkeypatch.setattr(mcp_mod, "workspace", ws)
 
-            # Resume to done
-            r2 = adjourn_resume(session_id)
-            assert r2["status"] == "done"
+        result = adjourn_init("true")
+        session_id = result["session"]
+        assert result["status"] == "running"
 
-            # Resuming done is idempotent
-            r3 = adjourn_resume(session_id)
-            assert r3["status"] == "done"
-        finally:
-            mcp_mod._SESSIONS_DIR = old_sessions_dir
+        # Resume to solution
+        r1 = adjourn_resume(session_id)
+        assert r1["status"] == "solution"
 
-    def test_resume_nonexistent_session_raises(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Resuming a non-existent session should raise RuntimeError."""
-        import adjourn.mcp as mcp_mod
-        old_sessions_dir = mcp_mod._SESSIONS_DIR
-        mcp_mod._SESSIONS_DIR = Path("/tmp/nonexistent-sessions-dir-12345")
-        try:
-            with pytest.raises(RuntimeError, match="not found"):
-                adjourn_resume("nonexistent-session-id")
-        finally:
-            mcp_mod._SESSIONS_DIR = old_sessions_dir
+        # Resume to done
+        r2 = adjourn_resume(session_id)
+        assert r2["status"] == "done"
 
-    def test_run_cli_raises_on_failure(self) -> None:
-        """_run_cli should raise RuntimeError on CLI failure."""
-        with pytest.raises(RuntimeError, match="CLI command failed"):
-            _run_cli(["init", "true", "/nonexistent/path/state.json", "--format", "json"])
-
-    def test_sessions_are_disk_backed(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Session state should persist on disk (no in-memory map)."""
-        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
-        sessions_dir = tmp_path / "sessions"
-        monkeypatch.setenv("ADJOURN_CONFIG", str(config_path))
-        monkeypatch.setenv("ADJOURN_MCP_SESSIONS_DIR", str(sessions_dir))
-
-        import adjourn.mcp as mcp_mod
-        old_sessions_dir = mcp_mod._SESSIONS_DIR
-        mcp_mod._SESSIONS_DIR = sessions_dir
-        try:
-            result = adjourn_init("true")
-            session_id = result["session"]
-            state_path = sessions_dir / f"{session_id}.json"
-            assert state_path.exists()
-
-            # Read the file directly
-            state = json.loads(state_path.read_text())
-            assert state["status"] == "running"
-
-            # Resume via file
-            r1 = adjourn_resume(session_id)
-            state2 = json.loads(state_path.read_text())
-            assert state2["status"] == r1["status"]
-        finally:
-            mcp_mod._SESSIONS_DIR = old_sessions_dir
+        # Resuming done is idempotent
+        r3 = adjourn_resume(session_id)
+        assert r3["status"] == "done"

@@ -136,7 +136,8 @@ def cmd_resume(
     output_format: str,
     pretty_print: bool,
 ) -> None:
-    """Advance a resolution state by one step and write the result.
+    """Resume a resolution state until the next yield, solution, or done
+    (continuing through checkpoints) and write the result.
 
     STATE_FILE  — path to the current state JSON (must exist).
     OUTPUT_FILE  — path to write the updated state JSON (created or overwritten).

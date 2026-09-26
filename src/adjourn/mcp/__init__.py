@@ -3,19 +3,17 @@
 Exposes three tools — ``adjourn_init``, ``adjourn_resume``, and
 ``adjourn_add_rules`` — that let an external client drive a resolution as a
 coroutine by shelling out to the CLI per call against disk-backed sessions.
+The tools are thin wrappers that delegate to a module-level
+:class:`~adjourn.tools.Workspace` instance.
 """
 
 from __future__ import annotations
 
-import json
 import os
-import re
-import subprocess
-import sys
-import uuid
-from pathlib import Path
 
 from fastmcp import FastMCP
+
+from adjourn.tools import Workspace
 
 # ---------------------------------------------------------------------------
 # Configuration from environment
@@ -23,11 +21,6 @@ from fastmcp import FastMCP
 
 MCP_HOST = os.environ.get("ADJOURN_MCP_HOST", "localhost")
 MCP_PORT = int(os.environ.get("ADJOURN_MCP_PORT", "8080"))
-_SESSIONS_DIR = Path(
-    os.environ.get("ADJOURN_MCP_SESSIONS_DIR", "./.adjourn/mcp-sessions")
-)
-_CONFIG_PATH = Path(os.environ.get("ADJOURN_CONFIG", ".adjourn/config.yaml"))
-_TIMEOUT = int(os.environ.get("ADJOURN_MCP_TIMEOUT", "60"))
 _LOG_LEVEL = os.environ.get("ADJOURN_MCP_LOG_LEVEL", "WARNING")
 
 # ---------------------------------------------------------------------------
@@ -36,113 +29,11 @@ _LOG_LEVEL = os.environ.get("ADJOURN_MCP_LOG_LEVEL", "WARNING")
 
 mcp = FastMCP("adjourn-mcp")
 
-
 # ---------------------------------------------------------------------------
-# Helpers
+# Workspace
 # ---------------------------------------------------------------------------
 
-
-def _sessions_dir() -> Path:
-    """Return the sessions directory, creating it if missing."""
-    _SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
-    return _SESSIONS_DIR
-
-
-def _session_path(session_id: str) -> Path:
-    """Map a session id to its state-file path."""
-    return _sessions_dir() / f"{session_id}.json"
-
-
-def _config_path() -> Path:
-    """Return the configured project config path."""
-    return _CONFIG_PATH
-
-
-def _server_dir() -> Path:
-    """Return the server directory that contains ``.adjourn/``."""
-    return _config_path().parent.parent
-
-
-def _allocate_rules_filename(server_dir: Path) -> str:
-    """Allocate the next ``rules_NNN.pl`` filename in *server_dir*."""
-    next_index = 1
-    pattern = re.compile(r"^rules_(\d+)\.pl$")
-    for candidate in server_dir.iterdir():
-        match = pattern.match(candidate.name)
-        if match is None:
-            continue
-        next_index = max(next_index, int(match.group(1)) + 1)
-    return f"rules_{next_index:03d}.pl"
-
-
-def _write_rules_file(server_dir: Path, rules: str) -> str:
-    """Write *rules* to a uniquely created ``rules_NNN.pl`` file."""
-    rules_filename = _allocate_rules_filename(server_dir)
-    next_index = int(rules_filename.removeprefix("rules_").removesuffix(".pl"))
-    while True:
-        rules_filename = f"rules_{next_index:03d}.pl"
-        rules_path = server_dir / rules_filename
-        try:
-            with rules_path.open("x", encoding="utf-8") as handle:
-                handle.write(rules)
-        except FileExistsError:
-            next_index += 1
-            continue
-        return rules_filename
-
-
-def _allocate_session_id() -> str:
-    """Allocate a fresh session id (UUID hex)."""
-    return uuid.uuid4().hex
-
-
-def _run_cli(args: list[str], cwd: Path | None = None) -> dict:
-    """Run the adjourn CLI as a subprocess and return the parsed JSON projection.
-
-    Args:
-        args: CLI arguments (excluding the program name).
-        cwd: Optional working directory for the subprocess.
-
-    Returns:
-        The parsed JSON projection dict.
-
-    Raises:
-        RuntimeError: If the CLI exits with a non-zero status.
-    """
-    cmd = [sys.executable, "-m", "adjourn.cli"] + args
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            check=False,
-            text=True,
-            timeout=_TIMEOUT,
-            cwd=cwd,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(
-            f"CLI subprocess timed out after {_TIMEOUT}s: {' '.join(cmd)}"
-        ) from exc
-
-    if result.returncode != 0:
-        stderr = result.stderr.strip()
-        raise RuntimeError(
-            f"CLI command failed (exit {result.returncode}): {' '.join(cmd)}\n"
-            f"stderr: {stderr}"
-        )
-
-    return json.loads(result.stdout)
-
-
-def _require_session_state(session: str) -> Path:
-    """Return the session state file path or raise if it does not exist."""
-    state_path = _session_path(session)
-    if not state_path.exists():
-        raise RuntimeError(
-            f"Session '{session}' not found (state file {state_path} does not exist). "
-            "Did you call adjourn_init first?"
-        )
-    return state_path
+workspace: Workspace = Workspace.from_env()
 
 
 # ---------------------------------------------------------------------------
@@ -154,9 +45,9 @@ def _require_session_state(session: str) -> Path:
 def adjourn_init(goal: str) -> dict:
     """Initialise a new resolution session.
 
-    Allocates a new disk-backed session, runs ``adjourn init`` to produce
-    the initial state, and returns the session id together with the initial
-    projection.
+    Delegates to :meth:`adjourn.tools.Workspace.init`, which allocates a new
+    disk-backed session, runs ``adjourn init`` to produce the initial state,
+    and returns the session id together with the initial projection.
 
     The returned dict has keys ``session``, ``status``, ``label``,
     ``ruleset_hash``, and ``resume_hash``.
@@ -168,21 +59,25 @@ def adjourn_init(goal: str) -> dict:
            ``solution`` and terminates at ``done``.
         4. ``solution`` is a resumable checkpoint (resuming backtracks for
            further solutions); only ``done`` is terminal.
+
+    Args:
+        goal: The Prolog goal string to resolve.
+
+    Returns:
+        The initial projection with the session id.
     """
-    session_id = _allocate_session_id()
-    state_path = _session_path(session_id)
-    projection = _run_cli(
-        ["init", goal, str(state_path), "--format", "json"]
-    )
-    return {"session": session_id, **projection}
+    return workspace.init(goal)
 
 
 @mcp.tool()
 def adjourn_resume(session: str) -> dict:
-    """Advance a resolution session by one step.
+    """Resume a resolution session until the next yield, solution, or done.
 
-    Reads the state file for the given *session* id, runs ``adjourn resume``
-    in place, and returns the updated projection.
+    Delegates to :meth:`adjourn.tools.Workspace.resume`, which reads the
+    state file for the given *session* id, runs ``adjourn resume`` in place,
+    and returns the updated projection.  The CLI continues through
+    checkpoints, so a single call runs until the next yield, solution, or
+    done rather than stopping after one step.
 
     The returned dict has keys ``session``, ``status``, ``label``,
     ``ruleset_hash``, and ``resume_hash``.
@@ -196,24 +91,21 @@ def adjourn_resume(session: str) -> dict:
     Raises:
         RuntimeError: If the session state file does not exist.
     """
-    state_path = _require_session_state(session)
-    projection = _run_cli(
-        ["resume", str(state_path), str(state_path), "--format", "json"]
-    )
-    return {"session": session, **projection}
+    return workspace.resume(session)
 
 
 @mcp.tool()
 def adjourn_add_rules(session: str, rules: str) -> dict:
-    """Add a ruleset file, repoint resume, and advance the session once.
+    """Add a ruleset file, repoint resume, and resume the session.
 
-    Writes *rules* verbatim to a newly allocated ``rules_NNN.pl`` file in the
-    server directory, registers that relative filename in the configured
-    project config, repoints the session's ``resume_hash`` to ``@top``, resumes
-    the session in place, and returns the resulting projection. This sequence
-    is not atomic: if a later CLI step fails, the numbered rules file remains
-    on disk, and any earlier config registration also remains in place while
-    the error is propagated.
+    Delegates to :meth:`adjourn.tools.Workspace.add_rules`, which writes
+    *rules* verbatim to a newly allocated ``rules_NNN.pl`` file in the server
+    directory, registers that relative filename in the configured project
+    config, repoints the session's ``resume_hash`` to ``@top``, resumes the
+    session in place, and returns the resulting projection.  This sequence is
+    not atomic: if a later CLI step fails, the numbered rules file remains on
+    disk, and any earlier config registration also remains in place while the
+    error is propagated.
 
     Args:
         session: The session id returned by ``adjourn_init``.
@@ -225,37 +117,4 @@ def adjourn_add_rules(session: str, rules: str) -> dict:
     Raises:
         RuntimeError: If the session state file does not exist.
     """
-    state_path = _require_session_state(session).resolve()
-    config_path = _config_path()
-    server_dir = _server_dir()
-    rules_filename = _write_rules_file(server_dir, rules)
-
-    _run_cli(
-        [
-            "rules",
-            "add",
-            rules_filename,
-            "--config",
-            str(config_path),
-            "--format",
-            "json",
-        ],
-        cwd=server_dir,
-    )
-    _run_cli(
-        [
-            "set-resume",
-            "@top",
-            str(state_path),
-            "--config",
-            str(config_path),
-            "--format",
-            "json",
-        ],
-        cwd=server_dir,
-    )
-    projection = _run_cli(
-        ["resume", str(state_path), str(state_path), "--format", "json"],
-        cwd=server_dir,
-    )
-    return {"session": session, **projection}
+    return workspace.add_rules(session, rules)
