@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import click
+from click.shell_completion import get_completion_class
 
 from adjourn.config import Config
 from adjourn.adjourn_foreign import load_foreign_plugins
@@ -670,11 +671,12 @@ def _get_completion_header(shell: str) -> str:
 
 
 def generate_completion(shell: str) -> str:
-    """Generate the completion script body for SHELL.
+    """Render the full completion script for SHELL.
 
-    Emits the source-able eval form rather than the rendered completion
-    function, so the emitted script stays valid across CLI versions and does
-    not require a `adjourn` binary on PATH at generation time.
+    Renders Click's completion source in-process (equivalent to running
+    ``_ADJOURN_COMPLETE=<shell>_source adjourn``, but with no dependency on an
+    ``adjourn`` binary on PATH). Bash output is post-processed by
+    ``fixup_bash_completion``.
 
     Args:
         shell: One of "bash", "zsh", or "fish".
@@ -682,15 +684,40 @@ def generate_completion(shell: str) -> str:
     Returns:
         The completion script body as a string.
     """
-    if shell == "zsh":
-        return (
-            "#compdef adjourn\n"
-            "\n"
-            'eval "$(_ADJOURN_COMPLETE=zsh_source adjourn)"\n'
-        )
-    if shell == "fish":
-        return "_ADJOURN_COMPLETE=fish_source adjourn | source\n"
-    return 'eval "$(_ADJOURN_COMPLETE=bash_source adjourn)"\n'
+    comp_cls = get_completion_class(shell)
+    if comp_cls is None:
+        raise RuntimeError(f"Unsupported shell for completion: {shell}")
+    script = comp_cls(main, {}, "adjourn", "_ADJOURN_COMPLETE").source()
+    if shell == "bash":
+        script = fixup_bash_completion(script)
+    return script
+
+
+def fixup_bash_completion(script: str) -> str:
+    """Rewrite Click's bash file/dir completion branches to fill COMPREPLY
+    explicitly via compgen, instead of relying on bash's `-o default`/`-o
+    dirnames` fallback (which fires inconsistently across bash versions and
+    interacts badly with `complete -o nosort -F`).
+    """
+    replacements = {
+        # file branch
+        "            COMPREPLY=()\n            compopt -o default":
+        '            COMPREPLY+=( $(compgen -f -- "${COMP_WORDS[COMP_CWORD]}") )\n            compopt -o filenames',
+        # dir branch
+        "            COMPREPLY=()\n            compopt -o dirnames":
+        '            COMPREPLY+=( $(compgen -d -- "${COMP_WORDS[COMP_CWORD]}") )\n            compopt -o filenames',
+    }
+
+    for old, new in replacements.items():
+        if old not in script:
+            raise RuntimeError(
+                "Completion fixup failed: expected branch not found. "
+                "Click's bash template may have changed; re-inspect the "
+                "generated script and update fixup_bash_completion."
+            )
+        script = script.replace(old, new)
+
+    return script
 
 
 if __name__ == "__main__":

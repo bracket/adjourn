@@ -102,7 +102,9 @@ class TestCompleteCommand:
         assert result.exit_code == 0
         assert "# Bash completion script" in result.output
         assert "Installation:" in result.output
-        assert "_ADJOURN_COMPLETE=bash_source adjourn" in result.output
+        assert "_adjourn_completion()" in result.output
+        assert "compgen -f" in result.output
+        assert "compgen -d" in result.output
 
     def test_complete_stdout_zsh(self, runner: CliRunner) -> None:
         """Test that complete generates zsh completion to stdout."""
@@ -110,14 +112,14 @@ class TestCompleteCommand:
         assert result.exit_code == 0
         assert "# Zsh completion script" in result.output
         assert "#compdef adjourn" in result.output
-        assert "_ADJOURN_COMPLETE=zsh_source adjourn" in result.output
+        assert "_ADJOURN_COMPLETE=zsh_complete" in result.output
 
     def test_complete_stdout_fish(self, runner: CliRunner) -> None:
         """Test that complete generates fish completion to stdout."""
         result = runner.invoke(main, ["complete", "--shell", "fish"])
         assert result.exit_code == 0
         assert "# Fish completion script" in result.output
-        assert "_ADJOURN_COMPLETE=fish_source adjourn" in result.output
+        assert "_ADJOURN_COMPLETE=fish_complete" in result.output
 
     def test_complete_to_file(self, runner: CliRunner, tmp_path: Path) -> None:
         """Test that complete writes to file with -o option."""
@@ -128,7 +130,7 @@ class TestCompleteCommand:
         assert output_file.exists()
         content = output_file.read_text()
         assert "# Bash completion script" in content
-        assert "_ADJOURN_COMPLETE=bash_source adjourn" in content
+        assert "_adjourn_completion()" in content
 
     def test_complete_to_file_creates_parent_dirs(
         self, runner: CliRunner, tmp_path: Path
@@ -151,7 +153,7 @@ class TestCompleteCommand:
         assert output_file.exists()
         content = output_file.read_text()
         assert "# Zsh completion script" in content
-        assert "_ADJOURN_COMPLETE=zsh_source adjourn" in content
+        assert "_ADJOURN_COMPLETE=zsh_complete" in content
 
     def test_complete_has_usage_header(self, runner: CliRunner) -> None:
         """Test that complete output includes usage instructions."""
