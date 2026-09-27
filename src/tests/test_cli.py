@@ -1554,3 +1554,160 @@ class TestRulesCommand:
         # Config loads and includes the new store.
         reloaded = Config(config_path)
         assert reloaded.store_configs[0]["path"] == str(rules_path)
+
+
+class TestInitCreateConfig:
+    """Tests for the ``init --create-config`` flag."""
+
+    def test_init_create_config_creates_empty_config(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """init --create-config should create a missing config and record @empty."""
+        state_file = tmp_path / "state.json"
+        config_path = tmp_path / ".adjourn" / "config.yaml"
+
+        result = runner.invoke(
+            main,
+            [
+                "init", "yield(x), g(X)", str(state_file),
+                "--config", str(config_path),
+                "--create-config",
+                "--format", "json",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert config_path.exists()
+        assert yaml.safe_load(config_path.read_text()) == {"stores": []}
+        payload = json.loads(result.output)
+        assert payload["ruleset_hash"] == "@empty"
+        assert payload["resume_hash"] == "@empty"
+        state = json.loads(state_file.read_text())
+        assert state["ruleset_hash"] == "@empty"
+        assert state["resume_hash"] == "@empty"
+
+    def test_init_without_create_config_missing_config_fails(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """init without --create-config should fail on a missing config."""
+        state_file = tmp_path / "state.json"
+        config_path = tmp_path / ".adjourn" / "config.yaml"
+
+        result = runner.invoke(
+            main,
+            [
+                "init", "yield(x), g(X)", str(state_file),
+                "--config", str(config_path),
+                "--format", "json",
+            ],
+        )
+
+        assert result.exit_code != 0
+        assert "Config file not found" in result.output
+
+    def test_resume_empty_state_fails(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """resume on an @empty state should fail with the store's message."""
+        state_file = tmp_path / "state.json"
+        config_path = tmp_path / ".adjourn" / "config.yaml"
+
+        result = runner.invoke(
+            main,
+            [
+                "init", "yield(x), g(X)", str(state_file),
+                "--config", str(config_path),
+                "--create-config",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+
+        result = runner.invoke(
+            main,
+            ["resume", str(state_file), str(state_file), "--config", str(config_path)],
+        )
+
+        assert result.exit_code != 0
+        assert "Cannot resume against the empty ruleset (@empty)" in result.output
+
+    def test_recovery_after_create_config(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """A config created by init --create-config can be populated and resumed."""
+        state_file = tmp_path / "state.json"
+        config_path = tmp_path / ".adjourn" / "config.yaml"
+
+        result = runner.invoke(
+            main,
+            [
+                "init", "true", str(state_file),
+                "--config", str(config_path),
+                "--create-config",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+
+        rules_path = tmp_path / "rules" / "test_rules.pl"
+        rules_path.parent.mkdir(parents=True, exist_ok=True)
+        rules_path.write_text(NONEMPTY_RULESET)
+
+        result = runner.invoke(
+            main, ["rules", "add", str(rules_path), "--config", str(config_path)]
+        )
+        assert result.exit_code == 0, result.output
+
+        result = runner.invoke(
+            main,
+            ["set-resume", "@top", str(state_file), "--config", str(config_path)],
+        )
+        assert result.exit_code == 0, result.output
+
+        result = runner.invoke(
+            main,
+            [
+                "resume", str(state_file), str(state_file),
+                "--config", str(config_path),
+                "--format", "json",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert payload["status"] == "solution"
+
+    def test_resume_rejects_create_config(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """resume should reject --create-config as an unknown option."""
+        state_file = tmp_path / "state.json"
+        config_path = tmp_path / ".adjourn" / "config.yaml"
+
+        result = runner.invoke(
+            main,
+            [
+                "resume", str(state_file), str(state_file),
+                "--config", str(config_path),
+                "--create-config",
+            ],
+        )
+
+        assert result.exit_code != 0
+        assert "No such option" in result.output
+
+    def test_set_resume_rejects_create_config(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """set-resume should reject --create-config as an unknown option."""
+        state_file = tmp_path / "state.json"
+        config_path = tmp_path / ".adjourn" / "config.yaml"
+
+        result = runner.invoke(
+            main,
+            [
+                "set-resume", "@top", str(state_file),
+                "--config", str(config_path),
+                "--create-config",
+            ],
+        )
+
+        assert result.exit_code != 0
+        assert "No such option" in result.output
