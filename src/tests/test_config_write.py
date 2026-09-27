@@ -232,3 +232,43 @@ class TestAppendFileStore:
         reloaded = Config(config_path)
         assert reloaded.store_configs[0]["path"] == "my rules/foo bar (1).pl"
         assert reloaded.store_configs[0]["name"] == "foo bar (1)"
+
+
+class TestConfigCreateOption:
+    """Tests for the ``create`` option of Config.__init__."""
+
+    def test_create_true_creates_missing_file(self, tmp_path: Path) -> None:
+        config_path = tmp_path / ".adjourn" / "config.yaml"
+        config = Config(config_path, create=True)
+
+        assert config_path.exists()
+        assert yaml.safe_load(config_path.read_text()) == {"stores": []}
+        assert config.store_configs == []
+
+    def test_create_false_missing_file_raises(self, tmp_path: Path) -> None:
+        config_path = tmp_path / ".adjourn" / "config.yaml"
+
+        with pytest.raises(FileNotFoundError, match="Config file not found"):
+            Config(config_path, create=False)
+
+        assert not config_path.exists()
+
+    def test_default_missing_file_raises(self, tmp_path: Path) -> None:
+        config_path = tmp_path / ".adjourn" / "config.yaml"
+
+        with pytest.raises(FileNotFoundError, match="Config file not found"):
+            Config(config_path)
+
+        assert not config_path.exists()
+
+    def test_create_true_existing_file_is_untouched(self, tmp_path: Path) -> None:
+        config_path = _write_config(
+            tmp_path, {"stores": [{"type": "file", "path": "a.pl"}]}
+        )
+        original = config_path.read_bytes()
+
+        config = Config(config_path, create=True)
+
+        assert config_path.read_bytes() == original
+        assert len(config.store_configs) == 1
+        assert config.store_configs[0]["path"] == "a.pl"
