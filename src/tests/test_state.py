@@ -170,6 +170,22 @@ class TestResolveRulesetHash:
         with pytest.raises(ValueError, match="@first"):
             resolve_ruleset_hash("@first", store, config)
 
+    def test_resolves_empty_system_alias_with_zero_stores(self, tmp_path: Path) -> None:
+        config_dir = tmp_path / ".adjourn"
+        config_dir.mkdir()
+        config_path = config_dir / "config.yaml"
+        config_path.write_text(yaml.safe_dump({"stores": [], "aliases": {}}))
+        store, config = _build_store_and_config(config_path)
+
+        assert resolve_ruleset_hash("@empty", store, config) == "@empty"
+
+    def test_empty_system_alias_rejected_for_nonempty_program(self, tmp_path: Path) -> None:
+        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
+        store, config = _build_store_and_config(config_path)
+
+        with pytest.raises(ValueError, match="Unknown ruleset"):
+            resolve_ruleset_hash("@empty", store, config)
+
 
 # ---------------------------------------------------------------------------
 # Tests for init_state
@@ -213,6 +229,18 @@ class TestInitState:
         store, config = _build_store_and_config(config_path)
         state = init_state("true", "@top", store, config)
         assert state["ruleset_hash"] == store.ruleset_hash
+
+    def test_empty_program_top_alias_yields_empty_ruleset(self, tmp_path: Path) -> None:
+        config_dir = tmp_path / ".adjourn"
+        config_dir.mkdir()
+        config_path = config_dir / "config.yaml"
+        config_path.write_text(yaml.safe_dump({"stores": [], "aliases": {}}))
+        store, config = _build_store_and_config(config_path)
+
+        state = init_state("true", "@top", store, config)
+
+        assert state["ruleset_hash"] == "@empty"
+        assert state["resume_hash"] == "@empty"
 
     def test_unknown_ruleset_raises(self, tmp_path: Path) -> None:
         config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})

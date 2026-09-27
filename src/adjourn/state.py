@@ -30,12 +30,14 @@ def resolve_ruleset_hash(
 
     Resolution order (same as the original CLI helper):
 
-    1. ``@``-prefixed system alias (``@top``, ``@first``).
+    1. ``@``-prefixed system alias (``@top``, ``@first``, ``@empty``).
     2. Per-store name (configured ``name`` field on a store entry).
     3. Config alias (``config.aliases``).
     4. Raw hash string.
 
-    The resolved hash is validated via ``store.owns()``.
+    The resolved hash is validated via ``store.owns()``.  The reserved
+    ``@empty`` alias resolves to the literal ``"@empty"`` and is accepted
+    only when the store's composite program has no clauses.
 
     Args:
         ruleset_name: A ruleset alias, store name, ``@``-prefixed system
@@ -72,6 +74,8 @@ def _resolve_system_alias(
     """Resolve a reserved system alias to a ruleset hash."""
     if name == "@top":
         return store.ruleset_hash
+    if name == "@empty":
+        return "@empty"
     if name != "@first":
         raise ValueError(f"Unknown system alias: {name}")
     first_store_hash = _first_non_system_store_hash(store)
@@ -110,7 +114,9 @@ def init_state(
     This is a pure-Python operation; it does **not** invoke Prolog.
 
     The returned state has both ``ruleset_hash`` and ``resume_hash`` set to
-    the resolved ruleset content hash.
+    the resolved ruleset content hash.  For an empty program (for example
+    the default ``@top`` with no configured stores), both are set to the
+    reserved ``"@empty"`` ruleset name.
 
     Args:
         goal: A Prolog term as a string, e.g. ``"color(X, Y)"``.

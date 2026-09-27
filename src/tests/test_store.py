@@ -455,11 +455,42 @@ rule(foo, true).
             right.ruleset_hash,
         ]
 
-    def test_aggregate_rejects_empty_composite_hash(self) -> None:
+    def test_aggregate_empty_member_reports_reserved_empty_ruleset(self) -> None:
         aggregate = AggregateRuleSetStore([_EmptyRuleSetStore()])
 
+        assert aggregate.ruleset_hash == "@empty"
+        assert aggregate.owns("@empty")
         with pytest.raises(ValueError, match="empty program"):
-            aggregate.clauses_for(aggregate.ruleset_hash)
+            aggregate.clauses_for("f" * 64)
+        with pytest.raises(
+            ValueError,
+            match=r"Cannot resume against the empty ruleset \(@empty\)",
+        ):
+            aggregate.clauses_for("@empty")
+
+    def test_aggregate_zero_stores_reports_reserved_empty_ruleset(self) -> None:
+        aggregate = AggregateRuleSetStore([])
+
+        assert aggregate.ruleset_hash == "@empty"
+        assert aggregate.owns("@empty")
+        with pytest.raises(
+            ValueError,
+            match=r"Cannot resume against the empty ruleset \(@empty\)",
+        ):
+            aggregate.clauses_for("@empty")
+
+    def test_aggregate_nonempty_does_not_own_empty_ruleset(self, tmp_path: Path) -> None:
+        store = FileRuleSetStore(_write_rules(tmp_path, "rules.pl", "p(a).\n"))
+        aggregate = AggregateRuleSetStore([store])
+
+        assert len(aggregate.ruleset_hash) == 64
+        assert all(c in "0123456789abcdef" for c in aggregate.ruleset_hash)
+        assert not aggregate.owns("@empty")
+        with pytest.raises(
+            ValueError,
+            match=r"Cannot resume against the empty ruleset \(@empty\)",
+        ):
+            aggregate.clauses_for("@empty")
 
 # ---------------------------------------------------------------------------
 # Mnestic (CozoDB) store tests

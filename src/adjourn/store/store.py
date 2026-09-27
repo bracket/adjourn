@@ -113,17 +113,20 @@ class AggregateRuleSetStore(RuleSetStore):
         self._member_stores = _dedupe_stores_by_ruleset_hash(self._stores)
         self._member_hashes = [store.ruleset_hash for store in self._member_stores]
         self._ruleset_hash: str | None = None
+        self._is_empty: bool | None = None
 
     @property
     def ruleset_hash(self) -> str:
-        """Return the aggregate chain hash."""
+        """Return the aggregate chain hash.
+
+        When the composite program has no clauses (no member stores, or
+        member stores whose clauses concatenate to an empty list), returns
+        the reserved ``@empty`` ruleset name instead of a content hash.
+        """
+        if self._composite_is_empty():
+            return "@empty"
         ruleset_hash = self._composite_ruleset_hash()
-        if ruleset_hash is None:
-            raise ValueError(
-                "Aggregate ruleset resolved to an empty program: "
-                "the interpreted program has no clauses. An empty program "
-                "cannot resolve any goal and is not a meaningful input."
-            )
+        assert ruleset_hash is not None
         return ruleset_hash
 
     def known_rulesets(self) -> list[str]:
@@ -143,7 +146,13 @@ class AggregateRuleSetStore(RuleSetStore):
         return known_rulesets
 
     def clauses_for(self, ruleset_hash: str) -> list[Clause]:
-        """Return chained clauses for the aggregate hash or dispatch to a child."""
+        """Return chained clauses for the aggregate hash or dispatch to a child.
+
+        The reserved ``@empty`` ruleset can never be resumed: requesting its
+        clauses always raises ``ValueError``.
+        """
+        if ruleset_hash == "@empty":
+            raise ValueError("Cannot resume against the empty ruleset (@empty)")
         composite_hash = self._composite_ruleset_hash()
         if composite_hash is not None and ruleset_hash == composite_hash:
             clauses = [
@@ -166,7 +175,13 @@ class AggregateRuleSetStore(RuleSetStore):
         raise KeyError(f"Unknown ruleset hash: {ruleset_hash}")
 
     def owns(self, ruleset_hash: str) -> bool:
-        """Return whether the aggregate or any child store owns *ruleset_hash*."""
+        """Return whether the aggregate or any child store owns *ruleset_hash*.
+
+        The reserved ``@empty`` ruleset is owned only when the composite
+        program has no clauses.
+        """
+        if ruleset_hash == "@empty":
+            return self._composite_is_empty()
         composite_hash = self._composite_ruleset_hash()
         if composite_hash is not None and ruleset_hash == composite_hash:
             return True
@@ -183,6 +198,19 @@ class AggregateRuleSetStore(RuleSetStore):
             StoreInfo(type="system", name="@top", path="", hash=self.ruleset_hash),
             *child_store_info,
         ]
+
+    def _composite_is_empty(self) -> bool:
+        """Return whether the composite program has no clauses (cached)."""
+        if self._is_empty is None:
+            clauses = [
+                clause
+                for store, member_hash in zip(
+                    self._member_stores, self._member_hashes, strict=True
+                )
+                for clause in store.clauses_for(member_hash)
+            ]
+            self._is_empty = not clauses
+        return self._is_empty
 
     def _composite_ruleset_hash(self) -> str | None:
         if self._ruleset_hash is not None:
