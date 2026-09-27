@@ -45,9 +45,9 @@ workspace: Workspace = Workspace.from_env()
 def adjourn_init(goal: str) -> dict:
     """Initialise a new resolution session.
 
-    Delegates to :meth:`adjourn.tools.Workspace.init`, which allocates a new
-    disk-backed session, runs ``adjourn init`` to produce the initial state,
-    and returns the session id together with the initial projection.
+    Allocates a new disk-backed session, runs ``adjourn init`` to produce
+    the initial state, and returns the session id together with the initial
+    projection.
 
     The returned dict has keys ``session``, ``status``, ``label``,
     ``ruleset_hash``, and ``resume_hash``.
@@ -73,9 +73,8 @@ def adjourn_init(goal: str) -> dict:
 def adjourn_resume(session: str) -> dict:
     """Resume a resolution session until the next yield, solution, or done.
 
-    Delegates to :meth:`adjourn.tools.Workspace.resume`, which reads the
-    state file for the given *session* id, runs ``adjourn resume`` in place,
-    and returns the updated projection.  The CLI continues through
+    Reads the state file for the given *session* id, runs ``adjourn resume``
+    in place, and returns the updated projection.  The CLI continues through
     checkpoints, so a single call runs until the next yield, solution, or
     done rather than stopping after one step.
 
@@ -98,8 +97,7 @@ def adjourn_resume(session: str) -> dict:
 def adjourn_add_rules(session: str, rules: str) -> dict:
     """Add a ruleset file, repoint resume, and resume the session.
 
-    Delegates to :meth:`adjourn.tools.Workspace.add_rules`, which writes
-    *rules* verbatim to a newly allocated ``rules_NNN.pl`` file in the server
+    Writes *rules* verbatim to a newly allocated ``rules_NNN.pl`` file in the server
     directory, registers that relative filename in the configured project
     config, repoints the session's ``resume_hash`` to ``@top``, resumes the
     session in place, and returns the resulting projection.  This sequence is

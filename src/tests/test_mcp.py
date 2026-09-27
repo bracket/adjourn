@@ -6,7 +6,6 @@ import asyncio
 from pathlib import Path
 
 import pytest
-import yaml
 
 mcp = pytest.importorskip("adjourn.mcp")
 
@@ -15,46 +14,8 @@ from adjourn.mcp import (
     adjourn_init,
     adjourn_resume,
 )
-from adjourn.store import FileRuleSetStore
 from adjourn.tools import Workspace
-
-NONEMPTY_RULESET = "rule(test_fixture_placeholder, true).\n"
-
-
-def _write_config(
-    tmp_path: Path,
-    rules: dict[str, str],
-    *,
-    aliases: dict[str, str] | None = None,
-    store_names: dict[str, str] | None = None,
-    prolog_modes: dict[str, str] | None = None,
-) -> Path:
-    """Create rules files plus a matching config file."""
-    config_dir = tmp_path / ".adjourn"
-    rules_dir = tmp_path / "rules"
-    config_dir.mkdir()
-    rules_dir.mkdir()
-
-    stores: list[dict[str, str]] = []
-    computed_aliases: dict[str, str] = {}
-    for name, content in rules.items():
-        rules_path = rules_dir / f"{name}.pl"
-        rules_path.write_text(content)
-        prolog_mode = prolog_modes.get(name, "wrapped") if prolog_modes else "wrapped"
-        store = FileRuleSetStore(rules_path, prolog=prolog_mode)
-        ruleset_hash = store.known_rulesets()[0]
-        store_config = {"type": "file", "path": str(Path("rules") / rules_path.name)}
-        if store_names is not None and name in store_names:
-            store_config["name"] = store_names[name]
-        store_config["prolog"] = prolog_mode
-        stores.append(store_config)
-        computed_aliases[name] = ruleset_hash
-
-    config_path = config_dir / "config.yaml"
-    if aliases is None:
-        aliases = computed_aliases
-    config_path.write_text(yaml.safe_dump({"stores": stores, "aliases": aliases}))
-    return config_path
+from tests.helpers import NONEMPTY_RULESET, write_config
 
 
 class TestMCPModuleSurface:
@@ -168,8 +129,8 @@ class TestMCPCoroutineLoop:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Drive a session from init through resume to done."""
-        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
-        monkeypatch.setenv("ADJOURN_CONFIG", str(config_path))
+        config_path = write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
+        monkeypatch.delenv("ADJOURN_CONFIG", raising=False)
 
         import adjourn.mcp as mcp_mod
 

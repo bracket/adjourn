@@ -9,46 +9,8 @@ import pytest
 import yaml
 
 from adjourn.config import Config
-from adjourn.store import FileRuleSetStore
 from adjourn.tools import Workspace
-
-NONEMPTY_RULESET = "rule(test_fixture_placeholder, true).\n"
-
-
-def _write_config(
-    tmp_path: Path,
-    rules: dict[str, str],
-    *,
-    aliases: dict[str, str] | None = None,
-    store_names: dict[str, str] | None = None,
-    prolog_modes: dict[str, str] | None = None,
-) -> Path:
-    """Create rules files plus a matching config file."""
-    config_dir = tmp_path / ".adjourn"
-    rules_dir = tmp_path / "rules"
-    config_dir.mkdir()
-    rules_dir.mkdir()
-
-    stores: list[dict[str, str]] = []
-    computed_aliases: dict[str, str] = {}
-    for name, content in rules.items():
-        rules_path = rules_dir / f"{name}.pl"
-        rules_path.write_text(content)
-        prolog_mode = prolog_modes.get(name, "wrapped") if prolog_modes else "wrapped"
-        store = FileRuleSetStore(rules_path, prolog=prolog_mode)
-        ruleset_hash = store.known_rulesets()[0]
-        store_config = {"type": "file", "path": str(Path("rules") / rules_path.name)}
-        if store_names is not None and name in store_names:
-            store_config["name"] = store_names[name]
-        store_config["prolog"] = prolog_mode
-        stores.append(store_config)
-        computed_aliases[name] = ruleset_hash
-
-    config_path = config_dir / "config.yaml"
-    if aliases is None:
-        aliases = computed_aliases
-    config_path.write_text(yaml.safe_dump({"stores": stores, "aliases": aliases}))
-    return config_path
+from tests.helpers import NONEMPTY_RULESET, write_config
 
 
 def _write_session_state(sessions_dir: Path, session: str) -> Path:
@@ -206,8 +168,8 @@ class TestWorkspaceTools:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """init should return a session id and a projection with status."""
-        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
-        monkeypatch.setenv("ADJOURN_CONFIG", str(config_path))
+        config_path = write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
+        monkeypatch.delenv("ADJOURN_CONFIG", raising=False)
         ws = Workspace(config_path, sessions_dir=tmp_path / "sessions")
 
         result = ws.init("true")
@@ -228,8 +190,8 @@ class TestWorkspaceTools:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """resume should drive true to solution, then done, and stay done."""
-        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
-        monkeypatch.setenv("ADJOURN_CONFIG", str(config_path))
+        config_path = write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
+        monkeypatch.delenv("ADJOURN_CONFIG", raising=False)
         ws = Workspace(config_path, sessions_dir=tmp_path / "sessions")
 
         init_result = ws.init("true")
@@ -261,8 +223,8 @@ class TestWorkspaceTools:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """add_rules should write a numbered file and repoint resume_hash."""
-        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
-        monkeypatch.setenv("ADJOURN_CONFIG", str(config_path))
+        config_path = write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
+        monkeypatch.delenv("ADJOURN_CONFIG", raising=False)
         ws = Workspace(config_path, sessions_dir=tmp_path / "sessions")
 
         init_result = ws.init("true")
@@ -292,8 +254,8 @@ class TestWorkspaceTools:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """add_rules should return done when resuming a done session."""
-        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
-        monkeypatch.setenv("ADJOURN_CONFIG", str(config_path))
+        config_path = write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
+        monkeypatch.delenv("ADJOURN_CONFIG", raising=False)
         ws = Workspace(config_path, sessions_dir=tmp_path / "sessions")
 
         init_result = ws.init("true")
@@ -341,6 +303,37 @@ class TestWorkspaceTools:
         assert all(cwd == tmp_path for _, cwd in calls)
         assert calls[0][0][2] == "rules_001.pl"
 
+    def test_init_and_resume_pass_config_and_server_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """init and resume should pass --config and run from server_dir.
+
+        A relative sessions dir must still yield absolute state paths, so the
+        CLI finds them regardless of the subprocess cwd.
+        """
+        monkeypatch.chdir(tmp_path)
+        config_path = tmp_path / ".adjourn" / "config.yaml"
+        ws = Workspace(config_path, sessions_dir="sessions")
+        calls: list[tuple[list[str], Path | None]] = []
+
+        def fake_run_cli(args: list[str], cwd: Path | None = None) -> dict:
+            calls.append((args, cwd))
+            if args[0] == "init":
+                Path(args[2]).write_text("{}")
+            return {"status": "running", "label": None}
+
+        ws._run_cli = fake_run_cli
+
+        session_id = ws.init("true")["session"]
+        ws.resume(session_id)
+
+        state_path = (tmp_path / "sessions" / f"{session_id}.json").resolve()
+        assert [c[0][0] for c in calls] == ["init", "resume"]
+        for args, cwd in calls:
+            assert cwd == ws.server_dir
+            assert args[args.index("--config") + 1] == str(ws.config_path)
+            assert str(state_path) in args
+
     def test_add_rules_leaves_written_file_on_cli_failure(self, tmp_path: Path) -> None:
         """add_rules should preserve the new rules file if a CLI step fails."""
         sessions_dir = tmp_path / "sessions"
@@ -366,8 +359,8 @@ class TestWorkspaceTools:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """add_rules should preserve earlier side effects on later failure."""
-        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
-        monkeypatch.setenv("ADJOURN_CONFIG", str(config_path))
+        config_path = write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
+        monkeypatch.delenv("ADJOURN_CONFIG", raising=False)
         ws = Workspace(config_path, sessions_dir=tmp_path / "sessions")
 
         init_result = ws.init("true")

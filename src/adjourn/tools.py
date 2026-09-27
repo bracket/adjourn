@@ -1,4 +1,4 @@
-"""Workspace driver for disk-backed adjourn resolution sessions.
+"""Workspace for disk-backed adjourn resolution sessions.
 
 The :class:`Workspace` encapsulates the session machinery behind the MCP
 server tools: it allocates session ids, shells out to the adjourn CLI per
@@ -25,7 +25,9 @@ class Workspace:
     A workspace is bound to one project config file.  Sessions are stored as
     JSON state files under a sessions directory, and every CLI interaction is
     performed by shelling out to ``python -m adjourn.cli`` so that Prolog
-    (via janus) never loads in this process.
+    (via janus) never loads in this process.  Every CLI call passes the
+    workspace's ``--config`` and runs from :attr:`server_dir`, so behaviour
+    does not depend on the calling process's cwd or ``ADJOURN_CONFIG``.
 
     Attributes:
         config_path: Resolved path to the project config file.
@@ -167,7 +169,7 @@ class Workspace:
         if not state_path.exists():
             raise RuntimeError(
                 f"Session '{session}' not found (state file {state_path} does not exist). "
-                "Did you call adjourn_init first?"
+                "Was the session initialised first?"
             )
         return state_path
 
@@ -200,9 +202,18 @@ class Workspace:
             The initial projection with the session id.
         """
         session_id = self._allocate_session_id()
-        state_path = self._session_path(session_id)
+        state_path = self._session_path(session_id).resolve()
         projection = self._run_cli(
-            ["init", goal, str(state_path), "--format", "json"]
+            [
+                "init",
+                goal,
+                str(state_path),
+                "--config",
+                str(self.config_path),
+                "--format",
+                "json",
+            ],
+            cwd=self.server_dir,
         )
         return {"session": session_id, **projection}
 
@@ -226,9 +237,18 @@ class Workspace:
         Raises:
             RuntimeError: If the session state file does not exist.
         """
-        state_path = self._require_session_state(session)
+        state_path = self._require_session_state(session).resolve()
         projection = self._run_cli(
-            ["resume", str(state_path), str(state_path), "--format", "json"]
+            [
+                "resume",
+                str(state_path),
+                str(state_path),
+                "--config",
+                str(self.config_path),
+                "--format",
+                "json",
+            ],
+            cwd=self.server_dir,
         )
         return {"session": session, **projection}
 
@@ -283,7 +303,15 @@ class Workspace:
             cwd=server_dir,
         )
         projection = self._run_cli(
-            ["resume", str(state_path), str(state_path), "--format", "json"],
+            [
+                "resume",
+                str(state_path),
+                str(state_path),
+                "--config",
+                str(config_path),
+                "--format",
+                "json",
+            ],
             cwd=server_dir,
         )
         return {"session": session, **projection}
