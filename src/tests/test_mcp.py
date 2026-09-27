@@ -35,6 +35,12 @@ class TestMCPModuleSurface:
 
         assert isinstance(mcp_mod.workspace, Workspace)
 
+    def test_module_workspace_has_create_config_true(self) -> None:
+        """The module workspace should create a missing config on init."""
+        import adjourn.mcp as mcp_mod
+
+        assert mcp_mod.workspace.create_config is True
+
     def test_module_has_no_legacy_helpers(self) -> None:
         """The module should no longer define the legacy helper globals."""
         import adjourn.mcp as mcp_mod
@@ -152,3 +158,29 @@ class TestMCPCoroutineLoop:
         # Resuming done is idempotent
         r3 = adjourn_resume(session_id)
         assert r3["status"] == "done"
+
+    def test_full_coroutine_loop_from_missing_config_with_create_config(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Drive a session from a missing config through add_rules to done."""
+        monkeypatch.delenv("ADJOURN_CONFIG", raising=False)
+
+        import adjourn.mcp as mcp_mod
+
+        ws = Workspace(
+            tmp_path / ".adjourn" / "config.yaml",
+            sessions_dir=tmp_path / "sessions",
+            create_config=True,
+        )
+        monkeypatch.setattr(mcp_mod, "workspace", ws)
+
+        init_result = adjourn_init("true")
+        session_id = init_result["session"]
+        assert init_result["ruleset_hash"] == "@empty"
+        assert init_result["resume_hash"] == "@empty"
+
+        added = adjourn_add_rules(session_id, "rule(extra_rule, true).\n")
+        assert added["status"] == "solution"
+
+        resumed = adjourn_resume(session_id)
+        assert resumed["status"] == "done"

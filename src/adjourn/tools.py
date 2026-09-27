@@ -34,6 +34,8 @@ class Workspace:
         sessions_dir: Directory holding per-session state files.  Created
             lazily on first use; may be reassigned after construction.
         timeout: Subprocess timeout in seconds for each CLI call.
+        create_config: Whether ``init`` should create a missing config file
+            (with an empty ``stores`` list) instead of failing.
     """
 
     def __init__(
@@ -41,11 +43,14 @@ class Workspace:
         config_path: str | os.PathLike[str],
         sessions_dir: str | os.PathLike[str] | None = None,
         timeout: int = 60,
+        create_config: bool = False,
     ) -> None:
         """Initialise a workspace for the given project config.
 
         The constructor does not touch the filesystem: the sessions
-        directory is only created on first use.
+        directory is only created on first use, and a missing config file
+        is only created (when *create_config* is true) by a later
+        :meth:`init` call.
 
         Args:
             config_path: Path to the project config file.  Stored resolved.
@@ -53,6 +58,12 @@ class Workspace:
                 defaults to ``config_path.parent / "mcp-sessions"``.  The
                 value is stored as given (not resolved).
             timeout: Subprocess timeout in seconds for each CLI call.
+            create_config: When true, :meth:`init` passes ``--create-config``
+                to the CLI so a missing config file is created (with an empty
+                ``stores`` list) instead of failing.  On an empty program the
+                initial state records the reserved ``@empty`` ruleset hash for
+                both ``ruleset_hash`` and ``resume_hash``; call
+                :meth:`add_rules` before :meth:`resume` to recover.
         """
         self.config_path = Path(config_path).resolve()
         if sessions_dir is None:
@@ -60,6 +71,7 @@ class Workspace:
         else:
             self.sessions_dir = Path(sessions_dir)
         self.timeout = timeout
+        self.create_config = create_config
 
     @property
     def server_dir(self) -> Path:
@@ -67,13 +79,19 @@ class Workspace:
         return self.config_path.parent.parent
 
     @classmethod
-    def from_env(cls) -> Workspace:
+    def from_env(cls, create_config: bool = False) -> Workspace:
         """Build a workspace from environment variables.
 
         Reads ``ADJOURN_CONFIG`` (default ``.adjourn/config.yaml``),
         ``ADJOURN_MCP_TIMEOUT`` (default ``60``), and
         ``ADJOURN_MCP_SESSIONS_DIR`` (when set; otherwise the
-        config-relative default applies).
+        config-relative default applies).  *create_config* is not read from
+        any environment variable; it must be passed explicitly.
+
+        Args:
+            create_config: Forwarded to :meth:`__init__`; when true,
+                :meth:`init` creates a missing config file (with an empty
+                ``stores`` list) instead of failing.
 
         Returns:
             A new :class:`Workspace` configured from the environment.
@@ -81,7 +99,12 @@ class Workspace:
         config_path = os.environ.get("ADJOURN_CONFIG", ".adjourn/config.yaml")
         timeout = int(os.environ.get("ADJOURN_MCP_TIMEOUT", "60"))
         sessions_dir = os.environ.get("ADJOURN_MCP_SESSIONS_DIR")
-        return cls(config_path, sessions_dir=sessions_dir, timeout=timeout)
+        return cls(
+            config_path,
+            sessions_dir=sessions_dir,
+            timeout=timeout,
+            create_config=create_config,
+        )
 
     # ------------------------------------------------------------------
     # Helpers
@@ -187,6 +210,13 @@ class Workspace:
         The returned dict has keys ``session``, ``status``, ``label``,
         ``ruleset_hash``, and ``resume_hash``.
 
+        When :attr:`create_config` is true, ``--create-config`` is passed to
+        the CLI so a missing config file is created (with an empty ``stores``
+        list) instead of failing.  On an empty program the initial state
+        records the reserved ``@empty`` ruleset hash for both
+        ``ruleset_hash`` and ``resume_hash``; call :meth:`add_rules` before
+        :meth:`resume` to recover.
+
         Coroutine loop:
             1. Call ``init`` once to create a session.
             2. Call ``resume`` repeatedly with the returned session id.
@@ -203,18 +233,18 @@ class Workspace:
         """
         session_id = self._allocate_session_id()
         state_path = self._session_path(session_id).resolve()
-        projection = self._run_cli(
-            [
-                "init",
-                goal,
-                str(state_path),
-                "--config",
-                str(self.config_path),
-                "--format",
-                "json",
-            ],
-            cwd=self.server_dir,
-        )
+        init_args = [
+            "init",
+            goal,
+            str(state_path),
+            "--config",
+            str(self.config_path),
+            "--format",
+            "json",
+        ]
+        if self.create_config:
+            init_args.append("--create-config")
+        projection = self._run_cli(init_args, cwd=self.server_dir)
         return {"session": session_id, **projection}
 
     def resume(self, session: str) -> dict:
