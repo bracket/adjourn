@@ -6,7 +6,7 @@ networks:
 
 services:
   adjourn-mcp:
-    image: ghcr.io/bracket/service-adjourn:0.1.7
+    image: ghcr.io/bracket/service-adjourn:0.1.8
     build:
       context: .
     pull_policy: missing
@@ -23,4 +23,8 @@ services:
       ADJOURN_MCP_DEBUG: '1'
       ADJOURN_MCP_AUTH0_DOMAIN: 'dev-7y8xnq18agafiyxv.us.auth0.com'
       ADJOURN_MCP_AUTH0_AUDIENCE: 'https://constraint.bracketzone.com/'
+      ADJOURN_CONFIG: '/data/.adjourn/config.yaml'
+    volumes:
+      - ./data:/data
+    working_dir: /data
     command: /opt/venv/bin/python -m adjourn.mcp
