@@ -40,6 +40,37 @@ class _EmptyRuleSetStore(RuleSetStore):
         return []
 
 
+class _CountingRuleSetStore(RuleSetStore):
+    """Stub store returning fixed clauses and counting ``clauses_for`` calls."""
+
+    def __init__(self, ruleset_hash: str, clauses: list[Clause]) -> None:
+        self._hash = ruleset_hash
+        self._clauses = clauses
+        self.clauses_calls = 0
+
+    @property
+    def ruleset_hash(self) -> str:
+        return self._hash
+
+    def known_rulesets(self) -> list[str]:
+        return [self._hash]
+
+    def clauses_for(self, ruleset_hash: str) -> list[Clause]:
+        self.clauses_calls += 1
+        return list(self._clauses)
+
+
+class _ExplodingRuleSetStore(_CountingRuleSetStore):
+    """Stub store whose ``clauses_for`` fails, to prove it was never needed."""
+
+    def __init__(self) -> None:
+        super().__init__("e" * 64, [])
+
+    def clauses_for(self, ruleset_hash: str) -> list[Clause]:
+        self.clauses_calls += 1
+        raise AssertionError("clauses_for should not have been called")
+
+
 class TestHashing:
     """Hash canonicalization properties."""
 
@@ -460,6 +491,7 @@ rule(foo, true).
 
         assert aggregate.ruleset_hash == "@empty"
         assert aggregate.owns("@empty")
+        assert aggregate.known_rulesets() == ["@empty", "f" * 64]
         with pytest.raises(ValueError, match="empty program"):
             aggregate.clauses_for("f" * 64)
         with pytest.raises(
@@ -473,6 +505,7 @@ rule(foo, true).
 
         assert aggregate.ruleset_hash == "@empty"
         assert aggregate.owns("@empty")
+        assert aggregate.known_rulesets() == ["@empty"]
         with pytest.raises(
             ValueError,
             match=r"Cannot resume against the empty ruleset \(@empty\)",
@@ -486,11 +519,32 @@ rule(foo, true).
         assert len(aggregate.ruleset_hash) == 64
         assert all(c in "0123456789abcdef" for c in aggregate.ruleset_hash)
         assert not aggregate.owns("@empty")
+        assert "@empty" not in aggregate.known_rulesets()
         with pytest.raises(
             ValueError,
             match=r"Cannot resume against the empty ruleset \(@empty\)",
         ):
             aggregate.clauses_for("@empty")
+
+    def test_aggregate_emptiness_check_skips_clauses_with_file_member(
+        self, tmp_path: Path
+    ) -> None:
+        file_store = FileRuleSetStore(_write_rules(tmp_path, "rules.pl", "p(a).\n"))
+        exploding = _ExplodingRuleSetStore()
+        aggregate = AggregateRuleSetStore([file_store, exploding])
+
+        assert aggregate.ruleset_hash != "@empty"
+        assert not aggregate.owns("@empty")
+        assert exploding.clauses_calls == 0
+
+    def test_aggregate_emptiness_check_stops_at_first_nonempty_member(self) -> None:
+        nonempty = _CountingRuleSetStore("a" * 64, [Clause(head=Atom("p"), body=None)])
+        later = _ExplodingRuleSetStore()
+        aggregate = AggregateRuleSetStore([nonempty, later])
+
+        assert aggregate.ruleset_hash != "@empty"
+        assert nonempty.clauses_calls == 1
+        assert later.clauses_calls == 0
 
 # ---------------------------------------------------------------------------
 # Mnestic (CozoDB) store tests

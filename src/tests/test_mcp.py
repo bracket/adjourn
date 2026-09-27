@@ -184,3 +184,26 @@ class TestMCPCoroutineLoop:
 
         resumed = adjourn_resume(session_id)
         assert resumed["status"] == "done"
+
+    def test_create_config_with_default_sessions_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A fresh directory bootstraps with the default config-relative sessions dir."""
+        monkeypatch.delenv("ADJOURN_CONFIG", raising=False)
+
+        import adjourn.mcp as mcp_mod
+
+        config_path = tmp_path / ".adjourn" / "config.yaml"
+        ws = Workspace(config_path, create_config=True)
+        monkeypatch.setattr(mcp_mod, "workspace", ws)
+        assert not config_path.parent.exists()
+
+        init_result = adjourn_init("true")
+        session_id = init_result["session"]
+        assert init_result["ruleset_hash"] == "@empty"
+        assert config_path.exists()
+        assert (config_path.parent / "mcp-sessions" / f"{session_id}.json").exists()
+
+        added = adjourn_add_rules(session_id, "rule(extra_rule, true).\n")
+        assert added["status"] == "solution"
+        assert (tmp_path / "rules_001.pl").exists()

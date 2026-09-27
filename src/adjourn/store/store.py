@@ -130,9 +130,16 @@ class AggregateRuleSetStore(RuleSetStore):
         return ruleset_hash
 
     def known_rulesets(self) -> list[str]:
-        """Return the aggregate hash plus all owned child hashes."""
+        """Return the aggregate hash plus all owned child hashes.
+
+        When the composite program has no clauses, the reserved ``@empty``
+        ruleset is listed first, keeping this consistent with :meth:`owns`.
+        """
         known_rulesets: list[str] = []
         seen_hashes: set[str] = set()
+        if self._composite_is_empty():
+            known_rulesets.append("@empty")
+            seen_hashes.add("@empty")
         composite_hash = self._composite_ruleset_hash()
         if composite_hash is not None:
             known_rulesets.append(composite_hash)
@@ -200,16 +207,23 @@ class AggregateRuleSetStore(RuleSetStore):
         ]
 
     def _composite_is_empty(self) -> bool:
-        """Return whether the composite program has no clauses (cached)."""
+        """Return whether the composite program has no clauses (cached).
+
+        File stores reject empty files at load time, so any file member
+        proves the program non-empty without materializing clauses.  Other
+        members are checked in order, stopping at the first one that yields
+        a clause.
+        """
         if self._is_empty is None:
-            clauses = [
-                clause
-                for store, member_hash in zip(
-                    self._member_stores, self._member_hashes, strict=True
+            if any(isinstance(store, FileRuleSetStore) for store in self._member_stores):
+                self._is_empty = False
+            else:
+                self._is_empty = not any(
+                    store.clauses_for(member_hash)
+                    for store, member_hash in zip(
+                        self._member_stores, self._member_hashes, strict=True
+                    )
                 )
-                for clause in store.clauses_for(member_hash)
-            ]
-            self._is_empty = not clauses
         return self._is_empty
 
     def _composite_ruleset_hash(self) -> str | None:

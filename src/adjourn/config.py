@@ -36,9 +36,11 @@ class Config:
             ValueError: If the config file at *path* is invalid.
         """
         self.path = Path(path)
-        if create:
+        if create and not self.path.exists():
+            # _create_if_missing writes the file and loads it into self._data.
             self._create_if_missing()
-        self._data = self._load()
+        else:
+            self._data = self._load()
 
     @property
     def store_configs(self) -> list[dict[str, Any]]:
