@@ -2,7 +2,7 @@ registry: ghcr.io/bracket
 images:
   service-adjourn:
     dockerfile: images/service-adjourn/Dockerfile
-    version: "0.1.7"
+    version: "0.1.8"
     dependencies:
       - base-service-python-swipl
     architectures:

@@ -3,9 +3,9 @@ FROM ghcr.io/bracket/base-service-python-swipl:1.0.0
 ENV PIP_INDEX_URL=http://host.docker.internal:7974/bracket/packages/+simple/
 ENV PIP_TRUSTED_HOST=host.docker.internal
 
-ENV ADJOURN_VERSION=0.1.7
+ENV ADJOURN_VERSION=0.1.8
 
-ENV CACHE_BUST=DogDfATpUuPzJAuIaV9Rn5v1JT+Sw/O9
+ENV CACHE_BUST=A64kUO7P+cu7FHNdKRWQOHp4Xpik9kWa
 
 RUN ${VIRTUAL_ENV}/bin/pip \
     install "adjourn[mcp]==${ADJOURN_VERSION}" \
