@@ -1103,6 +1103,21 @@ class TestStoreCommand:
         assert result.exit_code == 0, result.output
         assert result.output.startswith("[\n  {")
 
+    def test_store_list_rejects_create_config(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """store list should reject --create-config as an unknown option."""
+        config_path = tmp_path / ".adjourn" / "config.yaml"
+
+        result = runner.invoke(
+            main,
+            ["store", "list", "--config", str(config_path), "--create-config"],
+        )
+
+        assert result.exit_code != 0
+        assert "No such option" in result.output
+
+
 class TestSetResumeCommand:
     """Tests for the ``set-resume`` subcommand."""
 
@@ -1554,6 +1569,26 @@ class TestRulesCommand:
         # Config loads and includes the new store.
         reloaded = Config(config_path)
         assert reloaded.store_configs[0]["path"] == str(rules_path)
+
+    def test_rules_add_rejects_create_config(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """rules add should reject --create-config as an unknown option."""
+        rules_path = tmp_path / "my_rules.pl"
+        rules_path.write_text(NONEMPTY_RULESET)
+        config_path = tmp_path / ".adjourn" / "config.yaml"
+
+        result = runner.invoke(
+            main,
+            [
+                "rules", "add", str(rules_path),
+                "--config", str(config_path),
+                "--create-config",
+            ],
+        )
+
+        assert result.exit_code != 0
+        assert "No such option" in result.output
 
 
 class TestInitCreateConfig:
