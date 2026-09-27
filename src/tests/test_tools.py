@@ -74,6 +74,16 @@ class TestWorkspaceConstruction:
         assert ws._sessions_dir() == sessions_dir
         assert sessions_dir.exists()
 
+    def test_default_create_config_is_false(self, tmp_path: Path) -> None:
+        """Default construction should have create_config False."""
+        ws = Workspace(tmp_path / ".adjourn" / "config.yaml")
+        assert ws.create_config is False
+
+    def test_explicit_create_config_is_stored(self, tmp_path: Path) -> None:
+        """An explicit create_config should be stored as given."""
+        ws = Workspace(tmp_path / ".adjourn" / "config.yaml", create_config=True)
+        assert ws.create_config is True
+
     def test_server_dir_is_config_parent_parent(self, tmp_path: Path) -> None:
         """server_dir should be the directory that contains .adjourn."""
         config_path = tmp_path / ".adjourn" / "config.yaml"
@@ -112,6 +122,28 @@ class TestWorkspaceConstruction:
         assert ws.config_path == (tmp_path / ".adjourn" / "config.yaml").resolve()
         assert ws.sessions_dir == ws.config_path.parent / "mcp-sessions"
         assert ws.timeout == 60
+
+    def test_from_env_defaults_create_config_false(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """from_env should default create_config to False."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ADJOURN_CONFIG", raising=False)
+        monkeypatch.delenv("ADJOURN_MCP_SESSIONS_DIR", raising=False)
+        monkeypatch.delenv("ADJOURN_MCP_TIMEOUT", raising=False)
+        ws = Workspace.from_env()
+        assert ws.create_config is False
+
+    def test_from_env_create_config_true(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """from_env should forward an explicit create_config=True."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ADJOURN_CONFIG", raising=False)
+        monkeypatch.delenv("ADJOURN_MCP_SESSIONS_DIR", raising=False)
+        monkeypatch.delenv("ADJOURN_MCP_TIMEOUT", raising=False)
+        ws = Workspace.from_env(create_config=True)
+        assert ws.create_config is True
 
 
 class TestWorkspaceSessionHelpers:
@@ -385,3 +417,71 @@ class TestWorkspaceTools:
         assert (tmp_path / "rules_001.pl").read_text() == "rule(extra_rule, true).\n"
         state_after = json.loads(state_path.read_text())
         assert state_after["resume_hash"] == resume_hash_before
+
+    def test_init_create_config_creates_missing_config(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """init with create_config should create a missing config and yield @empty."""
+        config_path = tmp_path / ".adjourn" / "config.yaml"
+        monkeypatch.delenv("ADJOURN_CONFIG", raising=False)
+        ws = Workspace(
+            config_path,
+            sessions_dir=tmp_path / "sessions",
+            create_config=True,
+        )
+
+        result = ws.init("true")
+
+        assert result["ruleset_hash"] == "@empty"
+        assert result["resume_hash"] == "@empty"
+        assert config_path.exists()
+        assert yaml.safe_load(config_path.read_text()) == {"stores": []}
+
+    def test_resume_after_empty_init_raises(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Resuming straight after an @empty init should raise RuntimeError."""
+        config_path = tmp_path / ".adjourn" / "config.yaml"
+        monkeypatch.delenv("ADJOURN_CONFIG", raising=False)
+        ws = Workspace(
+            config_path,
+            sessions_dir=tmp_path / "sessions",
+            create_config=True,
+        )
+
+        session_id = ws.init("true")["session"]
+
+        with pytest.raises(
+            RuntimeError, match=r"Cannot resume against the empty ruleset \(@empty\)"
+        ):
+            ws.resume(session_id)
+
+    def test_add_rules_recovers_from_empty_init(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """add_rules after an @empty init should reach a solution."""
+        config_path = tmp_path / ".adjourn" / "config.yaml"
+        monkeypatch.delenv("ADJOURN_CONFIG", raising=False)
+        ws = Workspace(
+            config_path,
+            sessions_dir=tmp_path / "sessions",
+            create_config=True,
+        )
+
+        session_id = ws.init("true")["session"]
+
+        result = ws.add_rules(session_id, "rule(extra_rule, true).\n")
+
+        assert result["status"] == "solution"
+        assert result["resume_hash"] != "@empty"
+
+    def test_init_without_create_config_missing_config_raises(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """init without create_config against a missing config should raise."""
+        config_path = tmp_path / ".adjourn" / "config.yaml"
+        monkeypatch.delenv("ADJOURN_CONFIG", raising=False)
+        ws = Workspace(config_path, sessions_dir=tmp_path / "sessions")
+
+        with pytest.raises(RuntimeError, match="Config file not found"):
+            ws.init("true")

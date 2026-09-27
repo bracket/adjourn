@@ -21,9 +21,26 @@ class _AppendFileStoreResult(dict):
 class Config:
     """Read and validate a project rule-store configuration file."""
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path, create: bool = False) -> None:
+        """Initialize the config from *path*.
+
+        Args:
+            path: Path to the YAML config file.
+            create: When True, create the config file (with an empty
+                ``stores`` list) if it does not already exist.  Existing
+                files are never rewritten.
+
+        Raises:
+            FileNotFoundError: If *path* does not exist and *create* is
+                False.
+            ValueError: If the config file at *path* is invalid.
+        """
         self.path = Path(path)
-        self._data = self._load()
+        if create and not self.path.exists():
+            # _create_if_missing writes the file and loads it into self._data.
+            self._create_if_missing()
+        else:
+            self._data = self._load()
 
     @property
     def store_configs(self) -> list[dict[str, Any]]:

@@ -33,7 +33,7 @@ mcp = FastMCP("adjourn-mcp")
 # Workspace
 # ---------------------------------------------------------------------------
 
-workspace: Workspace = Workspace.from_env()
+workspace: Workspace = Workspace.from_env(create_config=True)
 
 
 # ---------------------------------------------------------------------------

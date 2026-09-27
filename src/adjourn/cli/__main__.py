@@ -63,6 +63,13 @@ def main(ctx: click.Context) -> None:
     default=False,
     help="Pretty-print JSON output.",
 )
+@click.option(
+    "--create-config",
+    "create_config",
+    is_flag=True,
+    default=False,
+    help="Create the config file (with an empty stores list) if it does not exist.",
+)
 def cmd_init(
     query: str,
     state_file: Path,
@@ -70,6 +77,7 @@ def cmd_init(
     config_path: Path | None,
     output_format: str,
     pretty_print: bool,
+    create_config: bool,
 ) -> None:
     """Initialise a new resolution state and write it to STATE_FILE.
 
@@ -80,12 +88,18 @@ def cmd_init(
     v0 state and writes it as pretty-printed JSON.  Use the ``resume``
     command to drive the meta-interpreter forward.
 
+    With ``--create-config``, a missing config file is created (with an
+    empty ``stores`` list) instead of failing.  On an empty program the
+    state records the reserved ``@empty`` ruleset hash for both
+    ``ruleset_hash`` and ``resume_hash``.
+
     Examples:
 
         adjourn init "color(X, Y)" state.json --ruleset coloring
+        adjourn init "true" state.json --create-config
     """
     try:
-        config = Config(_resolve_config_path(config_path))
+        config = Config(_resolve_config_path(config_path), create=create_config)
         load_foreign_plugins(config.foreign_plugins)
         store = build_store_from_config(config)
         state = init_state(query, ruleset_name, store, config)
