@@ -46,14 +46,14 @@ class ContextStack:
         self._pushed = list(pushed)
 
     @property
-    def pinned(self) -> list[str]:
+    def pinned(self) -> tuple[str, ...]:
         """Return the pinned (background) frames, oldest first."""
-        return self._pinned
+        return tuple(self._pinned)
 
     @property
-    def pushed(self) -> list[str]:
+    def pushed(self) -> tuple[str, ...]:
         """Return the pushed frames, oldest first."""
-        return self._pushed
+        return tuple(self._pushed)
 
     def push(self, text: str) -> None:
         """Append a pushed frame to the top of the stack.
@@ -74,7 +74,9 @@ class ContextStack:
                 frames are never removed and do not satisfy a pop.
         """
         if not self._pushed:
-            raise ContextStackEmptyError
+            raise ContextStackEmptyError(
+                "no pushed context frames to pop; background frames cannot be removed"
+            )
         return self._pushed.pop()
 
     def save(self, path: str | os.PathLike[str]) -> None:

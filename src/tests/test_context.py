@@ -23,7 +23,7 @@ class TestContextStackPushPop:
         assert stack.pop() == "third"
         assert stack.pop() == "second"
         assert stack.pop() == "first"
-        assert stack.pushed == []
+        assert stack.pushed == ()
 
     def test_pop_empty_stack_raises(self) -> None:
         """pop with no pushed frames should raise ContextStackEmptyError."""
@@ -38,8 +38,8 @@ class TestContextStackPushPop:
         with pytest.raises(ContextStackEmptyError):
             stack.pop()
 
-        assert stack.pinned == ["background-one", "background-two"]
-        assert stack.pushed == []
+        assert stack.pinned == ("background-one", "background-two")
+        assert stack.pushed == ()
 
     def test_pinned_frames_are_never_removed(self) -> None:
         """pop should never remove pinned frames."""
@@ -47,8 +47,20 @@ class TestContextStackPushPop:
 
         assert stack.pop() == "pushed-one"
 
-        assert stack.pinned == ["pinned-one", "pinned-two"]
-        assert stack.pushed == []
+        assert stack.pinned == ("pinned-one", "pinned-two")
+        assert stack.pushed == ()
+
+
+    def test_pop_error_has_message(self) -> None:
+        """The empty-pop error should carry a message for the LLM-facing error result."""
+        with pytest.raises(ContextStackEmptyError, match="no pushed context frames"):
+            ContextStack(pinned=("p",)).pop()
+
+    def test_frame_accessors_are_read_only(self) -> None:
+        """pinned and pushed should return tuples so callers cannot mutate the stack."""
+        stack = ContextStack(pinned=("p",), pushed=("a",))
+        assert isinstance(stack.pinned, tuple)
+        assert isinstance(stack.pushed, tuple)
 
 
 class TestContextStackPersistence:
@@ -62,8 +74,8 @@ class TestContextStackPersistence:
         stack.save(path)
         loaded = ContextStack.load(path)
 
-        assert loaded.pinned == ["p1", "p2"]
-        assert loaded.pushed == ["a", "b", "c"]
+        assert loaded.pinned == ("p1", "p2")
+        assert loaded.pushed == ("a", "b", "c")
 
     def test_save_creates_missing_parent_directory(self, tmp_path: Path) -> None:
         """save should create a missing parent directory."""
@@ -74,8 +86,8 @@ class TestContextStackPersistence:
 
         assert path.exists()
         loaded = ContextStack.load(path)
-        assert loaded.pinned == ["p"]
-        assert loaded.pushed == ["q"]
+        assert loaded.pinned == ("p",)
+        assert loaded.pushed == ("q",)
 
     def test_save_writes_versioned_json_format(self, tmp_path: Path) -> None:
         """save should write the versioned JSON format."""
