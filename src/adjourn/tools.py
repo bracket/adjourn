@@ -119,6 +119,21 @@ class Workspace:
         """Map a session id to its state-file path."""
         return self._sessions_dir() / f"{session_id}.json"
 
+    def context_path(self, session: str) -> Path:
+        """Return the default sidecar path for a session's context stack.
+
+        The path is ``sessions_dir / "<session>.context.json"``.  This
+        method does not touch the filesystem: it neither creates the
+        sessions directory nor the sidecar file.
+
+        Args:
+            session: The session id returned by :meth:`init`.
+
+        Returns:
+            The sidecar path for the session's context stack.
+        """
+        return self.sessions_dir / f"{session}.context.json"
+
     def _allocate_session_id(self) -> str:
         """Allocate a fresh session id (UUID hex)."""
         return uuid.uuid4().hex
