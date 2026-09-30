@@ -30,6 +30,7 @@ dev = [
 
 mcp = [
     "fastmcp>=4.0.10",
+    "haft-mcp-host",
 ]
 
 [project.scripts]
