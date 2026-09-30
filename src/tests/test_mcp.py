@@ -50,6 +50,14 @@ class TestMCPModuleSurface:
         assert not hasattr(mcp_mod, "_TIMEOUT")
         assert not hasattr(mcp_mod, "_run_cli")
 
+    def test_server_instructions_are_preamble_plus_core(self) -> None:
+        """The server instructions should carry the MCP preamble and shared core."""
+        from adjourn.prompts import read_prompt
+
+        instructions = mcp.mcp.instructions
+        assert read_prompt("mcp_preamble.md").strip() in instructions
+        assert read_prompt("usage.md") in instructions
+
 
 class TestMCPToolDelegation:
     """Tests that the MCP tools delegate to the module workspace."""

@@ -217,13 +217,14 @@ class Workspace:
         ``ruleset_hash`` and ``resume_hash``; call :meth:`add_rules` before
         :meth:`resume` to recover.
 
-        Coroutine loop:
-            1. Call ``init`` once to create a session.
-            2. Call ``resume`` repeatedly with the returned session id.
-            3. ``status`` progresses through ``running`` → ``suspended`` /
-               ``solution`` and terminates at ``done``.
-            4. ``solution`` is a resumable checkpoint (resuming backtracks
-               for further solutions); only ``done`` is terminal.
+        Status lifecycle:
+            The state file is written only at init and when resolution stops
+            (at a suspension, a solution, or done), so resolution in progress
+            is never observable.  ``running`` appears only on the freshly
+            initialised state.  Each :meth:`resume` then stops at
+            ``suspended``, ``solution`` or ``done``.  ``solution`` is a
+            resumable checkpoint (resuming backtracks for further
+            solutions); only ``done`` is terminal.
 
         Args:
             goal: The Prolog goal string to resolve.

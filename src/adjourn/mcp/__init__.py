@@ -13,6 +13,7 @@ import os
 
 from fastmcp import FastMCP
 
+from adjourn.prompts import read_prompt, render_usage
 from adjourn.tools import Workspace
 
 # ---------------------------------------------------------------------------
@@ -27,7 +28,7 @@ _LOG_LEVEL = os.environ.get("ADJOURN_MCP_LOG_LEVEL", "WARNING")
 # FastMCP instance
 # ---------------------------------------------------------------------------
 
-mcp = FastMCP("adjourn-mcp")
+mcp = FastMCP("adjourn-mcp", instructions=render_usage(read_prompt("mcp_preamble.md")))
 
 # ---------------------------------------------------------------------------
 # Workspace
@@ -51,14 +52,6 @@ def adjourn_init(goal: str) -> dict:
 
     The returned dict has keys ``session``, ``status``, ``label``,
     ``ruleset_hash``, and ``resume_hash``.
-
-    Coroutine loop:
-        1. Call ``adjourn_init`` once to create a session.
-        2. Call ``adjourn_resume`` repeatedly with the returned session id.
-        3. ``status`` progresses through ``running`` → ``suspended`` /
-           ``solution`` and terminates at ``done``.
-        4. ``solution`` is a resumable checkpoint (resuming backtracks for
-           further solutions); only ``done`` is terminal.
 
     Args:
         goal: The Prolog goal string to resolve.
