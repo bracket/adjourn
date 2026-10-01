@@ -352,6 +352,7 @@ class TestWorkspaceTools:
         ]
         assert all(cwd == tmp_path for _, cwd in calls)
         assert calls[0][0][2] == "rules_001.pl"
+        assert calls[1][0][2] == str(state_path.resolve())
 
     def test_add_rules_makes_no_resume_cli_call(self, tmp_path: Path) -> None:
         """add_rules should never invoke the resume CLI command."""
