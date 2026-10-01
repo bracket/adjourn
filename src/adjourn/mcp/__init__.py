@@ -88,15 +88,16 @@ def adjourn_resume(session: str) -> dict:
 
 @mcp.tool()
 def adjourn_add_rules(session: str, rules: str) -> dict:
-    """Add a ruleset file, repoint resume, and resume the session.
+    """Add a ruleset file and repoint the resume point to ``@top``.
 
     Writes *rules* verbatim to a newly allocated ``rules_NNN.pl`` file in the server
     directory, registers that relative filename in the configured project
-    config, repoints the session's ``resume_hash`` to ``@top``, resumes the
-    session in place, and returns the resulting projection.  This sequence is
-    not atomic: if a later CLI step fails, the numbered rules file remains on
-    disk, and any earlier config registration also remains in place while the
-    error is propagated.
+    config, repoints the session's ``resume_hash`` to ``@top``, and returns the
+    resulting projection.  This does not advance the session: call
+    ``adjourn_resume`` afterwards to continue resolution.  This sequence is not
+    atomic: if a later CLI step fails, the numbered rules file remains on disk,
+    and any earlier config registration also remains in place while the error
+    is propagated.
 
     Args:
         session: The session id returned by ``adjourn_init``.

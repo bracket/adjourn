@@ -170,6 +170,12 @@ class TestWorkspaceSessionHelpers:
         assert ws.context_path("abc") == ws.sessions_dir / "abc.context.json"
         assert not ws.sessions_dir.exists()
 
+    def test_state_path_matches_session_path(self, tmp_path: Path) -> None:
+        """state_path should equal _session_path and be <sessions_dir>/<id>.json."""
+        ws = Workspace(tmp_path / ".adjourn" / "config.yaml", sessions_dir=tmp_path / "sessions")
+        assert ws.state_path("abc") == ws._session_path("abc")
+        assert ws.state_path("abc") == ws.sessions_dir / "abc.json"
+
     def test_allocate_rules_filename_is_sequential(self, tmp_path: Path) -> None:
         """rules_NNN allocation should advance from the highest existing number."""
         ws = Workspace(tmp_path / ".adjourn" / "config.yaml")
@@ -257,7 +263,7 @@ class TestWorkspaceTools:
         with pytest.raises(RuntimeError, match="Session 'missing' not found"):
             ws.add_rules("missing", "rule(extra_rule, true).\n")
 
-    def test_add_rules_writes_registers_and_resumes(
+    def test_add_rules_writes_registers_and_repoints(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """add_rules should write a numbered file and repoint resume_hash."""
@@ -272,7 +278,7 @@ class TestWorkspaceTools:
         result = ws.add_rules(session_id, "rule(extra_rule, true).\n")
 
         assert result["session"] == session_id
-        assert result["status"] == "solution"
+        assert result["status"] == "running"
         assert result["resume_hash"] != before_resume_hash
 
         first_rules_path = tmp_path / "rules_001.pl"
@@ -283,6 +289,10 @@ class TestWorkspaceTools:
 
         state = json.loads((tmp_path / "sessions" / f"{session_id}.json").read_text())
         assert state["resume_hash"] == result["resume_hash"]
+
+        first = ws.resume(session_id)
+        assert first["status"] == "solution"
+        assert first["resume_hash"] == result["resume_hash"]
 
         follow_up = ws.resume(session_id)
         assert follow_up["status"] == "done"
@@ -306,6 +316,9 @@ class TestWorkspaceTools:
         assert result["session"] == session_id
         assert result["status"] == "done"
         assert (tmp_path / "rules_001.pl").exists()
+
+        resumed = ws.resume(session_id)
+        assert resumed["status"] == "done"
 
     def test_add_rules_uses_server_dir_for_all_cli_calls(self, tmp_path: Path) -> None:
         """add_rules should invoke every CLI step from the server directory."""
@@ -336,10 +349,78 @@ class TestWorkspaceTools:
         assert [call[0][:2] for call in calls] == [
             ["rules", "add"],
             ["set-resume", "@top"],
-            ["resume", str(state_path.resolve())],
         ]
         assert all(cwd == tmp_path for _, cwd in calls)
         assert calls[0][0][2] == "rules_001.pl"
+        assert calls[1][0][2] == str(state_path.resolve())
+
+    def test_add_rules_makes_no_resume_cli_call(self, tmp_path: Path) -> None:
+        """add_rules should never invoke the resume CLI command."""
+        sessions_dir = tmp_path / "sessions"
+        _write_session_state(sessions_dir, "session")
+
+        config_path = tmp_path / ".adjourn" / "config.yaml"
+        config_path.parent.mkdir()
+        config_path.write_text(yaml.safe_dump({"stores": [], "aliases": {}}))
+
+        ws = Workspace(config_path, sessions_dir=sessions_dir)
+        calls: list[list[str]] = []
+
+        def fake_run_cli(args: list[str], cwd: Path | None = None) -> dict:
+            del cwd
+            calls.append(args)
+            return {
+                "status": "running",
+                "label": None,
+                "ruleset_hash": "a" * 64,
+                "resume_hash": "b" * 64,
+            }
+
+        ws._run_cli = fake_run_cli
+
+        ws.add_rules("session", "rule(extra_rule, true).\n")
+
+        assert calls
+        assert all(call[0] != "resume" for call in calls)
+
+    def test_add_rules_returns_set_resume_projection(self, tmp_path: Path) -> None:
+        """add_rules should return the set-resume projection alongside the session."""
+        sessions_dir = tmp_path / "sessions"
+        _write_session_state(sessions_dir, "session")
+
+        config_path = tmp_path / ".adjourn" / "config.yaml"
+        config_path.parent.mkdir()
+        config_path.write_text(yaml.safe_dump({"stores": [], "aliases": {}}))
+
+        ws = Workspace(config_path, sessions_dir=sessions_dir)
+
+        def fake_run_cli(args: list[str], cwd: Path | None = None) -> dict:
+            del cwd
+            if args[:2] == ["set-resume", "@top"]:
+                return {
+                    "status": "running",
+                    "label": None,
+                    "ruleset_hash": "c" * 64,
+                    "resume_hash": "d" * 64,
+                }
+            return {
+                "status": "running",
+                "label": None,
+                "ruleset_hash": "a" * 64,
+                "resume_hash": "b" * 64,
+            }
+
+        ws._run_cli = fake_run_cli
+
+        result = ws.add_rules("session", "rule(extra_rule, true).\n")
+
+        assert result == {
+            "session": "session",
+            "status": "running",
+            "label": None,
+            "ruleset_hash": "c" * 64,
+            "resume_hash": "d" * 64,
+        }
 
     def test_init_and_resume_pass_config_and_server_dir(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -478,8 +559,11 @@ class TestWorkspaceTools:
 
         result = ws.add_rules(session_id, "rule(extra_rule, true).\n")
 
-        assert result["status"] == "solution"
+        assert result["status"] == "running"
         assert result["resume_hash"] != "@empty"
+
+        resumed = ws.resume(session_id)
+        assert resumed["status"] == "solution"
 
     def test_init_without_create_config_missing_config_raises(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
