@@ -188,10 +188,13 @@ class TestMCPCoroutineLoop:
         assert init_result["resume_hash"] == "@empty"
 
         added = adjourn_add_rules(session_id, "rule(extra_rule, true).\n")
-        assert added["status"] == "solution"
+        assert added["status"] == "running"
 
         resumed = adjourn_resume(session_id)
-        assert resumed["status"] == "done"
+        assert resumed["status"] == "solution"
+
+        done = adjourn_resume(session_id)
+        assert done["status"] == "done"
 
     def test_create_config_with_default_sessions_dir(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -213,5 +216,8 @@ class TestMCPCoroutineLoop:
         assert (config_path.parent / "mcp-sessions" / f"{session_id}.json").exists()
 
         added = adjourn_add_rules(session_id, "rule(extra_rule, true).\n")
-        assert added["status"] == "solution"
+        assert added["status"] == "running"
         assert (tmp_path / "rules_001.pl").exists()
+
+        resumed = adjourn_resume(session_id)
+        assert resumed["status"] == "solution"

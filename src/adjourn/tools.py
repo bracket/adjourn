@@ -134,6 +134,21 @@ class Workspace:
         """
         return self.sessions_dir / f"{session}.context.json"
 
+    def state_path(self, session: str) -> Path:
+        """Return the state-file path for a session.
+
+        The path is ``sessions_dir / "<session>.json"``, the same path as
+        :meth:`_session_path`.  This method does not touch the filesystem: it
+        neither creates the sessions directory nor the state file.
+
+        Args:
+            session: The session id returned by :meth:`init`.
+
+        Returns:
+            The state-file path for the session.
+        """
+        return self._session_path(session)
+
     def _allocate_session_id(self) -> str:
         """Allocate a fresh session id (UUID hex)."""
         return uuid.uuid4().hex
@@ -299,15 +314,16 @@ class Workspace:
         return {"session": session, **projection}
 
     def add_rules(self, session: str, rules: str) -> dict:
-        """Add a ruleset file, repoint resume, and resume the session.
+        """Add a ruleset file and repoint resume, without resuming.
 
         Writes *rules* verbatim to a newly allocated ``rules_NNN.pl`` file in
         the server directory, registers that relative filename in the
         configured project config, repoints the session's ``resume_hash`` to
-        ``@top``, resumes the session in place, and returns the resulting
-        projection.  This sequence is not atomic: if a later CLI step fails,
-        the numbered rules file remains on disk, and any earlier config
-        registration also remains in place while the error is propagated.
+        ``@top``, and returns the resulting projection.  The session is not
+        resumed: callers resume separately.  This sequence is not atomic: if a
+        later CLI step fails, the numbered rules file remains on disk, and any
+        earlier config registration also remains in place while the error is
+        propagated.
 
         Args:
             session: The session id returned by :meth:`init`.
@@ -336,22 +352,10 @@ class Workspace:
             ],
             cwd=server_dir,
         )
-        self._run_cli(
+        projection = self._run_cli(
             [
                 "set-resume",
                 "@top",
-                str(state_path),
-                "--config",
-                str(config_path),
-                "--format",
-                "json",
-            ],
-            cwd=server_dir,
-        )
-        projection = self._run_cli(
-            [
-                "resume",
-                str(state_path),
                 str(state_path),
                 "--config",
                 str(config_path),
