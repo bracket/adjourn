@@ -134,6 +134,20 @@ class Workspace:
         """
         return self.sessions_dir / f"{session}.context.json"
 
+    def state_path(self, session: str) -> Path:
+        """Return the state-file path for a session.
+
+        The path is ``sessions_dir / "<session>.json"``, the same path used
+        internally to persist the session's state.
+
+        Args:
+            session: The session id returned by :meth:`init`.
+
+        Returns:
+            The state-file path for the session.
+        """
+        return self._session_path(session)
+
     def _allocate_session_id(self) -> str:
         """Allocate a fresh session id (UUID hex)."""
         return uuid.uuid4().hex

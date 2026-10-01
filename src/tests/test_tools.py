@@ -170,6 +170,13 @@ class TestWorkspaceSessionHelpers:
         assert ws.context_path("abc") == ws.sessions_dir / "abc.context.json"
         assert not ws.sessions_dir.exists()
 
+    def test_state_path(self, tmp_path: Path) -> None:
+        """state_path should match _session_path and be <sessions_dir>/<id>.json."""
+        ws = Workspace(tmp_path / ".adjourn" / "config.yaml", sessions_dir=tmp_path / "sessions")
+        assert ws.state_path("abc") == ws._session_path("abc")
+        assert ws.state_path("abc").name == "abc.json"
+        assert ws.state_path("abc").parent == ws.sessions_dir
+
     def test_allocate_rules_filename_is_sequential(self, tmp_path: Path) -> None:
         """rules_NNN allocation should advance from the highest existing number."""
         ws = Workspace(tmp_path / ".adjourn" / "config.yaml")
