@@ -2,10 +2,12 @@
 
 ## Goal
 
-Half 2 of MCP exposure: adjourn acts as its own driver. When a goal
-suspends, adjourn calls an LLM and offers it tools so the LLM can extend
-the ruleset, manage context, and resume. (Half 1, adjourn as an MCP server
-to a chat agent, is complete.)
+Half 2 of MCP exposure: adjourn drives its own resolution and calls an LLM
+as a subsidiary handler. When a goal suspends, the driver calls an LLM and
+offers it tools to extend the ruleset and manage its context; when the LLM
+ends its turn, the driver resumes the session. The LLM never resumes. (Half
+1, adjourn as an MCP server to a chat agent, is complete; there the chat
+agent is the driver.)
 
 No concrete first use case is fixed yet; the first cut is a proof of the
 loop.
@@ -19,11 +21,13 @@ Three layers, all in one process:
   config path, and CLI timeout. `Workspace.from_env()` reads the existing
   `ADJOURN_*` environment variables. All resolution still runs through CLI
   subprocesses (`_run_cli`), so janus is never loaded in the calling
-  process.
+  process. `add_rules` adds the rules and repoints the session's resume
+  hash to `@top`, but **does not resume**; resuming is always a separate
+  `resume` call.
 - **MCP server** (`src/adjourn/mcp/__init__.py`): a thin wrapper over a
-  module-level `Workspace`. Tool names and behavior are unchanged for the
-  chat-agent half. Its `instructions` come from the shared usage text (see
-  Prompt).
+  module-level `Workspace`. The chat agent is the driver here, so it keeps
+  `adjourn_resume`; after `adjourn_add_rules` it must call `adjourn_resume`
+  itself. Its `instructions` come from the shared usage text (see Prompt).
 - **Driver** (`src/adjourn/driver.py`): a `Driver` class that uses a
   haft-mcp-host `ChatSession`
   (`haft/packages/haft-mcp-host/haft/mcp_host/session.py`) with **local
@@ -38,50 +42,62 @@ The entry point for the first cut is the Python API only.
 
 ## Driver
 
-- `Driver(workspace, goal, ...)` takes the workspace, the goal, the
-  `ChatSession` model settings, an optional system prompt, `initial_context`,
-  `max_rounds=30`, and `all_solutions=False`.
+- `Driver(workspace, model, base_url, *, system_prompt=None, max_rounds=30,
+  max_iterations=10, request_headers=None, _responses_client=None)` holds
+  the configuration; `drive(goal, initial_context=(), all_solutions=False)`
+  performs one run on a fresh session. `_responses_client` is passed
+  through to every `ChatSession` so tests can script the model.
 - The driver allocates one session and **binds its id**. The LLM's tools
   carry no session ids or hashes.
+- **The driver alone resumes.** The LLM is called during a suspension and
+  can only change what happens next.
 - **LLM tool surface** (local tools):
-  - `resume()` -- runs to the next `yield`, solution, or `done`
-    (`Runner.run`, continuing through checkpoints).
-  - `add_rules(rules)` -- adds the rules and resumes in one call. Stays
-    non-atomic.
+  - `add_rules(rules)` -- adds the rules and repoints the resume to the top
+    of the current goal. Does not resume. Stays non-atomic.
   - `push_context(text)`, `pop_context()` -- see Context stack.
 - **Tool errors:** the tool adapters catch exceptions and return them as
   error results, so the LLM can correct itself. (haft otherwise re-raises
   tool exceptions out of `send()`.)
-- **Only the LLM resumes a suspension.**
 
 ### Loop
 
-1. Initialize the session and run until suspended, solution, or done.
+1. Initialize the session, then resume once (no LLM), so the first round
+   starts at a real stop: suspended, solution, or done.
 2. Each suspension is one **round**: a fresh `ChatSession`, prompted with
-   the rendered context. No transcript carries over between rounds; the
-   context stack is the only memory.
-3. When `send()` returns:
-   - if neither `resume` nor `add_rules` was called during the turn, the
-     session is incorrectly still suspended -> raise `DriverStalledError`;
-   - if the session is suspended at a new point -> next round;
-   - if solution or done -> finish.
+   the rendered context stack and state. No transcript carries over between
+   rounds; the context stack is the only memory. The LLM may make any number
+   of tool calls, including none.
+3. When `send()` returns, the driver saves the context stack and resumes
+   the session. If rules were added, resolution restarts from the top of
+   the current goal; otherwise it continues past the yield.
+4. At the next stop: suspended -> next round; solution or done -> finish
+   (see Solutions).
+
+Ending a turn without tool calls is a valid "just continue", so there is no
+stalled-round error; `max_rounds` is the only loop guard.
 
 ### Solutions
 
 - **Once** by default: return on the first solution.
-- `all_solutions=True`: the driver itself (no LLM involvement) resumes past
-  each solution and collects bindings until `done`.
+- `all_solutions=True`: the driver resumes past each solution and collects
+  bindings until `done`. These resumes involve no LLM and do not count as
+  rounds.
 
 ### Limits, errors, results
 
-- `max_rounds` (default 30) caps suspension rounds per drive; exceeding it
-  raises `DriverRoundLimitError`.
-- haft's `MaxIterationsExceededError` is wrapped in a driver error.
-- All driver errors carry the **state**, not the transcript.
-- The result is `DriveResult(status, solutions, state)`. No transcript is
-  returned; transcripts belong in the future event log.
+- `max_rounds` (default 30) caps LLM rounds per drive; exceeding it raises
+  `DriverRoundLimitError`.
+- haft's `MaxIterationsExceededError` is wrapped in
+  `DriverIterationLimitError`.
+- All driver errors subclass `DriverError` and carry the **session id and
+  the state**, not the transcript.
+- The result is `DriveResult(status, solutions, state)`, where `solutions`
+  holds the bindings dict of each solution. No transcript is returned;
+  transcripts belong in the future event log.
 
 ## Context stack
+
+`ContextStack` (`src/adjourn/context.py`).
 
 - **Frames are plain text.**
 - **The stack is driver-side only.** Nothing is added to the adjourn
@@ -92,15 +108,19 @@ The entry point for the first cut is the Python API only.
   the session's overall goal). They are a fixed base of the stack and are
   not poppable.
 - **Pushed frames** come from the LLM via `push_context` / `pop_context`.
-  `pop_context` with only pinned frames left returns an error result.
+  `pop_context` with only pinned frames left raises
+  `ContextStackEmptyError`, which the tool adapter returns as an error
+  result.
 - **Persistence:** the stack is saved to
-  `<sessions_dir>/<id>.context.json`, beside the session state. Adjourn
-  never reads it.
+  `<sessions_dir>/<id>.context.json` (`Workspace.context_path`), beside the
+  session state, after every round and before raising any driver error.
+  Pinned frames are saved too. Adjourn never reads it.
 - **Program-author context** for a specific suspension goes in the `yield`
-  label, which is an arbitrary term and reaches the LLM through the state.
-- **Rendering**, per round: pinned frames, then pushed frames oldest-first,
-  then the full state JSON (so the LLM can see what will happen next; trim
-  later if too large). Prompt caching will likely break often; accepted.
+  label, which reaches the LLM through the state.
+- **Rendering**, per round: a `## Background` section (pinned frames), a
+  `## Your context stack` section (pushed frames, oldest first), and a
+  `## Session state` section (the full state JSON); empty sections are
+  omitted. Prompt caching will likely break often; accepted.
 
 Rejected: L3 builtins for context, either native or as a foreign callout.
 Context only matters to the driver, and keeping it out of the language
@@ -108,11 +128,17 @@ avoids driver-specific primitives in L3.
 
 ## Prompt
 
-- Adjourn ships a standard default prompt that instructs the LLM how to
-  use adjourn. It is customizable by the caller.
 - The "how to use adjourn" text has a single source of truth,
-  `src/adjourn/prompts/usage.md` (loaded via `importlib.resources`), shared
-  with the MCP server's `instructions`.
+  `src/adjourn/prompts/usage.md` (loaded via `importlib.resources`). It is
+  neutral about who drives: it describes the coroutine, the lifecycle,
+  suspensions, and adding rules.
+- Each caller layers its own preamble on top via `render_usage(preamble)`:
+  - `prompts/mcp_preamble.md` -- the chat agent drives, and must call
+    `adjourn_resume` after `adjourn_add_rules` or any other tool calls.
+  - `prompts/driver_preamble.md` -- the LLM is called during a suspension,
+    ends its turn when done, and cannot resume.
+- A caller-supplied `system_prompt` is appended to the driver's default
+  system prompt, not a replacement for it.
 
 ## Invariants
 
@@ -125,6 +151,12 @@ avoids driver-specific primitives in L3.
 
 - haft: return local tool exceptions as tool results instead of
   re-raising.
+- A way for the LLM to give up on a suspension (e.g. a `give_up(reason)`
+  tool that stops the drive with an error).
+- Structured `yield` labels serialized to JSON, and safe state-file naming
+  (see INBOX).
+- Continuing an existing session with `drive`.
+- Context tools on the MCP server.
 - Event hooks to notify the user on each suspend/resume (needed for the
   CLI).
 - Logging / an event log that carries transcripts.
@@ -141,6 +173,5 @@ avoids driver-specific primitives in L3.
 
 - LLM-managed context files interpolated into the prompt, and whether the
   LLM gets file read/write tools for them.
-- Exact rendering layout beyond ordering, and how to trim the state if it
-  is too large.
+- How to trim the state in the rendered prompt if it is too large.
 - Long-term handling of prompt caching.
