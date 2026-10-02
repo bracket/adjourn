@@ -36,7 +36,7 @@ query = [
 
 mcp = [
     "fastmcp>=4.0.10",
-    "haft-mcp-host",
+    "haft-mcp-host @ git+https://github.com/bracket/haft@v0.2.0#subdirectory=packages/haft-mcp-host",
 ]
 
 [project.scripts]
