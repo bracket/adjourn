@@ -18,27 +18,27 @@ AST Classes:
 """
 
 __all__ = [
-    # Parser functions
-    "parse_term",
-    "parse_clause",
-    "parse_program",
-    "parse_file",
-    # JSON serialization
-    "from_dict",
-    # Pretty-printing
-    "format_term",
-    "print_term",
     # AST classes
     "Atom",
-    "Variable",
-    "Integer",
-    "Float",
-    "String",
-    "Compound",
-    "List",
     "Clause",
+    "Compound",
     "Directive",
+    "Float",
+    "Integer",
+    "List",
     "Program",
+    "String",
+    "Variable",
+    # Pretty-printing
+    "format_term",
+    # JSON serialization
+    "from_dict",
+    "parse_clause",
+    "parse_file",
+    "parse_program",
+    # Parser functions
+    "parse_term",
+    "print_term",
 ]
 
 from adjourn.parser.ast import (

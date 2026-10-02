@@ -7,6 +7,7 @@ import os
 from urllib.parse import urlsplit, urlunsplit
 
 import jwt
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 
 def _default_host() -> str:
@@ -20,7 +21,7 @@ def _default_port() -> str:
 class OAuthMiddleware:
     """Validate OAuth 2.1 bearer tokens for MCP requests."""
 
-    def __init__(self, app: object, auth0_domain: str, audience: str) -> None:
+    def __init__(self, app: ASGIApp, auth0_domain: str, audience: str) -> None:
         """Initialise middleware with Auth0 domain, audience, and JWKS client."""
         self.app = app
         normalized_domain = auth0_domain.removeprefix("https://").removeprefix("http://").rstrip("/")
@@ -33,7 +34,7 @@ class OAuthMiddleware:
             cache_keys=True,
         )
 
-    async def __call__(self, scope: dict, receive: object, send: object) -> None:
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """Serve metadata and enforce bearer-token validation for protected paths."""
         if scope.get("type") != "http":
             await self.app(scope, receive, send)
@@ -92,7 +93,7 @@ class OAuthMiddleware:
 
         await self.app(scope, receive, send)
 
-    async def _send_json(self, send: object, status: int, payload: dict) -> None:
+    async def _send_json(self, send: Send, status: int, payload: dict) -> None:
         """Send a JSON response through ASGI ``send``."""
         body = json.dumps(payload).encode()
         headers = [
@@ -102,7 +103,7 @@ class OAuthMiddleware:
         await send({"type": "http.response.start", "status": status, "headers": headers})
         await send({"type": "http.response.body", "body": body})
 
-    async def _send_unauthorized(self, scope: dict, send: object, reason: str) -> None:
+    async def _send_unauthorized(self, scope: Scope, send: Send, reason: str) -> None:
         """Send a 401 response with the MCP-required WWW-Authenticate header."""
         metadata_url = self._resource_metadata_url(scope)
         authenticate = (
@@ -118,11 +119,11 @@ class OAuthMiddleware:
         await send({"type": "http.response.start", "status": 401, "headers": headers})
         await send({"type": "http.response.body", "body": body})
 
-    def _resource_metadata_url(self, scope: dict) -> str:
+    def _resource_metadata_url(self, scope: Scope) -> str:
         """Return the absolute URL for the protected-resource metadata endpoint."""
         return f"{self._base_url(scope)}/.well-known/oauth-protected-resource"
 
-    def _metadata_resource(self, scope: dict) -> str:
+    def _metadata_resource(self, scope: Scope) -> str:
         """Return the resource value for protected-resource metadata responses."""
         if "://" not in self._resource:
             return self._resource
@@ -141,7 +142,7 @@ class OAuthMiddleware:
             )
         )
 
-    def _base_url(self, scope: dict) -> str:
+    def _base_url(self, scope: Scope) -> str:
         """Return the request base URL, honoring reverse-proxy protocol headers."""
         configured = os.environ.get("ADJOURN_MCP_URL")
         if configured:
@@ -160,7 +161,7 @@ class OAuthMiddleware:
         host = self._header_value(scope, b"host") or f"{_default_host()}:{_default_port()}"
         return f"{self._request_scheme(scope)}://{host}"
 
-    def _request_scheme(self, scope: dict) -> str:
+    def _request_scheme(self, scope: Scope) -> str:
         """Return request scheme, preferring ``X-Forwarded-Proto`` when present."""
         forwarded_proto = self._header_value(scope, b"x-forwarded-proto")
         if forwarded_proto:
@@ -171,7 +172,7 @@ class OAuthMiddleware:
         return scope_scheme if scope_scheme in {"http", "https"} else "http"
 
     @staticmethod
-    def _header_value(scope: dict, key: bytes) -> str | None:
+    def _header_value(scope: Scope, key: bytes) -> str | None:
         """Extract a decoded HTTP header value from ASGI scope."""
         for header_key, header_value in scope.get("headers", []):
             if header_key == key:

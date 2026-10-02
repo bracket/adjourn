@@ -50,10 +50,10 @@ Python main() → registers callbacks → invokes Prolog main/0 →
    sudo apt-add-repository ppa:swi-prolog/stable
    sudo apt-get update
    sudo apt-get install swi-prolog
-   
+
    # On macOS with Homebrew
    brew install swi-prolog
-   
+
    # On Windows, download from: https://www.swi-prolog.org/Download.html
    ```
 
@@ -61,7 +61,7 @@ Python main() → registers callbacks → invokes Prolog main/0 →
    ```bash
    pip install -e /path/to/constraint
    ```
-   
+
    This will automatically install the `janus-swi` dependency.
 
 ## Running the Example
@@ -107,7 +107,7 @@ Enter a value (or empty to quit): cherry
 
 Value added!
 Current list (4 items): [apple, banana, eof, cherry]
-Enter a value (or empty to quit): 
+Enter a value (or empty to quit):
 
 Empty input received. Final list:
   [apple, banana, eof, cherry]
@@ -156,13 +156,13 @@ The Prolog file (`input_loop.pl`) defines:
        py_call(demo:py_print(Message)).
    ```
    These predicates use `py_call/2` to invoke Python functions from the `demo` module.
-   
+
    The `py_get_input/2` predicate unpacks a tuple from Python:
    - Python returns: `(content, marker)` tuple
    - Janus converts to: `-(Content, Marker)` term in Prolog
    - Predicate directly binds: `Content` and `Marker` variables
    - `Marker`: `ok` for normal input, `eof` for EOF/Ctrl-D
-   
+
    This allows the user to enter the literal string "eof" as input without triggering termination.
 
 2. **Main Entry Point**:
@@ -179,21 +179,21 @@ The Prolog file (`input_loop.pl`) defines:
        % Display current state
        format_list_msg(CurrentList, ListMsg),
        py_print(ListMsg),
-       
+
        % Get input from Python - unpacks tuple directly
        py_get_input(Content, Marker),
        process_input(Content, Marker, CurrentList).
    ```
-   
-   **Note:** Python returns a tuple `(content, marker)` which Janus converts to the 
-   Prolog term `-(Content, Marker)`. The predicate `py_get_input/2` unpacks this 
+
+   **Note:** Python returns a tuple `(content, marker)` which Janus converts to the
+   Prolog term `-(Content, Marker)`. The predicate `py_get_input/2` unpacks this
    directly, providing a clean interface for the caller.
 
 4. **Input Processing**:
    - `process_input(_Content, eof, List)`: Handles EOF marker (Ctrl-D)
    - `process_input('', ok, List)`: Handles empty input with ok marker
    - `process_input(Content, ok, List)`: Appends content and recurses
-   
+
    The termination decision is based on the marker, not the content, allowing "eof" to be a valid input value.
 
 ### The Python Side
@@ -208,34 +208,34 @@ The Python script (`demo.py`) does:
            return (user_input, 'ok')
        except EOFError:
            return ('', 'eof')
-   
+
    def py_print(message: str) -> None:
        print(message, flush=True)
    ```
-   
+
    The `py_get_input()` function returns a Python tuple:
    - `(content, 'ok')` for normal input
    - `('', 'eof')` for EOF/Ctrl-D
-   
-   Janus automatically converts the Python tuple to a Prolog term `-(Content, Marker)`, 
+
+   Janus automatically converts the Python tuple to a Prolog term `-(Content, Marker)`,
    which can be unpacked directly in Prolog predicates.
 
 2. **Loads Prolog File and Invokes Main Goal**:
    ```python
    import janus_swi as janus
-   
+
    # Add script directory to sys.path so Prolog can import this module
    script_dir = Path(__file__).parent.resolve()
    if str(script_dir) not in sys.path:
        sys.path.insert(0, str(script_dir))
-   
+
    # Load Prolog file (which defines predicates using py_call)
    janus.query_once(f"consult('{prolog_file}')")
-   
+
    # Invoke the Prolog main goal
    result = janus.query_once("main")
    ```
-   
+
    This transfers control to Prolog, which then calls back to Python as needed.
 
 ## Key Concepts
@@ -257,9 +257,9 @@ Janus allows Prolog to call Python functions as if they were native Prolog predi
   - Python `dict` with `'functor'` and `'args'` keys ↔ Prolog compound term
   - Python `None` ↔ Prolog unbound variable
 
-**Note on Tuples**: Python tuples provide a clean way to return multiple values. When Python 
-returns `(content, marker)`, Janus converts it to the Prolog term `-(content, marker)`, which 
-can be unpacked directly using pattern matching in the predicate head, as shown in 
+**Note on Tuples**: Python tuples provide a clean way to return multiple values. When Python
+returns `(content, marker)`, Janus converts it to the Prolog term `-(content, marker)`, which
+can be unpacked directly using pattern matching in the predicate head, as shown in
 `py_get_input(Content, Marker)`.
 
 ### Control Flow Inversion
@@ -268,7 +268,7 @@ Unlike typical Python scripts that call library functions, this pattern inverts 
 
 - **Python's role**: Setup, module import, invoking Prolog main goal, error handling
 - **Prolog's role**: Main loop, decision logic, control flow
-- **Benefits**: 
+- **Benefits**:
   - Leverage Prolog's declarative logic for complex control flow
   - Keep business logic in Prolog where it's more expressive
   - Use Python only for I/O and external integration

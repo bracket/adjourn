@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from lark import Lark, Transformer, Token
+from lark import Lark, Token, Transformer
 
 from adjourn.parser.ast import (
     Atom,
@@ -18,10 +18,12 @@ from adjourn.parser.ast import (
     Directive,
     Float,
     Integer,
-    List as ASTList,
     Program,
     String,
     Variable,
+)
+from adjourn.parser.ast import (
+    List as ASTList,
 )
 from adjourn.parser.grammar import PROLOG_GRAMMAR
 
@@ -29,7 +31,7 @@ from adjourn.parser.grammar import PROLOG_GRAMMAR
 class PrologTransformer(Transformer):
     """Lark transformer that converts parse trees to AST nodes."""
 
-    # Atoms and variables  
+    # Atoms and variables
     def atom(self, items: list[Any]) -> Atom:
         """Transform atom to Atom AST node."""
         # items[0] is the token string value
@@ -114,7 +116,7 @@ class PrologTransformer(Transformer):
     def curly_term(self, items: list[Any]) -> Compound:
         """Transform {Term} to compound."""
         return Compound("{}", items)
-    
+
     # Cut
     def cut(self, items: list[Any]) -> Atom:
         """Transform ! to atom."""
@@ -131,7 +133,7 @@ class PrologTransformer(Transformer):
 
     def op_dcg(self, items: list[Any]) -> Compound:
         return self._make_op("-->", items)
-    
+
     # Precedence 1150 - prefix operators
     def op_multifile(self, items: list[Any]) -> Compound:
         return self._make_op("multifile", items)
@@ -319,7 +321,7 @@ class PrologTransformer(Transformer):
     def term(self, items: list[Any]) -> Any:
         """Pass through term."""
         return items[0]
-    
+
     def arg_term(self, items: list[Any]) -> Any:
         """Pass through arg_term (used in compounds and lists)."""
         return items[0]
@@ -327,7 +329,7 @@ class PrologTransformer(Transformer):
     def term1200(self, items: list[Any]) -> Any:
         """Pass through term."""
         return items[0]
-    
+
     def term1150(self, items: list[Any]) -> Any:
         """Pass through term."""
         return items[0]
@@ -372,11 +374,11 @@ class PrologTransformer(Transformer):
     def clause_term(self, items: list[Any]) -> Any:
         """Pass through clause term."""
         return items[0]
-    
+
     def clause_body(self, items: list[Any]) -> Any:
         """Pass through clause body."""
         return items[0]
-    
+
     def fact(self, items: list[Any]) -> Clause:
         """Transform fact (clause without body)."""
         return Clause(head=items[0], body=None)
@@ -413,13 +415,13 @@ _parser = Lark(PROLOG_GRAMMAR, parser="lalr", transformer=PrologTransformer())
 
 def parse_term(text: str) -> Any:
     """Parse a Prolog term from a string.
-    
+
     Args:
         text: String containing a Prolog term
-        
+
     Returns:
         AST node representing the parsed term
-        
+
     Raises:
         lark.exceptions.LarkError: If parsing fails
     """
@@ -433,13 +435,13 @@ def parse_term(text: str) -> Any:
 
 def parse_clause(text: str) -> Clause | Directive:
     """Parse a Prolog clause (fact or rule) or directive from a string.
-    
+
     Args:
         text: String containing a Prolog clause or directive
-        
+
     Returns:
         Clause or Directive AST node
-        
+
     Raises:
         lark.exceptions.LarkError: If parsing fails
     """
@@ -451,13 +453,13 @@ def parse_clause(text: str) -> Clause | Directive:
 
 def parse_program(text: str) -> Program:
     """Parse a complete Prolog program from a string.
-    
+
     Args:
         text: String containing a Prolog program (multiple clauses/directives)
-        
+
     Returns:
         Program AST node containing all clauses and directives
-        
+
     Raises:
         lark.exceptions.LarkError: If parsing fails
     """
@@ -466,13 +468,13 @@ def parse_program(text: str) -> Program:
 
 def parse_file(filepath: str) -> Program:
     """Parse a Prolog file.
-    
+
     Args:
         filepath: Path to the Prolog file
-        
+
     Returns:
         Program AST node containing all clauses and directives
-        
+
     Raises:
         lark.exceptions.LarkError: If parsing fails
         IOError: If file cannot be read

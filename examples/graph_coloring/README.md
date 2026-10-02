@@ -87,12 +87,12 @@ Starting step-by-step execution
 Step 1: Suspended at yield point
   Label: chose_a_red
 
-Continue? (yes/no) [yes]: 
+Continue? (yes/no) [yes]:
 
 Step 2: Suspended at yield point
   Label: chose_b(red)
 
-Continue? (yes/no) [yes]: 
+Continue? (yes/no) [yes]:
 
 ...
 

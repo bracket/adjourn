@@ -45,7 +45,9 @@ class Runner:
             resolve clauses for a given ruleset hash.
     """
 
-    def __new__(cls, *args: Any, force_new: bool = False, **kwargs: Any) -> Runner:
+    def __new__(  # noqa: PYI034 -- singleton: may return the cached Runner, not a new cls
+        cls, *args: Any, force_new: bool = False, **kwargs: Any
+    ) -> Runner:
         global instance_
         # The override flag takes absolute precedence.
         effective_force = RUNNER_ALWAYS_FORCE_NEW or force_new

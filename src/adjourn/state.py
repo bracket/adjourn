@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import Any
 
 from adjourn.config import Config
-from adjourn.store import AggregateRuleSetStore, StoreInfo
+from adjourn.store import AggregateRuleSetStore
 
 
 def resolve_ruleset_hash(

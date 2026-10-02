@@ -9,9 +9,19 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from adjourn.parser.ast import Atom, Clause, Compound, Float, Integer, List, Program, String, Variable
-from adjourn.parser.parser import parse_file
 from adjourn.config import Config
+from adjourn.parser.ast import (
+    Atom,
+    Clause,
+    Compound,
+    Float,
+    Integer,
+    List,
+    Program,
+    String,
+    Variable,
+)
+from adjourn.parser.parser import parse_file
 
 
 class RuleSetStore(ABC):

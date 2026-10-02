@@ -657,7 +657,7 @@ class MnesticAdapter:
 
         # Add arguments from classified goals (derived and guard)
         for goal in parsed.goals:
-            if goal.kind == "derived" or goal.kind == "guard":
+            if isinstance(goal.detail, (DerivedLiteral, Guard)):
                 for arg in goal.detail.args:
                     if isinstance(arg, Atom):
                         tokens.add(arg.value)

@@ -16,7 +16,7 @@
 % Mode: py_get_input(-Content, -Marker)
 %   Content: The actual string entered by the user
 %   Marker: 'ok' for normal input or 'eof' for EOF/Ctrl-D
-%   
+%
 % Python returns a tuple (Content, Marker) which Janus converts to the
 % Prolog term -(Content, Marker). We unpack it directly in the predicate head.
 % This structure allows the user to enter the literal string "eof" as input
@@ -52,10 +52,10 @@ input_loop(CurrentList) :-
     % Show current list state
     format_list_msg(CurrentList, ListMsg),
     py_print(ListMsg),
-    
+
     % Prompt for input via Python callback
     py_print('Enter a value (or empty to quit): '),
-    
+
     % Get input from Python - this calls back to Python's input()
     (   py_get_input(Content, Marker),
         process_input(Content, Marker, CurrentList)

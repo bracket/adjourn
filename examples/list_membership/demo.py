@@ -15,7 +15,7 @@ from janus_swi import query_once, query
 
 def check_membership(value: int, numbers: list[int]) -> None:
     """Check if a value is a member of the list and print the result.
-    
+
     Args:
         value: The value to check for membership
         numbers: The list to check against
@@ -35,7 +35,7 @@ def check_membership(value: int, numbers: list[int]) -> None:
 
 def main() -> None:
     """Demonstrate Python-Prolog integration with list membership enumeration.
-    
+
     This function:
     - Creates a Python list of numbers
     - Loads the Prolog file containing the member/2 predicate
@@ -44,15 +44,15 @@ def main() -> None:
     """
     # Define a Python list of numbers
     numbers = [10, 20, 30, 40, 50]
-    
+
     print("Python-Prolog Integration Demo: List Membership")
     print("=" * 50)
     print(f"Original Python list: {numbers}")
     print()
-    
+
     # Get the path to the Prolog file in the same directory as this script
     prolog_file = Path(__file__).parent / "list_member.pl"
-    
+
     # Load the Prolog file
     # The consult/1 predicate loads Prolog source files
     # Note: Using f-string here is safe because:
@@ -64,23 +64,23 @@ def main() -> None:
     query_once(f"consult('{prolog_file}')")
     print("✓ Prolog file loaded successfully")
     print()
-    
+
     # Query the member/2 predicate to enumerate all elements
     # The query "member(X, List)" will generate each element on backtracking
     print("Enumerating list elements via Prolog:")
     print("-" * 50)
-    
+
     # Use query() to get all solutions (iterator that backtracks)
     element_count = 0
     for solution in query("member(X, List)", {"List": numbers}):
         element_count += 1
         element = solution["X"]
         print(f"  Element {element_count}: {element}")
-    
+
     print("-" * 50)
     print(f"Total elements enumerated: {element_count}")
     print()
-    
+
     # Demonstrate membership checks
     check_membership(30, numbers)
     check_membership(99, numbers)

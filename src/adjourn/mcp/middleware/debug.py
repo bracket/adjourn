@@ -1,14 +1,16 @@
 """Debug logging middleware for MCP HTTP traffic."""
 
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
 
 class DebugMiddleware:
     """Middleware that prints request/response details to stdout for debugging."""
 
-    def __init__(self, app: object) -> None:
+    def __init__(self, app: ASGIApp) -> None:
         """Initialise with the wrapped ASGI application."""
         self.app = app
 
-    async def __call__(self, scope: dict, receive: object, send: object) -> None:
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """Log request and response details then forward to the application."""
         if scope["type"] != "http":
             await self.app(scope, receive, send)
@@ -22,7 +24,7 @@ class DebugMiddleware:
 
         request_body = b""
 
-        async def capture_receive() -> dict:
+        async def capture_receive() -> Message:
             nonlocal request_body
             message = await receive()
             if message.get("type") == "http.request":
@@ -33,7 +35,7 @@ class DebugMiddleware:
         response_headers: dict = {}
         response_body = b""
 
-        async def capture_send(message: dict) -> None:
+        async def capture_send(message: Message) -> None:
             nonlocal status_code, response_headers, response_body
             if message.get("type") == "http.response.start":
                 status_code = message.get("status")

@@ -119,7 +119,7 @@ class String:
 @dataclass
 class Compound:
     """Represents a compound term (e.g., f(a, b, c)).
-    
+
     Args:
         functor: The functor name
         args: List of argument terms
@@ -150,7 +150,7 @@ class Compound:
 @dataclass
 class List:
     """Represents a Prolog list.
-    
+
     Args:
         elements: List of elements
         tail: Optional tail variable (for [H|T] notation), can be None
@@ -182,7 +182,7 @@ class List:
 @dataclass
 class Clause:
     """Represents a Prolog clause (fact or rule).
-    
+
     Args:
         head: The head term
         body: The body term (None for facts)
@@ -210,7 +210,7 @@ class Clause:
 @dataclass
 class Directive:
     """Represents a Prolog directive (e.g., :- module(...)).
-    
+
     Args:
         term: The directive term
     """
@@ -231,7 +231,7 @@ class Directive:
 @dataclass
 class Program:
     """Represents a complete Prolog program (list of clauses and directives).
-    
+
     Args:
         items: List of clauses and directives
     """
@@ -251,10 +251,10 @@ class Program:
 
 def _term_to_dict(term: Any) -> JSONDict | Any:
     """Convert a term to a JSON-serializable dictionary.
-    
+
     Args:
         term: An AST node or primitive value
-        
+
     Returns:
         JSON-serializable dictionary or primitive value
     """
@@ -265,21 +265,21 @@ def _term_to_dict(term: Any) -> JSONDict | Any:
 
 def from_dict(data: JSONDict) -> Any:
     """Reconstruct an AST node from a JSON-serializable dictionary.
-    
+
     Args:
         data: Dictionary representation of an AST node
-        
+
     Returns:
         Reconstructed AST node
-        
+
     Raises:
         ValueError: If the type is unknown or data is invalid
     """
     if not isinstance(data, dict) or "type" not in data:
         return data
-    
+
     node_type = data["type"]
-    
+
     if node_type == "Atom":
         return Atom(value=data["value"])
     elif node_type == "Variable":
@@ -320,17 +320,17 @@ def _paren_if_infix(arg: Any, rendered: str) -> str:
 
 def format_term(term: Any, indent: int = 0, indent_size: int = 2) -> str:
     """Format a term as a pretty-printed string with indentation.
-    
+
     Args:
         term: The term to format (should be an AST node)
         indent: Current indentation level (default: 0)
         indent_size: Number of spaces per indentation level (default: 2)
-        
+
     Returns:
         Pretty-printed string representation of the term
     """
     prefix = " " * (indent * indent_size)
-    
+
     if isinstance(term, (Atom, Variable, Integer, Float, String)):
         return f"{prefix}{term}"
     elif isinstance(term, Compound):
@@ -390,7 +390,7 @@ def format_term(term: Any, indent: int = 0, indent_size: int = 2) -> str:
 
 def print_term(term: Any, indent: int = 0, indent_size: int = 2) -> None:
     """Print a term with pretty-printing and indentation.
-    
+
     Args:
         term: The term to print (should be an AST node)
         indent: Current indentation level (default: 0)

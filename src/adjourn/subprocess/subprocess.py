@@ -77,6 +77,7 @@ def _subprocess(arg: Any) -> int:
             cwd=cwd,
             capture_output=True,
             text=True,
+            check=False,
         )
     except Exception:
         # Write captured output and traceback to stderr, then re-raise.

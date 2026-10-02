@@ -12,6 +12,7 @@ import os
 
 import uvicorn
 from starlette.middleware.cors import CORSMiddleware
+from starlette.types import ASGIApp
 
 from . import MCP_HOST, MCP_PORT, mcp
 from .middleware import (
@@ -33,7 +34,7 @@ def main() -> None:
     auth0_domain = os.environ.get("ADJOURN_MCP_AUTH0_DOMAIN")
     audience = os.environ.get("ADJOURN_MCP_AUTH0_AUDIENCE")
 
-    app = mcp.http_app(path="/mcp")
+    app: ASGIApp = mcp.http_app(path="/mcp")
     app = FixAcceptHeaderMiddleware(app)
     app = HealthMiddleware(app)
 

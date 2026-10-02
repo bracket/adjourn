@@ -35,26 +35,26 @@ import janus_swi as janus  # type: ignore[import-untyped]
 
 def load_prolog_files() -> bool:
     """Load the Prolog specification files for meta-interpreter and graph coloring.
-    
+
     Returns:
         True if all files loaded successfully, False otherwise.
-    
+
     The function loads:
     - toy_meta.pl: Continuation-style meta-interpreter with suspension support
     - toy_graph_coloring.pl: Graph coloring CSP problem definition
     """
     script_dir = Path(__file__).parent
-    
+
     prolog_files = [
         script_dir / "toy_meta.pl",
         script_dir / "toy_graph_coloring.pl",
     ]
-    
+
     for prolog_file in prolog_files:
         if not prolog_file.exists():
             print(f"Error: Prolog file not found: {prolog_file}", file=sys.stderr)
             return False
-        
+
         print(f"Loading: {prolog_file.name}")
         try:
             result = janus.query_once(f"consult('{prolog_file}')")
@@ -64,20 +64,20 @@ def load_prolog_files() -> bool:
         except Exception as e:
             print(f"Error loading {prolog_file}: {e}", file=sys.stderr)
             return False
-    
+
     print("✓ All Prolog files loaded successfully")
     return True
 
 
 def initialize_interpreter() -> Optional[str]:
     """Initialize the meta-interpreter with the graph coloring goal.
-    
+
     Returns:
         The initial interpreter state as a serialized string, or None if initialization failed.
-    
+
     The goal is coloring(CA, CB, CC, CD) where CA, CB, CC, CD are the colors
     for vertices a, b, c, d in the 4-cycle graph.
-    
+
     The state is serialized as a Prolog term string for Python to manage.
     """
     print("\nInitializing meta-interpreter with goal: coloring(CA, CB, CC, CD)")
@@ -104,10 +104,10 @@ def initialize_interpreter() -> Optional[str]:
 
 def prompt_user_continue() -> bool:
     """Prompt the user whether to continue execution.
-    
+
     Returns:
         True if user wants to continue, False otherwise.
-    
+
     Accepts case-insensitive yes/no input. Defaults to "yes" if empty input.
     Returns False on EOF or interrupt.
     """
@@ -124,17 +124,17 @@ def prompt_user_continue() -> bool:
 
 def extract_state_components(state_str: str) -> Optional[Dict[str, Any]]:
     """Extract and deserialize the full interpreter state at a suspension point.
-    
+
     Args:
         state_str: Serialized state string from the meta-interpreter
-    
+
     Returns:
         Dictionary containing:
         - 'resolvents': List of goal strings remaining to be resolved
         - 'num_branches': Number of alternative branches in the state
         - 'num_goals': Number of goals in the first branch
         or None if extraction fails.
-    
+
     Uses the toy_meta:extract_state_info/4 predicate to safely extract state
     components from the serialized state string.
     """
@@ -151,22 +151,22 @@ def extract_state_components(state_str: str) -> Optional[Dict[str, Any]]:
             }
     except Exception as e:
         print(f"Warning: Failed to extract state components: {e}", file=sys.stderr)
-    
+
     return None
 
 
 def pretty_print_state(state_components: Dict[str, Any], bindings: Dict[str, str]) -> None:
     """Format and display the interpreter state in a readable format.
-    
+
     Args:
         state_components: Dictionary with 'resolvents', 'num_branches', 'num_goals'
         bindings: Dictionary with current variable bindings (CA, CB, CC, CD)
-    
+
     Displays both the remaining resolvents and current variable substitutions
     with clear section headers.
     """
     print("  " + "─" * 56)
-    
+
     # Display variable bindings
     print("  Variable Bindings:")
     if any(v != '?' for v in bindings.values()):
@@ -177,13 +177,13 @@ def pretty_print_state(state_components: Dict[str, Any], bindings: Dict[str, str
             print(f"    {vertex} ({var}): {value}")
     else:
         print("    (none yet)")
-    
+
     # Display remaining goals
     num_goals = state_components.get('num_goals', 0)
     num_branches = state_components.get('num_branches', 0)
     print(f"\n  Remaining Goals: {num_goals} goal(s) in current branch")
     print(f"  Alternative Branches: {num_branches} total")
-    
+
     if num_goals > 0 and num_goals <= 5:
         resolvents = state_components.get('resolvents', [])
         if resolvents:
@@ -192,83 +192,83 @@ def pretty_print_state(state_components: Dict[str, Any], bindings: Dict[str, str
                 # Simplify goal display by removing module prefix
                 simplified = goal_str.replace('toy_program_graph_coloring:', '')
                 print(f"    {i}. {simplified}")
-    
+
     print("  " + "─" * 56)
 
 
 def extract_solution_from_state(bindings: Dict[str, str]) -> Optional[Dict[str, str]]:
     """Extract variable bindings from tracked substitutions.
-    
+
     Args:
         bindings: Dictionary with current variable bindings from tracked labels
-    
+
     Returns:
         Dictionary with variable bindings (CA, CB, CC, CD) or None if incomplete.
-    
+
     Uses the bindings tracked during execution from suspension labels.
     """
     # Check if we have all bindings
     if all(bindings.get(var, '?') != '?' for var in ['CA', 'CB', 'CC', 'CD']):
         return bindings
-    
+
     return None
 
 
 def format_solution(bindings: Dict[str, str]) -> str:
     """Format the solution bindings as a readable color assignment.
-    
+
     Args:
         bindings: Dictionary containing variable bindings (CA, CB, CC, CD)
-    
+
     Returns:
         Formatted string like "a=red, b=green, c=blue, d=red"
     """
     names = ['a', 'b', 'c', 'd']
     vertex_vars = ['CA', 'CB', 'CC', 'CD']
-    
+
     assignments = []
     for name, vertex_var in zip(names, vertex_vars):
         color = bindings.get(vertex_var, '?')
         assignments.append(f"{name}={color}")
-    
+
     return ", ".join(assignments)
 
 
 def run_demo() -> int:
     """Main demo loop: step through the meta-interpreter until completion.
-    
+
     Returns:
         Exit code: 0 for success, 1 for error or user cancellation.
-    
+
     The loop repeatedly calls step/3 with serialized state strings,
     handling three event types:
     - suspended(Label): A yield point where user can choose to continue
     - solution: A valid solution has been found
     - done: The computation has completed
-    
+
     State is managed in Python as serialized Prolog term strings.
     Variable bindings are tracked from suspension labels.
     """
     # Load Prolog files
     if not load_prolog_files():
         return 1
-    
+
     # Initialize interpreter
     state_str = initialize_interpreter()
     if state_str is None:
         return 1
-    
+
     print("\n" + "=" * 60)
     print("Starting step-by-step execution")
     print("=" * 60 + "\n")
-    
+
     step_count = 0
     # Track variable bindings from suspension labels
     bindings = {'CA': 'red', 'CB': '?', 'CC': '?', 'CD': '?'}  # CA is always red
-    
+
     while True:
         step_count += 1
-        
+
         try:
             # Call step/3 to advance the interpreter
             # Parse state string back to Prolog term, call step, serialize result
@@ -280,21 +280,21 @@ def run_demo() -> int:
                 "term_string(_Event, EventStr)",
                 {"StateInStr": state_str}
             )
-            
+
             if not result or not result.get('truth', True):
                 print("\nError: step/3 failed", file=sys.stderr)
                 return 1
-            
+
             event_str = result.get('EventStr')
             new_state_str = result.get('StateOutStr')
-            
+
             # Parse the event
             if 'suspended(' in event_str:
                 # Extract label from suspended(Label)
                 label_start = event_str.find('(') + 1
                 label_end = event_str.rfind(')')
                 label = event_str[label_start:label_end] if label_start > 0 and label_end > label_start else event_str
-                
+
                 # Extract variable bindings from labels like chose_b(red), chose_c(green), etc.
                 if label.startswith('chose_b(') and label.endswith(')'):
                     color = label[8:-1]  # Extract color from chose_b(color)
@@ -305,32 +305,32 @@ def run_demo() -> int:
                 elif label.startswith('chose_d(') and label.endswith(')'):
                     color = label[8:-1]  # Extract color from chose_d(color)
                     bindings['CD'] = color
-                
+
                 print(f"Step {step_count}: Suspended at yield point")
                 print(f"  Label: {label}")
-                
+
                 # Extract and display full state
                 state_components = extract_state_components(new_state_str)
                 if state_components:
                     pretty_print_state(state_components, bindings)
                 print()
-                
+
                 if not prompt_user_continue():
                     print("\n✓ User terminated execution")
                     return 0
-                
+
                 # Continue with the new state
                 state_str = new_state_str
                 print()
-            
+
             elif event_str == 'done':
                 print(f"\nStep {step_count}: Computation complete (done)")
                 print("✓ All solutions explored")
                 return 0
-            
+
             elif event_str == 'solution':
                 print(f"\nStep {step_count}: Solution found!")
-                
+
                 # Extract and display the solution
                 solution_bindings = extract_solution_from_state(bindings)
                 if solution_bindings:
@@ -339,15 +339,15 @@ def run_demo() -> int:
                 else:
                     print("  A valid coloring has been found for the 4-cycle graph!")
                     print("  (Note: Could not extract all variable bindings)")
-                
+
                 print("\n✓ Demo completed successfully")
                 return 0
-            
+
             else:
                 # Unknown event
                 print(f"Step {step_count}: Event '{event_str}'")
                 state_str = new_state_str
-        
+
         except Exception as e:
             print(f"\nError during execution: {e}", file=sys.stderr)
             import traceback
@@ -357,7 +357,7 @@ def run_demo() -> int:
 
 def main() -> NoReturn:
     """Entry point for the graph coloring meta-interpreter demo.
-    
+
     Sets up the environment and runs the demo, exiting with appropriate status code.
     """
     try:
@@ -370,10 +370,10 @@ def main() -> NoReturn:
         print("suspends at each decision point, allowing you to step through")
         print("the computation interactively.")
         print()
-        
+
         exit_code = run_demo()
         sys.exit(exit_code)
-    
+
     except KeyboardInterrupt:
         print("\n\n✓ Demo interrupted by user")
         sys.exit(0)

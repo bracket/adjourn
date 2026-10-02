@@ -40,10 +40,10 @@ The example implements a classic Prolog predicate `member/2` that checks list me
    sudo apt-add-repository ppa:swi-prolog/stable
    sudo apt-get update
    sudo apt-get install swi-prolog
-   
+
    # On macOS with Homebrew
    brew install swi-prolog
-   
+
    # On Windows, download from: https://www.swi-prolog.org/Download.html
    ```
 
@@ -51,7 +51,7 @@ The example implements a classic Prolog predicate `member/2` that checks list me
    ```bash
    pip install -e /path/to/constraint
    ```
-   
+
    This will automatically install the `janus-swi` dependency.
 
 ## Running the Example
@@ -150,7 +150,7 @@ if result and result.get('truth', True):
   - Returns a dictionary with variable bindings if the query has unbound variables
   - Returns `None` if the query fails completely
   - **Important (Janus 1.5+)**: When all variables are bound (e.g., membership checks), returns `{'truth': True}` on success or `{'truth': False}` on failure. Check with `result and result.get('truth', True)`.
-  
+
 - **`query(query_string, bindings={})`**: Returns an iterator over all solutions. Use for enumerating multiple results via backtracking.
 
 ### Variable Binding

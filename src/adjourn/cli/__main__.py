@@ -9,8 +9,8 @@ from typing import Any
 import click
 from click.shell_completion import get_completion_class
 
-from adjourn.config import Config
 from adjourn.adjourn_foreign import load_foreign_plugins
+from adjourn.config import Config
 from adjourn.runner import Runner
 from adjourn.state import init_state, set_resume_hash
 from adjourn.state_store import JsonFileStateStore
@@ -596,34 +596,34 @@ def _format_state_json(
 )
 def complete(output: Path | None, shell: str) -> None:
     """Generate shell completion script.
-    
+
     This command generates a shell completion script that enables
     tab-completion for the adjourn CLI.
-    
+
     Examples:
-    
+
         # Output to stdout
         adjourn complete
-        
+
         # Save to file
         adjourn complete -o ~/.local/share/bash-completion/completions/adjourn
-        
+
     After generating the script, source it in your shell configuration:
-    
+
         # For bash, add to ~/.bashrc:
         source ~/.local/share/bash-completion/completions/adjourn
-        
+
         # Or for immediate use:
         eval "$(adjourn complete)"
     """
     # Generate completion script using Click's built-in support
     shell_lower = shell.lower()
     completion_script = generate_completion(shell_lower)
-    
+
     # Add header with usage instructions
     header = _get_completion_header(shell_lower)
     full_script = header + "\n\n" + completion_script
-    
+
     if output:
         try:
             output.parent.mkdir(parents=True, exist_ok=True)

@@ -26,7 +26,7 @@ from adjourn.parser import (
 
 def find_git_root() -> Path | None:
     """Find the git repository root by searching upward for .git directory.
-    
+
     Returns:
         Path to git root, or None if not found
     """
@@ -40,24 +40,24 @@ def find_git_root() -> Path | None:
 
 def get_example_file_path(relative_path: str) -> Path:
     """Get absolute path to example file, handling different test execution contexts.
-    
+
     Args:
         relative_path: Path relative to git root (e.g., "examples/list_membership/list_member.pl")
-        
+
     Returns:
         Absolute Path to the file
-        
+
     Raises:
         pytest.skip: If git root not found or file doesn't exist
     """
     git_root = find_git_root()
     if git_root is None:
         pytest.skip("Git root not found - cannot locate example files")
-    
+
     file_path = git_root / relative_path
     if not file_path.exists():
         pytest.skip(f"Example file not found: {file_path}")
-    
+
     return file_path
 
 
@@ -452,7 +452,7 @@ class TestPrograms:
         """Test parsing a program with directive."""
         code = """
         :- module(test, []).
-        
+
         fact(a).
         """
         result = parse_program(code)
@@ -581,11 +581,11 @@ class TestJSONRoundTrip:
     def test_atom_json_roundtrip(self) -> None:
         """Test JSON round-trip for atoms."""
         from adjourn.parser import from_dict
-        
+
         original = Atom("hello")
         json_dict = original.to_dict()
         reconstructed = from_dict(json_dict)
-        
+
         assert isinstance(reconstructed, Atom)
         assert reconstructed.value == original.value
         assert reconstructed == original
@@ -593,11 +593,11 @@ class TestJSONRoundTrip:
     def test_variable_json_roundtrip(self) -> None:
         """Test JSON round-trip for variables."""
         from adjourn.parser import from_dict
-        
+
         original = Variable("X")
         json_dict = original.to_dict()
         reconstructed = from_dict(json_dict)
-        
+
         assert isinstance(reconstructed, Variable)
         assert reconstructed.name == original.name
         assert reconstructed == original
@@ -605,11 +605,11 @@ class TestJSONRoundTrip:
     def test_integer_json_roundtrip(self) -> None:
         """Test JSON round-trip for integers."""
         from adjourn.parser import from_dict
-        
+
         original = Integer(42)
         json_dict = original.to_dict()
         reconstructed = from_dict(json_dict)
-        
+
         assert isinstance(reconstructed, Integer)
         assert reconstructed.value == original.value
         assert reconstructed == original
@@ -617,11 +617,11 @@ class TestJSONRoundTrip:
     def test_float_json_roundtrip(self) -> None:
         """Test JSON round-trip for floats."""
         from adjourn.parser import from_dict
-        
+
         original = Float(3.14)
         json_dict = original.to_dict()
         reconstructed = from_dict(json_dict)
-        
+
         assert isinstance(reconstructed, Float)
         assert reconstructed.value == original.value
         assert reconstructed == original
@@ -629,11 +629,11 @@ class TestJSONRoundTrip:
     def test_string_json_roundtrip(self) -> None:
         """Test JSON round-trip for strings."""
         from adjourn.parser import from_dict
-        
+
         original = String("hello world")
         json_dict = original.to_dict()
         reconstructed = from_dict(json_dict)
-        
+
         assert isinstance(reconstructed, String)
         assert reconstructed.value == original.value
         assert reconstructed == original
@@ -641,11 +641,11 @@ class TestJSONRoundTrip:
     def test_simple_compound_json_roundtrip(self) -> None:
         """Test JSON round-trip for simple compound terms."""
         from adjourn.parser import from_dict
-        
+
         original = Compound("f", [Atom("a"), Atom("b")])
         json_dict = original.to_dict()
         reconstructed = from_dict(json_dict)
-        
+
         assert isinstance(reconstructed, Compound)
         assert reconstructed.functor == original.functor
         assert len(reconstructed.args) == len(original.args)
@@ -654,25 +654,25 @@ class TestJSONRoundTrip:
     def test_nested_compound_json_roundtrip(self) -> None:
         """Test JSON round-trip for nested compound terms."""
         from adjourn.parser import from_dict
-        
+
         original = Compound("f", [
             Compound("g", [Atom("a")]),
             Compound("h", [Integer(1), Variable("X")])
         ])
         json_dict = original.to_dict()
         reconstructed = from_dict(json_dict)
-        
+
         assert isinstance(reconstructed, Compound)
         assert reconstructed == original
 
     def test_simple_list_json_roundtrip(self) -> None:
         """Test JSON round-trip for simple lists."""
         from adjourn.parser import from_dict
-        
+
         original = List([Atom("a"), Atom("b"), Atom("c")])
         json_dict = original.to_dict()
         reconstructed = from_dict(json_dict)
-        
+
         assert isinstance(reconstructed, List)
         assert len(reconstructed.elements) == len(original.elements)
         assert reconstructed.tail == original.tail
@@ -681,11 +681,11 @@ class TestJSONRoundTrip:
     def test_list_with_tail_json_roundtrip(self) -> None:
         """Test JSON round-trip for lists with tail."""
         from adjourn.parser import from_dict
-        
+
         original = List([Atom("a"), Atom("b")], tail=Variable("T"))
         json_dict = original.to_dict()
         reconstructed = from_dict(json_dict)
-        
+
         assert isinstance(reconstructed, List)
         assert reconstructed == original
         assert isinstance(reconstructed.tail, Variable)
@@ -693,11 +693,11 @@ class TestJSONRoundTrip:
     def test_fact_clause_json_roundtrip(self) -> None:
         """Test JSON round-trip for fact clauses."""
         from adjourn.parser import from_dict
-        
+
         original = Clause(head=Compound("parent", [Atom("alice"), Atom("bob")]))
         json_dict = original.to_dict()
         reconstructed = from_dict(json_dict)
-        
+
         assert isinstance(reconstructed, Clause)
         assert reconstructed.body is None
         assert reconstructed == original
@@ -705,14 +705,14 @@ class TestJSONRoundTrip:
     def test_rule_clause_json_roundtrip(self) -> None:
         """Test JSON round-trip for rule clauses."""
         from adjourn.parser import from_dict
-        
+
         original = Clause(
             head=Compound("ancestor", [Variable("X"), Variable("Y")]),
             body=Compound("parent", [Variable("X"), Variable("Y")])
         )
         json_dict = original.to_dict()
         reconstructed = from_dict(json_dict)
-        
+
         assert isinstance(reconstructed, Clause)
         assert reconstructed.body is not None
         assert reconstructed == original
@@ -720,25 +720,25 @@ class TestJSONRoundTrip:
     def test_directive_json_roundtrip(self) -> None:
         """Test JSON round-trip for directives."""
         from adjourn.parser import from_dict
-        
+
         original = Directive(term=Compound("module", [Atom("test")]))
         json_dict = original.to_dict()
         reconstructed = from_dict(json_dict)
-        
+
         assert isinstance(reconstructed, Directive)
         assert reconstructed == original
 
     def test_program_json_roundtrip(self) -> None:
         """Test JSON round-trip for programs."""
         from adjourn.parser import from_dict
-        
+
         original = Program(items=[
             Clause(head=Compound("fact", [Atom("a")])),
             Directive(term=Compound("module", [Atom("test")])),
         ])
         json_dict = original.to_dict()
         reconstructed = from_dict(json_dict)
-        
+
         assert isinstance(reconstructed, Program)
         assert len(reconstructed.items) == len(original.items)
         assert reconstructed == original
@@ -746,28 +746,28 @@ class TestJSONRoundTrip:
     def test_parsed_term_json_roundtrip(self) -> None:
         """Test JSON round-trip for a parsed term."""
         from adjourn.parser import from_dict
-        
+
         original = parse_term("f(g(a), h(1, X))")
         json_dict = original.to_dict()
         reconstructed = from_dict(json_dict)
-        
+
         assert reconstructed == original
 
     def test_parsed_clause_json_roundtrip(self) -> None:
         """Test JSON round-trip for a parsed clause."""
         from adjourn.parser import from_dict
-        
+
         original = parse_clause("ancestor(X, Y) :- parent(X, Y).")
         json_dict = original.to_dict()
         reconstructed = from_dict(json_dict)
-        
+
         assert reconstructed == original
 
     def test_json_dict_structure(self) -> None:
         """Test that JSON dict has correct structure."""
         term = Compound("f", [Atom("a"), Integer(1)])
         json_dict = term.to_dict()
-        
+
         assert json_dict["type"] == "Compound"
         assert json_dict["functor"] == "f"
         assert len(json_dict["args"]) == 2
@@ -783,7 +783,7 @@ class TestTermPrettyPrint:
     def test_format_atom(self) -> None:
         """Test formatting an atom."""
         from adjourn.parser import format_term
-        
+
         term = Atom("hello")
         result = format_term(term)
         assert result == "hello"
@@ -791,7 +791,7 @@ class TestTermPrettyPrint:
     def test_format_variable(self) -> None:
         """Test formatting a variable."""
         from adjourn.parser import format_term
-        
+
         term = Variable("X")
         result = format_term(term)
         assert result == "X"
@@ -799,7 +799,7 @@ class TestTermPrettyPrint:
     def test_format_integer(self) -> None:
         """Test formatting an integer."""
         from adjourn.parser import format_term
-        
+
         term = Integer(42)
         result = format_term(term)
         assert result == "42"
@@ -807,7 +807,7 @@ class TestTermPrettyPrint:
     def test_format_float(self) -> None:
         """Test formatting a float."""
         from adjourn.parser import format_term
-        
+
         term = Float(3.14)
         result = format_term(term)
         assert result == "3.14"
@@ -815,7 +815,7 @@ class TestTermPrettyPrint:
     def test_format_string(self) -> None:
         """Test formatting a string."""
         from adjourn.parser import format_term
-        
+
         term = String("hello")
         result = format_term(term)
         assert result == '"hello"'
@@ -823,7 +823,7 @@ class TestTermPrettyPrint:
     def test_format_simple_compound(self) -> None:
         """Test formatting a simple compound with one arg."""
         from adjourn.parser import format_term
-        
+
         term = Compound("f", [Atom("a")])
         result = format_term(term)
         assert result == "f(a)"
@@ -831,7 +831,7 @@ class TestTermPrettyPrint:
     def test_format_compound_no_args(self) -> None:
         """Test formatting a compound with no args."""
         from adjourn.parser import format_term
-        
+
         term = Compound("f", [])
         result = format_term(term)
         assert result == "f"
@@ -839,11 +839,11 @@ class TestTermPrettyPrint:
     def test_format_multiarg_compound(self) -> None:
         """Test formatting a compound with multiple args."""
         from adjourn.parser import format_term
-        
+
         term = Compound("f", [Atom("a"), Atom("b"), Atom("c")])
         result = format_term(term)
         lines = result.split("\n")
-        
+
         assert lines[0] == "f("
         assert "  a," in lines[1]
         assert "  b," in lines[2]
@@ -853,13 +853,13 @@ class TestTermPrettyPrint:
     def test_format_nested_compound(self) -> None:
         """Test formatting nested compound terms."""
         from adjourn.parser import format_term
-        
+
         term = Compound("f", [
             Compound("g", [Atom("a")]),
             Compound("h", [Atom("b")])
         ])
         result = format_term(term)
-        
+
         # Should have proper indentation
         assert "f(" in result
         assert "  g(a)," in result
@@ -869,7 +869,7 @@ class TestTermPrettyPrint:
     def test_format_empty_list(self) -> None:
         """Test formatting an empty list."""
         from adjourn.parser import format_term
-        
+
         term = List([])
         result = format_term(term)
         assert result == "[]"
@@ -877,7 +877,7 @@ class TestTermPrettyPrint:
     def test_format_single_element_list(self) -> None:
         """Test formatting a list with one element."""
         from adjourn.parser import format_term
-        
+
         term = List([Atom("a")])
         result = format_term(term)
         assert result == "[a]"
@@ -885,11 +885,11 @@ class TestTermPrettyPrint:
     def test_format_multielement_list(self) -> None:
         """Test formatting a list with multiple elements."""
         from adjourn.parser import format_term
-        
+
         term = List([Atom("a"), Atom("b"), Atom("c")])
         result = format_term(term)
         lines = result.split("\n")
-        
+
         assert lines[0] == "["
         assert "  a," in lines[1]
         assert "  b," in lines[2]
@@ -899,10 +899,10 @@ class TestTermPrettyPrint:
     def test_format_list_with_tail(self) -> None:
         """Test formatting a list with tail."""
         from adjourn.parser import format_term
-        
+
         term = List([Atom("a"), Atom("b")], tail=Variable("T"))
         result = format_term(term)
-        
+
         assert "[" in result
         assert "  a," in result
         assert "  b" in result
@@ -937,11 +937,11 @@ class TestTermPrettyPrint:
     def test_format_with_custom_indent(self) -> None:
         """Test formatting with custom indentation."""
         from adjourn.parser import format_term
-        
+
         term = Compound("f", [Atom("a"), Atom("b")])
         result = format_term(term, indent=1, indent_size=4)
         lines = result.split("\n")
-        
+
         # Should start with 4 spaces (1 level * 4 spaces)
         assert lines[0] == "    f("
         # Args should have 8 spaces (2 levels * 4 spaces)
@@ -950,7 +950,7 @@ class TestTermPrettyPrint:
     def test_print_term_output(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Test that print_term outputs the formatted string."""
         from adjourn.parser import print_term
-        
+
         term = Atom("hello")
         print_term(term)
         captured = capsys.readouterr()
@@ -959,10 +959,10 @@ class TestTermPrettyPrint:
     def test_format_parsed_term(self) -> None:
         """Test formatting a parsed term."""
         from adjourn.parser import format_term
-        
+
         term = parse_term("f(a, b, c)")
         result = format_term(term)
-        
+
         # Should format with multiple lines
         assert "f(" in result
         assert ")" in result

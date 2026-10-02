@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import json
 
+from starlette.types import ASGIApp, Receive, Scope, Send
+
 
 class HealthMiddleware:
     """Serve a lightweight unauthenticated health endpoint."""
 
-    def __init__(self, app: object) -> None:
+    def __init__(self, app: ASGIApp) -> None:
         """Initialise with the wrapped ASGI application."""
         self.app = app
 
-    async def __call__(self, scope: dict, receive: object, send: object) -> None:
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """Return ``200 {"status":"ok"}`` for ``GET /health`` and pass through otherwise."""
         if (
             scope.get("type") == "http"

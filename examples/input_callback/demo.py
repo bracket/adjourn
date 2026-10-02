@@ -19,18 +19,18 @@ import janus_swi as janus
 
 def py_get_input() -> tuple:
     """Get user input via Python's input() function.
-    
+
     This function is called from Prolog as a foreign predicate.
     It reads a line from stdin and returns a tuple.
-    
+
     Returns:
         A tuple (Content, Marker) where:
         - Content: The actual string entered by the user
         - Marker: 'ok' for normal input, 'eof' for EOF/Ctrl-D
-        
+
         This allows the user to actually enter the string "eof" as input,
         while using the marker to detect when to terminate the loop.
-    
+
     Note:
         This function is registered with Janus and called from Prolog.
         The tuple is automatically converted to the Prolog -(Content, Marker) term.
@@ -51,13 +51,13 @@ def py_get_input() -> tuple:
 
 def py_print(message: str) -> None:
     """Print a message to stdout.
-    
+
     This function is called from Prolog as a foreign predicate.
     It provides a way for Prolog to output messages via Python.
-    
+
     Args:
         message: The message to print (string or Prolog term converted to string)
-    
+
     Note:
         Using print() directly flushes output immediately, ensuring
         prompts appear before input() is called.
@@ -67,12 +67,12 @@ def py_print(message: str) -> None:
 
 def main() -> None:
     """Main entry point for the Prolog-driven input callback demo.
-    
+
     This function:
     1. Loads the Prolog file containing the main loop
     2. Invokes the Prolog main/0 goal to start the interactive loop
     3. Handles any errors that occur during execution
-    
+
     The control flow is:
     - Python loads the Prolog file
     - Prolog file defines predicates that call back to Python via py_call/2
@@ -86,34 +86,34 @@ def main() -> None:
     try:
         # Get the path to the Prolog file in the same directory
         prolog_file = Path(__file__).parent / "input_loop.pl"
-        
+
         # Add the current script directory to Python's sys.path so Prolog can import this module
         script_dir = Path(__file__).parent.resolve()
         if str(script_dir) not in sys.path:
             sys.path.insert(0, str(script_dir))
-        
+
         # Load the Prolog file
         # Note: Using f-string is safe here because prolog_file is constructed
         # from __file__ (not user input). For user-supplied paths, validate first.
         print(f"Loading Prolog file: {prolog_file}")
         result = janus.query_once(f"consult('{prolog_file}')")
-        
+
         if not result or not result.get('truth', True):
             print(f"Error: Failed to load Prolog file: {prolog_file}", file=sys.stderr)
             sys.exit(1)
-        
+
         print("✓ Prolog file loaded successfully")
         print()
-        
+
         # Now invoke the main Prolog goal
         # This starts the interactive loop in Prolog, which will call back to Python
         # The Prolog predicates py_get_input/1 and py_print/1 use py_call/2 to
         # invoke the Python functions defined in this module
         print("Starting Prolog-driven interactive loop...")
         print()
-        
+
         result = janus.query_once("main")
-        
+
         # Check if the goal succeeded
         if result and result.get('truth', True):
             print()
@@ -122,7 +122,7 @@ def main() -> None:
             print()
             print("⚠ Program terminated without success", file=sys.stderr)
             sys.exit(1)
-            
+
     except FileNotFoundError as e:
         print(f"Error: Prolog file not found: {e}", file=sys.stderr)
         sys.exit(1)

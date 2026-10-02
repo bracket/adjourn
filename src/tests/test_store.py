@@ -1083,7 +1083,7 @@ class TestMnesticAdapterQueryCompile:
 
     def test_accepts_variable_in_derived_body(self, tmp_path: Path) -> None:
         """A Variable in a derived-rule body literal is accepted.
-        
+
         Derived rules may contain variables as rule parameters; these are
         not checked for groundness since they are legitimate rule variables.
         """

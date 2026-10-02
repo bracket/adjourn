@@ -16,12 +16,12 @@ base of observed and desirable facts, as well as "currently executing query" (a
 remaining resolvent stack)
 
 # Fact Databases
- 
+
 RocksDB will be used as the first layer fact databse engine.  A system will be
 implemented with predicates in Prolog and functions in Python to store and
 retreieve terms.  This will be the primary layer for complex synchronization
 between Python and Janus-SWI.
- 
+
 Other longer term persistence layers will be added later, candidates are:
 
 - PostgreSQL with a custom schema for storing Prolog terms
@@ -35,7 +35,7 @@ The proposed predicates are
     - Regardless, users should not have to care about the details the implemntation of the `ref` predicate.
 
 # Future Directions
- 
+
 - The core loop of a constraint project is:
     - Layer a set of facts (observed, desirable, etc)
         - These should be queryable from whatever datastores the user wants

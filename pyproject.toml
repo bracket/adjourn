@@ -23,8 +23,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=7.4.0",
-    "mypy>=1.0.0",
-    "ruff>=0.1.0",
+    "mypy==2.4.0",
+    "ruff==0.16.10",
     "types-PyYAML>=6.0",
     "pre-commit>=3.0",
     "adjourn[mcp,query]",
@@ -59,8 +59,19 @@ testpaths = ["src/tests"]
 source = ["adjourn"]
 branch = true
 
+[tool.ruff.lint]
+# TRY004 wants TypeError after failed isinstance checks. Our checks validate
+# user-supplied data (YAML config, query terms); the CLI catches ValueError
+# to report those cleanly, so ValueError is the correct type here.
+ignore = ["TRY004"]
+
 [tool.mypy]
 # Exclude parser.py due to lark transformer internal typing issues
 [[tool.mypy.overrides]]
 module = "adjourn.parser.parser"
 ignore_errors = true
+
+# mnestic ships no type information.
+[[tool.mypy.overrides]]
+module = ["mnestic", "mnestic.*"]
+ignore_missing_imports = true
