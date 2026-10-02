@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install SWI-Prolog
+        run: |
+          sudo apt-add-repository -y ppa:swi-prolog/stable
+          sudo apt-get update
+          sudo apt-get install -y swi-prolog
+          swipl --version
+
+      - name: Install adjourn
+        run: pip install -e ".[dev]"
+
+      - name: Ruff
+        if: matrix.python-version == '3.13'
+        run: ruff check src/adjourn
+
+      - name: Mypy
+        if: matrix.python-version == '3.13'
+        run: mypy src/adjourn
+
+      - name: Pytest
+        run: pytest

@@ -1,5 +1,7 @@
 # adjourn
 
+[![CI](https://github.com/bracket/adjourn/actions/workflows/ci.yml/badge.svg)](https://github.com/bracket/adjourn/actions/workflows/ci.yml)
+
 **A Prolog engine that stops and asks for help.** `adjourn` runs logic
 queries that pause when they get stuck, persist their exact state, and resume
 once an LLM (or a person) has supplied what was missing.

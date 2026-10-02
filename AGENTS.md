@@ -156,7 +156,7 @@ Rules for adding a new `.pl` file that Python must load:
 - **Stores:** `adjourn.store` — `RuleSetStore`, content-addressed rulesets,
   `hash_clauses`; `MnesticRuleSetStore` (CozoDB adapter, read-only) in
   `store/mnestic_store.py` + `store/mnestic_adapter.py`. Design in
-  `docs/mnestic-store.md`.
+  `docs/design/mnestic-store.md`.
 
 ## Architectural invariant (do not violate)
 
