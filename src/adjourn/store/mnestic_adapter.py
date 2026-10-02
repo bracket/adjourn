@@ -12,8 +12,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from mnestic import CozoDbPy
-
 from adjourn.parser import Atom, Compound, Integer, List, Variable, parse_term
 
 # ---------------------------------------------------------------------------
@@ -157,6 +155,13 @@ class MnesticAdapter:
 
     def __init__(self, path: str) -> None:
         self.path = path
+        try:
+            from mnestic import CozoDbPy
+        except ImportError as exc:
+            raise ImportError(
+                "mnestic stores require the optional 'query' extra: "
+                "pip install 'adjourn[query]'"
+            ) from exc
         self._db = CozoDbPy("rocksdb", path, "")
 
     def run_script(

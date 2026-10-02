@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,6 +7,8 @@ name = "adjourn"
 version = "0.1.8"
 description = "A suspendable, resumable Prolog meta-interpreter for long-running queries that interleave machine and human/LLM resolution."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 authors = [
     { name = "Bracket" }
@@ -15,7 +17,6 @@ dependencies = [
     "click>=8.1.0",
     "janus-swi>=1.5.2",
     "lark>=1.1.0",
-    "mnestic>=0.13.1",
     "PyYAML>=6.0",
 ]
 
@@ -25,7 +26,12 @@ dev = [
     "mypy>=1.0.0",
     "ruff>=0.1.0",
     "types-PyYAML>=6.0",
-    "adjourn[mcp]",
+    "pre-commit>=3.0",
+    "adjourn[mcp,query]",
+]
+
+query = [
+    "mnestic>=0.13.1",
 ]
 
 mcp = [
