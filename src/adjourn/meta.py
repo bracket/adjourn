@@ -174,10 +174,9 @@ def _build_packed_atom(state: dict[str, Any]) -> str:
     By combining the original goal and the state branches into a SINGLE Prolog
     term string, variable names that appear in both the original goal and the
     branch goals will refer to the same Prolog variable when the atom is
-    parsed by SWI-Prolog's ``read_term_from_atom/3``.  This is the mechanism
-    that allows variable binding extraction after a ``solution`` event (when
-    the variable survives in the packed atom without going through
-    ``findall`` copying).
+    parsed by SWI-Prolog's ``read_term_from_atom/3``.  This is how
+    ``step_packed/4`` reports a solution's bindings under the user's
+    variable names.
 
     Args:
         state: A v0 state dictionary.
@@ -254,38 +253,6 @@ def _unflatten_branches(flat: list[Any]) -> list[dict[str, Any]]:
     return branches
 
 
-def _extract_bindings(
-    original_goal: str,
-    packed_out: str,
-) -> dict[str, str]:
-    """Attempt to extract variable bindings after a ``solution`` event.
-
-    Calls ``extract_bindings_str/4`` in Prolog, which unifies the original
-    goal string with the bound goal in the packed solution atom and collects
-    variable name → value mappings.  Returns ``{}`` when the original goal
-    has no variables or the unification fails (the common case; see module
-    docstring).
-
-    Args:
-        original_goal: The original goal as a string (e.g. ``"color(X, Y)"``).
-        packed_out: The packed output atom from ``step_packed/4`` (solution).
-
-    Returns:
-        Dict mapping variable name strings to their bound term strings.
-    """
-    result = janus.query_once(
-        "extract_bindings_str(OGS, PSA, VN, VV)",
-        {"OGS": original_goal, "PSA": packed_out},
-    )
-    if not result or result.get("truth") is False:
-        return {}
-    names: Any = result.get("VN") or []
-    values: Any = result.get("VV") or []
-    if not isinstance(names, list) or not isinstance(values, list):
-        return {}
-    return {str(n): str(v) for n, v in zip(names, values)}
-
-
 def _build_new_state(
     old_state: dict[str, Any],
     event_atom: str,
@@ -322,22 +289,10 @@ def _build_new_state(
 
     elif event_atom == "solution":
         new_state["status"] = "solution"
-        # Try to recover bindings from the packed atom (best-effort).
-        bindings: dict[str, str] = {}
-        # First use the flat list from step_packed (works when OrigGoal in
-        # the packed atom is ground at solution time).
-        if binding_flat:
-            it = iter(binding_flat)
-            try:
-                for name in it:
-                    value = next(it)
-                    bindings[str(name)] = str(value)
-            except StopIteration:
-                pass
-        # Fall back to extract_bindings_str.
-        if not bindings:
-            bindings = _extract_bindings(old_state["original_goal"], packed_out)
-        new_state["bindings"] = bindings
+        # step_packed/4 returns the solution's bindings as a flat
+        # [Name1, Value1, Name2, Value2, ...] list.
+        it = iter(binding_flat)
+        new_state["bindings"] = {str(name): str(value) for name, value in zip(it, it)}
 
     elif event_atom.startswith("suspended("):
         new_state["status"] = "suspended"

@@ -845,3 +845,91 @@ class TestResumeHashPreservation:
         state2 = resume_state(state, self.ruleset)
         assert state2["resume_hash"] == "some_resume_hash"
         assert state2["ruleset_hash"] == "some_hash"
+
+
+# ---------------------------------------------------------------------------
+# Reduction semantics: branch death, alternatives, and error cases
+# ---------------------------------------------------------------------------
+
+
+def _running_state(goal: str) -> dict[str, Any]:
+    """Return a fresh running state for *goal*."""
+    return {
+        "version": 0,
+        "original_goal": goal,
+        "branches": [{"goals": [goal]}],
+        "status": "running",
+    }
+
+
+class TestReductionSemantics:
+    """Pins how reduce_goal/6 handles failure, alternatives, and bad goals.
+
+    Predicate names are prefixed ``rs_`` so rule/2 facts accumulated in the
+    shared SWI-Prolog process by other test classes cannot interfere.
+    """
+
+    def setup_method(self) -> None:
+        self.ruleset = _parse_rules(
+            "rule(rs_pick(a), true).\n"
+            "rule(rs_pick(b), true).\n"
+            "rule(rs_num(1), true).\n"
+            "rule(rs_num(2), true).\n"
+            "rule(rs_color(red), true).\n"
+            "rule(rs_color(blue), true).\n"
+            "rule(rs_unify_fail, (X = a, X = b)).\n"
+            "rule(rs_call_var(G), G).\n"
+            "rule(rs_foreign_mismatch, foreign(git_rev_parse, 'HEAD', not_a_sha)).\n"
+        )
+
+    def test_failed_unification_drops_branch(self) -> None:
+        from adjourn.meta import resume_state
+
+        result = resume_state(_running_state("rs_unify_fail"), self.ruleset)
+        assert result["status"] == "done"
+
+    def test_failed_unification_falls_back_to_next_alternative(self) -> None:
+        from adjourn.meta import resume_state
+
+        result = resume_state(_running_state("rs_pick(X), X = b"), self.ruleset)
+        assert result["status"] == "solution"
+        assert result["bindings"] == {"X": "b"}
+
+    def test_failed_builtin_drops_branch(self) -> None:
+        from adjourn.meta import resume_state
+
+        result = resume_state(_running_state("rs_num(X), X > 1"), self.ruleset)
+        assert result["status"] == "solution"
+        assert result["bindings"] == {"X": "2"}
+
+    def test_each_solution_carries_its_own_bindings(self) -> None:
+        from adjourn.meta import resume_state
+
+        first = resume_state(_running_state("rs_color(C)"), self.ruleset)
+        assert first["status"] == "solution"
+        assert first["bindings"] == {"C": "red"}
+
+        second = resume_state(first, self.ruleset)
+        assert second["status"] == "solution"
+        assert second["bindings"] == {"C": "blue"}
+
+        third = resume_state(second, self.ruleset)
+        assert third["status"] == "done"
+
+    def test_unbound_goal_raises_instantiation_error(self) -> None:
+        from adjourn.meta import resume_state
+
+        with pytest.raises(Exception, match="not sufficiently instantiated"):
+            resume_state(_running_state("rs_call_var(_)"), self.ruleset)
+
+    def test_module_qualified_goal_raises(self) -> None:
+        from adjourn.meta import resume_state
+
+        with pytest.raises(Exception, match="module_qualified_goal"):
+            resume_state(_running_state("some_module:rs_pick(X)"), self.ruleset)
+
+    def test_foreign_output_mismatch_drops_branch(self) -> None:
+        from adjourn.meta import resume_state
+
+        result = resume_state(_running_state("rs_foreign_mismatch"), self.ruleset)
+        assert result["status"] == "done"
