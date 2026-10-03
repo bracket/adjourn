@@ -15,10 +15,48 @@ Public functions:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from adjourn.config import Config
 from adjourn.store import AggregateRuleSetStore
+
+DEFAULT_FIELDS = (
+    "status",
+    "label",
+    "original_goal",
+    "bindings",
+    "ruleset_hash",
+    "resume_hash",
+)
+VERBOSE_FIELDS = (*DEFAULT_FIELDS, "resume_kind", "branch_count", "branches")
+
+PROJECTION_MAP: dict[str, Callable[[dict[str, Any]], Any]] = {
+    "status": lambda state: state.get("status"),
+    "label": lambda state: (state.get("suspension") or {}).get("label"),
+    "original_goal": lambda state: state.get("original_goal"),
+    "bindings": lambda state: state.get("bindings"),
+    "ruleset_hash": lambda state: state.get("ruleset_hash"),
+    "resume_hash": lambda state: state.get("resume_hash"),
+    "resume_kind": lambda state: state.get("resume_kind"),
+    "branch_count": lambda state: (
+        len(branches) if isinstance((branches := state.get("branches")), list) else None
+    ),
+    "branches": lambda state: state.get("branches"),
+}
+
+
+def state_projection(
+    state: dict[str, Any],
+    fields: tuple[str, ...] | list[str] | set[str] | frozenset[str],
+) -> dict[str, Any]:
+    """Project selected state fields, preserving unavailable fields as ``None``."""
+    requested = set(fields)
+    return {
+        key: getter(state)
+        for key, getter in PROJECTION_MAP.items()
+        if key in requested
+    }
 
 
 def resolve_ruleset_hash(

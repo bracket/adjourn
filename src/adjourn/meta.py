@@ -17,8 +17,9 @@ State file schema (v0)::
             { "orig_goal": "<goal string>", "goals": ["<goal string>", ...] }
         ],
         "status": "running | suspended | solution | done",
-        "suspension": { "label": "<term string>" },  # only when suspended
-        "bindings": { "<var>": "<term string>" },    # only when solution
+        "suspension": { "label": "<term string>" },  # when suspended
+        "resume_kind": "suspended | checkpoint",     # when suspended
+        "bindings": { "<var>": "<term string>" },    # when solution
         "ruleset_hash": "<hash string>",             # optional; pinned ruleset hash
         "resume_hash": "<hash string>"               # optional; pinned override hash for resume
     }

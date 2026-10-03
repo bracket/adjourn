@@ -40,6 +40,10 @@ class RuleSetStore(ABC):
     def clauses_for(self, ruleset_hash: str) -> list[Clause]:
         """Return the clauses for *ruleset_hash*."""
 
+    @abstractmethod
+    def store_info(self) -> StoreInfo:
+        """Return display metadata for this store."""
+
     def owns(self, ruleset_hash: str) -> bool:
         """Return whether this store contains *ruleset_hash*."""
         return ruleset_hash in self.known_rulesets()
@@ -212,9 +216,13 @@ class AggregateRuleSetStore(RuleSetStore):
         if not child_store_info:
             return []
         return [
-            StoreInfo(type="system", name="@top", path="", hash=self.ruleset_hash),
+            self.store_info(),
             *child_store_info,
         ]
+
+    def store_info(self) -> StoreInfo:
+        """Return display metadata for the aggregate ruleset."""
+        return StoreInfo(type="system", name="@top", path="", hash=self.ruleset_hash)
 
     def _composite_is_empty(self) -> bool:
         """Return whether the composite program has no clauses (cached).
@@ -250,38 +258,44 @@ class AggregateRuleSetStore(RuleSetStore):
 
 def build_store_from_config(config: Config) -> AggregateRuleSetStore:
     """Build an aggregate rule store from *config*."""
-    stores: list[RuleSetStore] = []
-    for store_config in config.store_configs:
-        store_type = store_config["type"]
-        store_path = Path(store_config["path"])
-        if not store_path.is_absolute():
-            store_path = config.base_dir / store_path
-        if store_type == "file":
-            stores.append(
-                FileRuleSetStore(
-                    store_path,
-                    name=store_config.get("name"),
-                    prolog=store_config["prolog"],
-                )
-            )
-        elif store_type == "mnestic":
-            from adjourn.store.mnestic_store import MnesticRuleSetStore
-            support_val = store_config.get("support")
-            support_path: Path | None = None
-            if support_val is not None:
-                support_path = Path(support_val)
-                if not support_path.is_absolute():
-                    support_path = config.base_dir / support_path
-            stores.append(
-                MnesticRuleSetStore(
-                    store_path,
-                    name=store_config.get("name"),
-                    support=support_path,
-                )
-            )
-        else:
-            raise ValueError(f"Unsupported store type: {store_type}")
-    return AggregateRuleSetStore(stores)
+    return AggregateRuleSetStore(
+        [
+            build_store_from_config_entry(config, store_config)
+            for store_config in config.store_configs
+        ]
+    )
+
+
+def build_store_from_config_entry(
+    config: Config,
+    store_config: dict[str, Any],
+) -> RuleSetStore:
+    """Build one configured store without loading any of its rules yet."""
+    store_type = store_config["type"]
+    store_path = Path(store_config["path"])
+    if not store_path.is_absolute():
+        store_path = config.base_dir / store_path
+    if store_type == "file":
+        return FileRuleSetStore(
+            store_path,
+            name=store_config.get("name"),
+            prolog=store_config["prolog"],
+        )
+    if store_type == "mnestic":
+        from adjourn.store.mnestic_store import MnesticRuleSetStore
+
+        support_val = store_config.get("support")
+        support_path: Path | None = None
+        if support_val is not None:
+            support_path = Path(support_val)
+            if not support_path.is_absolute():
+                support_path = config.base_dir / support_path
+        return MnesticRuleSetStore(
+            store_path,
+            name=store_config.get("name"),
+            support=support_path,
+        )
+    raise ValueError(f"Unsupported store type: {store_type}")
 
 
 def _dedupe_stores_by_ruleset_hash(stores: list[RuleSetStore]) -> list[RuleSetStore]:

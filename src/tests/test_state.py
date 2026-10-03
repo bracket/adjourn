@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -10,7 +9,14 @@ import pytest
 import yaml
 
 from adjourn.config import Config
-from adjourn.state import init_state, resolve_ruleset_hash, set_resume_hash
+from adjourn.state import (
+    DEFAULT_FIELDS,
+    VERBOSE_FIELDS,
+    init_state,
+    resolve_ruleset_hash,
+    set_resume_hash,
+    state_projection,
+)
 from adjourn.store import (
     AggregateRuleSetStore,
     FileRuleSetStore,
@@ -300,3 +306,64 @@ class TestSetResumeHash:
         state = {"version": 0, "original_goal": "true", "branches": [], "status": "running"}
         with pytest.raises(ValueError, match="Unknown ruleset"):
             set_resume_hash(state, "nonexistent", store, config)
+
+
+@pytest.mark.parametrize(
+    ("status", "extra", "expected_label", "expected_bindings", "expected_kind"),
+    [
+        ("running", {}, None, None, None),
+        (
+            "suspended",
+            {"suspension": {"label": "need_input"}, "resume_kind": "suspended"},
+            "need_input",
+            None,
+            "suspended",
+        ),
+        ("solution", {"bindings": {"X": "1"}}, None, {"X": "1"}, None),
+        ("done", {}, None, None, None),
+    ],
+)
+def test_state_projection_includes_selected_fields_for_each_status(
+    status: str,
+    extra: dict[str, Any],
+    expected_label: str | None,
+    expected_bindings: dict[str, str] | None,
+    expected_kind: str | None,
+) -> None:
+    state = {
+        "status": status,
+        "original_goal": "p(X)",
+        "branches": [{"orig_goal": "p(X)", "goals": ["p(X)"]}],
+        "ruleset_hash": "rules",
+        "resume_hash": "resume",
+        **extra,
+    }
+
+    projection = state_projection(state, VERBOSE_FIELDS)
+
+    assert tuple(projection) == VERBOSE_FIELDS
+    assert projection == {
+        "status": status,
+        "label": expected_label,
+        "original_goal": "p(X)",
+        "bindings": expected_bindings,
+        "ruleset_hash": "rules",
+        "resume_hash": "resume",
+        "resume_kind": expected_kind,
+        "branch_count": 1,
+        "branches": [{"orig_goal": "p(X)", "goals": ["p(X)"]}],
+    }
+
+
+def test_state_projection_returns_none_for_unavailable_fields() -> None:
+    projection = state_projection({"status": "running"}, DEFAULT_FIELDS + ("branch_count",))
+
+    assert projection == {
+        "status": "running",
+        "label": None,
+        "original_goal": None,
+        "bindings": None,
+        "ruleset_hash": None,
+        "resume_hash": None,
+        "branch_count": None,
+    }

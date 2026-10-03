@@ -222,6 +222,8 @@ class TestWorkspaceTools:
         assert isinstance(result["session"], str)
         assert len(result["session"]) == 32
         assert result["status"] == "running"
+        assert result["original_goal"] == "true"
+        assert result["bindings"] is None
         assert "ruleset_hash" in result
         assert "resume_hash" in result
         assert "label" in result
@@ -244,6 +246,8 @@ class TestWorkspaceTools:
 
         r1 = ws.resume(session_id)
         assert r1["status"] == "solution"
+        assert r1["original_goal"] == "true"
+        assert r1["bindings"] == {}
 
         r2 = ws.resume(session_id)
         assert r2["status"] == "done"
@@ -400,12 +404,16 @@ class TestWorkspaceTools:
                 return {
                     "status": "running",
                     "label": None,
+                    "original_goal": "true",
+                    "bindings": None,
                     "ruleset_hash": "c" * 64,
                     "resume_hash": "d" * 64,
                 }
             return {
                 "status": "running",
                 "label": None,
+                "original_goal": "true",
+                "bindings": None,
                 "ruleset_hash": "a" * 64,
                 "resume_hash": "b" * 64,
             }
@@ -418,6 +426,8 @@ class TestWorkspaceTools:
             "session": "session",
             "status": "running",
             "label": None,
+            "original_goal": "true",
+            "bindings": None,
             "ruleset_hash": "c" * 64,
             "resume_hash": "d" * 64,
         }

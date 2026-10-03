@@ -4,6 +4,19 @@ from typing import Any
 import yaml
 
 
+def create_config_file(path: str | Path, force: bool = False) -> Path:
+    """Create an empty config file, optionally replacing an existing file."""
+    config_path = Path(path)
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    content = yaml.safe_dump({"stores": []}, default_flow_style=False)
+    if force:
+        config_path.write_text(content, encoding="utf-8")
+    else:
+        with config_path.open("x", encoding="utf-8") as handle:
+            handle.write(content)
+    return config_path
+
+
 class _AppendFileStoreResult(dict):
     """Store config dict returned by :meth:`Config.append_file_store`.
 
@@ -81,11 +94,10 @@ class Config:
         """
         if self.path.exists():
             return
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            yaml.safe_dump({"stores": []}, default_flow_style=False),
-            encoding="utf-8",
-        )
+        try:
+            create_config_file(self.path)
+        except FileExistsError:
+            pass
         self._data = self._load()
 
     def append_file_store(self, path: str) -> _AppendFileStoreResult:

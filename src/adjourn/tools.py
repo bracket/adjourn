@@ -58,12 +58,11 @@ class Workspace:
                 defaults to ``config_path.parent / "mcp-sessions"``.  The
                 value is stored as given (not resolved).
             timeout: Subprocess timeout in seconds for each CLI call.
-            create_config: When true, :meth:`init` passes ``--create-config``
-                to the CLI so a missing config file is created (with an empty
-                ``stores`` list) instead of failing.  On an empty program the
-                initial state records the reserved ``@empty`` ruleset hash for
-                both ``ruleset_hash`` and ``resume_hash``; call
-                :meth:`add_rules` before :meth:`resume` to recover.
+            create_config: When true, :meth:`init` creates a missing config
+                before invoking the CLI. On an empty program the initial state
+                records the reserved ``@empty`` ruleset hash for both
+                ``ruleset_hash`` and ``resume_hash``; call :meth:`add_rules`
+                before :meth:`resume` to recover.
         """
         self.config_path = Path(config_path).resolve()
         if sessions_dir is None:
@@ -192,6 +191,10 @@ class Workspace:
         Raises:
             RuntimeError: If the CLI exits with a non-zero status.
         """
+        return json.loads(self._run_cli_command(args, cwd=cwd))
+
+    def _run_cli_command(self, args: list[str], cwd: Path | None = None) -> str:
+        """Run the CLI and return stdout without assuming it is JSON."""
         cmd = [sys.executable, "-m", "adjourn.cli"] + args
         try:
             result = subprocess.run(
@@ -214,7 +217,7 @@ class Workspace:
                 f"stderr: {stderr}"
             )
 
-        return json.loads(result.stdout)
+        return result.stdout
 
     def _require_session_state(self, session: str) -> Path:
         """Return the session state file path or raise if it does not exist."""
@@ -237,12 +240,11 @@ class Workspace:
         the initial state, and returns the session id together with the
         initial projection.
 
-        The returned dict has keys ``session``, ``status``, ``label``,
-        ``ruleset_hash``, and ``resume_hash``.
+        The returned dict includes ``session``, ``status``, ``label``,
+        ``original_goal``, ``bindings``, ``ruleset_hash``, and ``resume_hash``.
 
-        When :attr:`create_config` is true, ``--create-config`` is passed to
-        the CLI so a missing config file is created (with an empty ``stores``
-        list) instead of failing.  On an empty program the initial state
+        When :attr:`create_config` is true, a missing config file is created
+        before invoking ``adjourn init``. On an empty program the initial state
         records the reserved ``@empty`` ruleset hash for both
         ``ruleset_hash`` and ``resume_hash``; call :meth:`add_rules` before
         :meth:`resume` to recover.
@@ -273,8 +275,11 @@ class Workspace:
             "--format",
             "json",
         ]
-        if self.create_config:
-            init_args.append("--create-config")
+        if self.create_config and not self.config_path.exists():
+            self._run_cli_command(
+                ["config", "init", "--config", str(self.config_path)],
+                cwd=self.server_dir,
+            )
         projection = self._run_cli(init_args, cwd=self.server_dir)
         return {"session": session_id, **projection}
 
@@ -286,8 +291,8 @@ class Workspace:
         continues through checkpoints, so a single call runs until the next
         yield, solution, or done rather than stopping after one step.
 
-        The returned dict has keys ``session``, ``status``, ``label``,
-        ``ruleset_hash``, and ``resume_hash``.
+        The returned dict includes ``session``, ``status``, ``label``,
+        ``original_goal``, ``bindings``, ``ruleset_hash``, and ``resume_hash``.
 
         Args:
             session: The session id returned by :meth:`init`.

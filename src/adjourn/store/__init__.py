@@ -50,5 +50,8 @@ from .store import (
     build_store_from_config as build_store_from_config,
 )
 from .store import (
+    build_store_from_config_entry as build_store_from_config_entry,
+)
+from .store import (
     hash_clauses as hash_clauses,
 )

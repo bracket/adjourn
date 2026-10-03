@@ -9,7 +9,11 @@ from click.testing import CliRunner
 
 from adjourn.cli.__main__ import main
 from adjourn.config import Config
-from adjourn.store import AggregateRuleSetStore, FileRuleSetStore
+from adjourn.store import (
+    AggregateRuleSetStore,
+    FileRuleSetStore,
+    build_store_from_config,
+)
 from tests.helpers import NONEMPTY_RULESET
 from tests.helpers import write_config as _write_config
 
@@ -18,6 +22,12 @@ from tests.helpers import write_config as _write_config
 def runner() -> CliRunner:
     """Provide a Click CLI runner for testing."""
     return CliRunner()
+
+
+def _init_config_cli(runner: CliRunner, config_path: Path) -> None:
+    """Create an empty config file through the CLI."""
+    result = runner.invoke(main, ["config", "init", "--config", str(config_path)])
+    assert result.exit_code == 0, result.output
 
 
 class TestMainCommand:
@@ -412,9 +422,13 @@ class TestInitCommand:
         )
         assert result.exit_code == 0, result.output
         payload = json.loads(result.output)
-        assert set(payload.keys()) == {"status", "label", "ruleset_hash", "resume_hash"}
+        assert set(payload) == {
+            "status", "label", "original_goal", "bindings", "ruleset_hash", "resume_hash"
+        }
         assert payload["status"] == "running"
         assert payload["label"] is None
+        assert payload["original_goal"] == "true"
+        assert payload["bindings"] is None
         assert isinstance(payload["ruleset_hash"], str)
         assert isinstance(payload["resume_hash"], str)
 
@@ -789,9 +803,13 @@ class TestResumeCommand:
         )
         assert result.exit_code == 0, result.output
         payload = json.loads(result.output)
-        assert set(payload.keys()) == {"status", "label", "ruleset_hash", "resume_hash"}
+        assert set(payload) == {
+            "status", "label", "original_goal", "bindings", "ruleset_hash", "resume_hash"
+        }
         assert payload["status"] == "solution"
         assert payload["label"] is None
+        assert payload["original_goal"] == "true"
+        assert payload["bindings"] == {}
         assert isinstance(payload["ruleset_hash"], str)
         assert isinstance(payload["resume_hash"], str)
 
@@ -1153,11 +1171,15 @@ class TestSetResumeCommand:
         )
         assert result.exit_code == 0, result.output
         payload = json.loads(result.output)
-        assert set(payload.keys()) == {"status", "label", "ruleset_hash", "resume_hash"}
+        assert set(payload) == {
+            "status", "label", "original_goal", "bindings", "ruleset_hash", "resume_hash"
+        }
         state_after = json.loads(state_file.read_text())
         assert payload == {
             "status": state_after["status"],
             "label": state_after.get("suspension", {}).get("label"),
+            "original_goal": state_after["original_goal"],
+            "bindings": state_after.get("bindings"),
             "ruleset_hash": state_after["ruleset_hash"],
             "resume_hash": state_after["resume_hash"],
         }
@@ -1317,10 +1339,10 @@ class TestRulesCommand:
         assert "--format" in result.output
         assert "--pretty-print" in result.output
 
-    def test_rules_add_creates_config_when_missing(
+    def test_rules_add_fails_when_config_is_missing(
         self, runner: CliRunner, tmp_path: Path
     ) -> None:
-        """rules add should create the config file when it does not exist."""
+        """rules add should direct users to config init when config is missing."""
         rules_path = tmp_path / "my_rules.pl"
         rules_path.write_text(NONEMPTY_RULESET)
         config_path = tmp_path / ".adjourn" / "config.yaml"
@@ -1329,18 +1351,12 @@ class TestRulesCommand:
             main, ["rules", "add", str(rules_path), "--config", str(config_path)]
         )
 
-        assert result.exit_code == 0, result.output
-        assert config_path.exists()
-        assert f"Added file store 'my_rules' at path '{rules_path}'." in result.output
-        config = yaml.safe_load(config_path.read_text())
-        assert config["stores"] == [
-            {
-                "type": "file",
-                "path": str(rules_path),
-                "prolog": "wrapped",
-                "name": "my_rules",
-            }
-        ]
+        assert result.exit_code == 1
+        assert (
+            f"Error: config file not found: {config_path}; "
+            "run `adjourn config init` first"
+        ) in result.output
+        assert not config_path.exists()
 
     def test_rules_add_appends_to_existing_config(
         self, runner: CliRunner, tmp_path: Path
@@ -1366,6 +1382,7 @@ class TestRulesCommand:
         rules_path = tmp_path / "my_rules.pl"
         rules_path.write_text(NONEMPTY_RULESET)
         config_path = tmp_path / ".adjourn" / "config.yaml"
+        _init_config_cli(runner, config_path)
 
         first = runner.invoke(
             main, ["rules", "add", str(rules_path), "--config", str(config_path)]
@@ -1402,6 +1419,7 @@ class TestRulesCommand:
         rules_path = tmp_path / "my_rules.pl"
         rules_path.write_text(NONEMPTY_RULESET)
         config_path = tmp_path / ".adjourn" / "config.yaml"
+        _init_config_cli(runner, config_path)
 
         result = runner.invoke(
             main,
@@ -1429,6 +1447,7 @@ class TestRulesCommand:
         rules_path = tmp_path / "my_rules.pl"
         rules_path.write_text(NONEMPTY_RULESET)
         config_path = tmp_path / ".adjourn" / "config.yaml"
+        _init_config_cli(runner, config_path)
 
         runner.invoke(
             main, ["rules", "add", str(rules_path), "--config", str(config_path)]
@@ -1454,6 +1473,7 @@ class TestRulesCommand:
         rules_path = tmp_path / "my_rules.pl"
         rules_path.write_text(NONEMPTY_RULESET)
         config_path = tmp_path / ".adjourn" / "config.yaml"
+        _init_config_cli(runner, config_path)
 
         result = runner.invoke(
             main,
@@ -1479,6 +1499,7 @@ class TestRulesCommand:
         first.write_text(NONEMPTY_RULESET)
         second.write_text(NONEMPTY_RULESET)
         config_path = tmp_path / ".adjourn" / "config.yaml"
+        _init_config_cli(runner, config_path)
 
         runner.invoke(
             main, ["rules", "add", str(first), "--config", str(config_path)]
@@ -1503,6 +1524,7 @@ class TestRulesCommand:
         config_path = tmp_path / ".adjourn" / "config.yaml"
 
         monkeypatch.chdir(tmp_path)
+        _init_config_cli(runner, config_path)
         result = runner.invoke(
             main,
             ["rules", "add", "rules/rel.pl", "--config", str(config_path)],
@@ -1521,6 +1543,7 @@ class TestRulesCommand:
         rules_path = rules_dir / "foo bar (1).pl"
         rules_path.write_text(NONEMPTY_RULESET)
         config_path = tmp_path / ".adjourn" / "config.yaml"
+        _init_config_cli(runner, config_path)
 
         result = runner.invoke(
             main, ["rules", "add", str(rules_path), "--config", str(config_path)]
@@ -1555,40 +1578,31 @@ class TestRulesCommand:
         assert "No such option" in result.output
 
 
-class TestInitCreateConfig:
-    """Tests for the ``init --create-config`` flag."""
+class TestConfigCreationFlow:
+    """Tests for explicit config creation and initialization."""
 
-    def test_init_create_config_creates_empty_config(
+    def test_init_rejects_create_config_option(
         self, runner: CliRunner, tmp_path: Path
     ) -> None:
-        """init --create-config should create a missing config and record @empty."""
         state_file = tmp_path / "state.json"
         config_path = tmp_path / ".adjourn" / "config.yaml"
 
         result = runner.invoke(
             main,
             [
-                "init", "yield(x), g(X)", str(state_file),
+                "init", "true", str(state_file),
                 "--config", str(config_path),
                 "--create-config",
-                "--format", "json",
             ],
         )
 
-        assert result.exit_code == 0, result.output
-        assert config_path.exists()
-        assert yaml.safe_load(config_path.read_text()) == {"stores": []}
-        payload = json.loads(result.output)
-        assert payload["ruleset_hash"] == "@empty"
-        assert payload["resume_hash"] == "@empty"
-        state = json.loads(state_file.read_text())
-        assert state["ruleset_hash"] == "@empty"
-        assert state["resume_hash"] == "@empty"
+        assert result.exit_code != 0
+        assert "No such option" in result.output
 
-    def test_init_without_create_config_missing_config_fails(
+    def test_init_missing_config_fails(
         self, runner: CliRunner, tmp_path: Path
     ) -> None:
-        """init without --create-config should fail on a missing config."""
+        """init should require the config to be initialized explicitly."""
         state_file = tmp_path / "state.json"
         config_path = tmp_path / ".adjourn" / "config.yaml"
 
@@ -1612,11 +1626,15 @@ class TestInitCreateConfig:
         config_path = tmp_path / ".adjourn" / "config.yaml"
 
         result = runner.invoke(
+            main, ["config", "init", "--config", str(config_path)]
+        )
+        assert result.exit_code == 0, result.output
+
+        result = runner.invoke(
             main,
             [
                 "init", "yield(x), g(X)", str(state_file),
                 "--config", str(config_path),
-                "--create-config",
             ],
         )
         assert result.exit_code == 0, result.output
@@ -1629,20 +1647,18 @@ class TestInitCreateConfig:
         assert result.exit_code != 0
         assert "Cannot resume against the empty ruleset (@empty)" in result.output
 
-    def test_recovery_after_create_config(
+    def test_recovery_after_config_init(
         self, runner: CliRunner, tmp_path: Path
     ) -> None:
-        """A config created by init --create-config can be populated and resumed."""
+        """An explicitly initialized config can be populated and resumed."""
         state_file = tmp_path / "state.json"
         config_path = tmp_path / ".adjourn" / "config.yaml"
 
+        result = runner.invoke(main, ["config", "init", "--config", str(config_path)])
+        assert result.exit_code == 0, result.output
+
         result = runner.invoke(
-            main,
-            [
-                "init", "true", str(state_file),
-                "--config", str(config_path),
-                "--create-config",
-            ],
+            main, ["init", "true", str(state_file), "--config", str(config_path)]
         )
         assert result.exit_code == 0, result.output
 
@@ -1710,3 +1726,261 @@ class TestInitCreateConfig:
 
         assert result.exit_code != 0
         assert "No such option" in result.output
+
+
+class TestStateShowCommand:
+    """Tests for ``adjourn state show``."""
+
+    def _state_file(self, tmp_path: Path, state: dict) -> Path:
+        path = tmp_path / "state.json"
+        path.write_text(json.dumps(state))
+        return path
+
+    def test_state_show_raw(self, runner: CliRunner, tmp_path: Path) -> None:
+        state_path = self._state_file(
+            tmp_path,
+            {
+                "status": "running",
+                "original_goal": "p(X)",
+                "branches": [{"orig_goal": "p(X)", "goals": ["p(X)"]}],
+                "ruleset_hash": "a" * 64,
+                "resume_hash": "b" * 64,
+            },
+        )
+
+        result = runner.invoke(main, ["state", "show", str(state_path)])
+
+        assert result.exit_code == 0, result.output
+        assert "status: running — 1 branch(es) remaining" in result.output
+        assert f"ruleset_hash: {'a' * 12}" in result.output
+        assert f"resume_hash:  {'b' * 12}" in result.output
+        assert "goal: p(X)" in result.output
+
+    def test_state_show_raw_verbose(self, runner: CliRunner, tmp_path: Path) -> None:
+        state_path = self._state_file(
+            tmp_path,
+            {
+                "status": "suspended",
+                "original_goal": "p(X)",
+                "branches": [
+                    {"orig_goal": "p(X)", "goals": ["wait", "finish(X)"]}
+                ],
+                "suspension": {"label": "need_input"},
+                "resume_kind": "checkpoint",
+                "ruleset_hash": "a" * 64,
+                "resume_hash": "b" * 64,
+            },
+        )
+
+        result = runner.invoke(main, ["state", "show", str(state_path), "-v"])
+
+        assert result.exit_code == 0, result.output
+        assert f"ruleset_hash: {'a' * 64}" in result.output
+        assert f"resume_hash:  {'b' * 64}" in result.output
+        assert "resume_kind: checkpoint" in result.output
+        assert "branch: p(X)\n  wait\n  finish(X)" in result.output
+
+    def test_state_show_json_default_and_verbose(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        state_path = self._state_file(
+            tmp_path,
+            {
+                "status": "solution",
+                "original_goal": "p(X)",
+                "branches": [{"orig_goal": "p(X)", "goals": []}],
+                "bindings": {"X": "1"},
+            },
+        )
+
+        result = runner.invoke(main, ["state", "show", str(state_path), "--format", "json"])
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output) == {
+            "status": "solution",
+            "label": None,
+            "original_goal": "p(X)",
+            "bindings": {"X": "1"},
+            "ruleset_hash": None,
+            "resume_hash": None,
+        }
+
+        result = runner.invoke(
+            main,
+            ["state", "show", str(state_path), "--format", "json", "-v", "--pretty-print"],
+        )
+        assert result.exit_code == 0, result.output
+        assert result.output.startswith("{\n")
+        assert json.loads(result.output) == {
+            "status": "solution",
+            "label": None,
+            "original_goal": "p(X)",
+            "bindings": {"X": "1"},
+            "ruleset_hash": None,
+            "resume_hash": None,
+            "resume_kind": None,
+            "branch_count": 1,
+            "branches": [{"orig_goal": "p(X)", "goals": []}],
+        }
+
+    @pytest.mark.parametrize(
+        ("content", "message"),
+        [("{", "Error parsing"), ("", "Error reading")],
+    )
+    def test_state_show_reports_unreadable_or_invalid_state(
+        self,
+        runner: CliRunner,
+        tmp_path: Path,
+        content: str,
+        message: str,
+    ) -> None:
+        state_path = tmp_path / "state.json"
+        if content:
+            state_path.write_text(content)
+
+        result = runner.invoke(main, ["state", "show", str(state_path)])
+
+        assert result.exit_code == 1
+        assert message in result.output
+
+
+class TestConfigCommands:
+    """Tests for the config command group."""
+
+    def test_config_init_creates_file_and_parent_directories(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        config_path = tmp_path / "nested" / "config.yaml"
+
+        result = runner.invoke(main, ["config", "init", "--config", str(config_path)])
+
+        assert result.exit_code == 0, result.output
+        assert yaml.safe_load(config_path.read_text()) == {"stores": []}
+        assert str(config_path) in result.output
+
+    def test_config_init_existing_requires_force(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text("stores: []\n")
+
+        result = runner.invoke(main, ["config", "init", "--config", str(config_path)])
+
+        assert result.exit_code == 1
+        assert f"config file already exists: {config_path}" in result.output
+        assert config_path.read_text() == "stores: []\n"
+
+    def test_config_init_force_overwrites(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text("stores:\n- type: file\n  path: old.pl\n")
+
+        result = runner.invoke(
+            main, ["config", "init", "--config", str(config_path), "--force"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert yaml.safe_load(config_path.read_text()) == {"stores": []}
+
+    def test_config_init_resolves_environment_path(
+        self, runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        config_path = tmp_path / "env-config.yaml"
+        monkeypatch.setenv("ADJOURN_CONFIG", str(config_path))
+
+        result = runner.invoke(main, ["config", "init"])
+
+        assert result.exit_code == 0, result.output
+        assert config_path.exists()
+
+    def test_config_show_json_has_resolved_stores_and_alias_ownership(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        config_path = _write_config(
+            tmp_path,
+            {"test_rules": NONEMPTY_RULESET},
+            store_names={"test_rules": "main"},
+        )
+        rules_path = tmp_path / "rules" / "test_rules.pl"
+        known_hash = FileRuleSetStore(rules_path).ruleset_hash
+        config_data = yaml.safe_load(config_path.read_text())
+        config_data["aliases"] = {"owned": known_hash, "unowned": "0" * 64}
+        config_path.write_text(yaml.safe_dump(config_data))
+
+        result = runner.invoke(
+            main,
+            ["config", "show", "--config", str(config_path), "--format", "json"],
+        )
+
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert payload["config"] == str(config_path)
+        assert payload["base_dir"] == str(tmp_path)
+        assert payload["top"] == build_store_from_config(Config(config_path)).ruleset_hash
+        assert payload["stores"] == [
+            {
+                "type": "file",
+                "path": "rules/test_rules.pl",
+                "resolved_path": str(rules_path.resolve()),
+                "name": "main",
+                "prolog": "wrapped",
+                "hash": known_hash,
+            }
+        ]
+        assert payload["aliases"] == [
+            {"name": "owned", "hash": known_hash, "owned": True},
+            {"name": "unowned", "hash": "0" * 64, "owned": False},
+        ]
+
+    def test_config_show_raw_is_sectioned_and_aligned(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
+
+        result = runner.invoke(main, ["config", "show", "--config", str(config_path)])
+
+        assert result.exit_code == 0, result.output
+        assert "config:" in result.output
+        assert "base_dir:" in result.output
+        assert "top:" in result.output
+        assert "stores:\ntype" in result.output
+        assert "aliases:\nname" in result.output
+        assert "plugins:" in result.output
+
+    def test_config_show_keeps_healthy_stores_when_one_fails(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        config_path = tmp_path / ".adjourn" / "config.yaml"
+        config_path.parent.mkdir()
+        (tmp_path / "good.pl").write_text(NONEMPTY_RULESET)
+        config_path.write_text(
+            yaml.safe_dump(
+                {
+                    "stores": [
+                        {"type": "file", "path": "good.pl"},
+                        {"type": "file", "path": "missing.pl"},
+                    ]
+                }
+            )
+        )
+
+        result = runner.invoke(
+            main, ["config", "show", "--config", str(config_path), "--format", "json"]
+        )
+
+        assert result.exit_code == 1
+        payload = json.loads(result.output)
+        assert payload["stores"][0]["hash"]
+        assert payload["stores"][1]["hash"] == "<error>"
+        assert "error" in payload["stores"][1]
+        assert payload["top"]["error"]
+
+    def test_config_show_missing_config_fails(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        config_path = tmp_path / "missing.yaml"
+
+        result = runner.invoke(main, ["config", "show", "--config", str(config_path)])
+
+        assert result.exit_code == 1
+        assert f"Config file not found: {config_path}" in result.output
