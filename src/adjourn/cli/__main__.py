@@ -21,6 +21,8 @@ from adjourn.state import (
 from adjourn.state_store import JsonFileStateStore
 from adjourn.store import (
     AggregateRuleSetStore,
+    FileRuleSetStore,
+    MnesticRuleSetStore,
     RuleSetStore,
     StoreInfo,
     build_store_from_config,
@@ -662,7 +664,9 @@ def _gather_store_info(
     """Gather display metadata for an aggregate or individual store."""
     if isinstance(store, AggregateRuleSetStore):
         return store.store_info_list()
-    return [store.store_info()]
+    if isinstance(store, (FileRuleSetStore, MnesticRuleSetStore)):
+        return [store.store_info()]
+    raise TypeError(f"Unsupported store type: {type(store).__name__}")
 
 
 def _format_store_info_raw(store_info_list: list[StoreInfo]) -> str:

@@ -40,10 +40,6 @@ class RuleSetStore(ABC):
     def clauses_for(self, ruleset_hash: str) -> list[Clause]:
         """Return the clauses for *ruleset_hash*."""
 
-    @abstractmethod
-    def store_info(self) -> StoreInfo:
-        """Return display metadata for this store."""
-
     def owns(self, ruleset_hash: str) -> bool:
         """Return whether this store contains *ruleset_hash*."""
         return ruleset_hash in self.known_rulesets()
@@ -216,13 +212,9 @@ class AggregateRuleSetStore(RuleSetStore):
         if not child_store_info:
             return []
         return [
-            self.store_info(),
+            StoreInfo(type="system", name="@top", path="", hash=self.ruleset_hash),
             *child_store_info,
         ]
-
-    def store_info(self) -> StoreInfo:
-        """Return display metadata for the aggregate ruleset."""
-        return StoreInfo(type="system", name="@top", path="", hash=self.ruleset_hash)
 
     def _composite_is_empty(self) -> bool:
         """Return whether the composite program has no clauses (cached).
