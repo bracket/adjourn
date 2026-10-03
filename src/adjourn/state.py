@@ -50,8 +50,15 @@ def state_projection(
     state: dict[str, Any],
     fields: tuple[str, ...] | list[str] | set[str] | frozenset[str],
 ) -> dict[str, Any]:
-    """Project selected state fields, preserving unavailable fields as ``None``."""
+    """Project selected state fields, preserving unavailable fields as ``None``.
+
+    Raises:
+        KeyError: If any requested field is not in :data:`PROJECTION_MAP`.
+    """
     requested = set(fields)
+    unknown = requested.difference(PROJECTION_MAP)
+    if unknown:
+        raise KeyError(f"Unknown projection field(s): {', '.join(sorted(unknown))}")
     return {
         key: getter(state)
         for key, getter in PROJECTION_MAP.items()

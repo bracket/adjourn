@@ -276,10 +276,17 @@ class Workspace:
             "json",
         ]
         if self.create_config and not self.config_path.exists():
-            self._run_cli_command(
-                ["config", "init", "--config", str(self.config_path)],
-                cwd=self.server_dir,
-            )
+            try:
+                self._run_cli_command(
+                    ["config", "init", "--config", str(self.config_path)],
+                    cwd=self.server_dir,
+                )
+            except RuntimeError:
+                # A concurrent init may have created the config between the
+                # existence check and the CLI call; only fail if it is still
+                # missing.
+                if not self.config_path.exists():
+                    raise
         projection = self._run_cli(init_args, cwd=self.server_dir)
         return {"session": session_id, **projection}
 

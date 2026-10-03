@@ -1085,6 +1085,22 @@ class TestStoreCommand:
         assert result.exit_code == 0, result.output
         assert result.output.startswith("[\n  {")
 
+    def test_store_list_reports_broken_store_without_traceback(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        config_path = tmp_path / ".adjourn" / "config.yaml"
+        config_path.parent.mkdir()
+        config_path.write_text(
+            yaml.safe_dump({"stores": [{"type": "file", "path": "missing.pl"}]})
+        )
+
+        result = runner.invoke(main, ["store", "list", "--config", str(config_path)])
+
+        assert result.exit_code == 1
+        assert result.output.startswith("Error:")
+        assert "missing.pl" in result.output
+        assert not isinstance(result.exception, FileNotFoundError)
+
     def test_store_list_rejects_create_config(
         self, runner: CliRunner, tmp_path: Path
     ) -> None:
@@ -1616,7 +1632,8 @@ class TestConfigCreationFlow:
         )
 
         assert result.exit_code != 0
-        assert "Config file not found" in result.output
+        assert "config file not found" in result.output
+        assert "adjourn config init" in result.output
 
     def test_resume_empty_state_fails(
         self, runner: CliRunner, tmp_path: Path
@@ -1914,8 +1931,8 @@ class TestConfigCommands:
 
         assert result.exit_code == 0, result.output
         payload = json.loads(result.output)
-        assert payload["config"] == str(config_path)
-        assert payload["base_dir"] == str(tmp_path)
+        assert payload["config"] == str(config_path.resolve())
+        assert payload["base_dir"] == str(tmp_path.resolve())
         assert payload["top"] == build_store_from_config(Config(config_path)).ruleset_hash
         assert payload["stores"] == [
             {
@@ -1959,7 +1976,8 @@ class TestConfigCommands:
                     "stores": [
                         {"type": "file", "path": "good.pl"},
                         {"type": "file", "path": "missing.pl"},
-                    ]
+                    ],
+                    "aliases": {"some_alias": "0" * 64},
                 }
             )
         )
@@ -1971,9 +1989,36 @@ class TestConfigCommands:
         assert result.exit_code == 1
         payload = json.loads(result.output)
         assert payload["stores"][0]["hash"]
-        assert payload["stores"][1]["hash"] == "<error>"
-        assert "error" in payload["stores"][1]
-        assert payload["top"]["error"]
+        assert "error" not in payload["stores"][0]
+        assert payload["stores"][1]["hash"] is None
+        assert payload["stores"][1]["error"]
+        assert payload["top"] is None
+        assert payload["top_error"]
+        # Ownership cannot be decided without the full aggregate.
+        assert payload["aliases"] == [
+            {"name": "some_alias", "hash": "0" * 64, "owned": None}
+        ]
+
+    def test_config_show_raw_marks_failed_store_and_unknown_ownership(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        config_path = tmp_path / ".adjourn" / "config.yaml"
+        config_path.parent.mkdir()
+        config_path.write_text(
+            yaml.safe_dump(
+                {
+                    "stores": [{"type": "file", "path": "missing.pl"}],
+                    "aliases": {"some_alias": "0" * 64},
+                }
+            )
+        )
+
+        result = runner.invoke(main, ["config", "show", "--config", str(config_path)])
+
+        assert result.exit_code == 1
+        assert "top: ERROR:" in result.output
+        assert "<error>" in result.output
+        assert "unknown" in result.output
 
     def test_config_show_missing_config_fails(
         self, runner: CliRunner, tmp_path: Path
@@ -1983,4 +2028,5 @@ class TestConfigCommands:
         result = runner.invoke(main, ["config", "show", "--config", str(config_path)])
 
         assert result.exit_code == 1
-        assert f"Config file not found: {config_path}" in result.output
+        assert f"config file not found: {config_path}" in result.output
+        assert "adjourn config init" in result.output

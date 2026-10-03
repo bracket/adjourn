@@ -21,12 +21,11 @@ from adjourn.state import (
 from adjourn.state_store import JsonFileStateStore
 from adjourn.store import (
     AggregateRuleSetStore,
-    FileRuleSetStore,
-    MnesticRuleSetStore,
     RuleSetStore,
     StoreInfo,
     build_store_from_config,
     build_store_from_config_entry,
+    resolve_store_path,
 )
 
 
@@ -98,7 +97,7 @@ def cmd_init(
         adjourn init "color(X, Y)" state.json --ruleset coloring
     """
     try:
-        config = Config(_resolve_config_path(config_path))
+        config = _open_config(config_path)
         load_foreign_plugins(config.foreign_plugins)
         store = build_store_from_config(config)
         state = init_state(query, ruleset_name, store, config)
@@ -178,7 +177,7 @@ def cmd_resume(
         sys.exit(1)
 
     try:
-        config = Config(_resolve_config_path(config_path))
+        config = _open_config(config_path)
         load_foreign_plugins(config.foreign_plugins)
         store = build_store_from_config(config)
         from adjourn.runner import Runner
@@ -275,7 +274,7 @@ def cmd_set_resume(
         sys.exit(1)
 
     try:
-        config = Config(_resolve_config_path(config_path))
+        config = _open_config(config_path)
         store = build_store_from_config(config)
         new_state = set_resume_hash(state, ruleset_name, store, config)
     except (ValueError, KeyError, OSError) as exc:
@@ -402,7 +401,7 @@ def cmd_config_show(
     """Show resolved config, stores, aliases, and foreign plugins."""
     path = _resolve_config_path(config_path)
     try:
-        config = Config(path)
+        config = _open_config(path)
     except (OSError, ValueError) as exc:
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)
@@ -411,14 +410,12 @@ def cmd_config_show(
     built_stores: list[RuleSetStore] = []
     has_store_errors = False
     for store_config in config.store_configs:
-        raw_path = store_config["path"]
-        resolved_path = Path(raw_path)
-        if not resolved_path.is_absolute():
-            resolved_path = config.base_dir / resolved_path
         item: dict[str, Any] = {
             "type": store_config["type"],
-            "path": raw_path,
-            "resolved_path": str(resolved_path.resolve()),
+            "path": store_config["path"],
+            "resolved_path": str(
+                resolve_store_path(config, store_config["path"]).resolve()
+            ),
         }
         for key in ("name", "prolog", "support"):
             if key in store_config:
@@ -432,42 +429,51 @@ def cmd_config_show(
                 item["name"] = store_info.name
             built_stores.append(store)
         except Exception as exc:  # noqa: BLE001 — store backends fail independently
-            item["hash"] = "<error>"
+            item["hash"] = None
             item["error"] = str(exc)
             has_store_errors = True
         store_rows.append(item)
 
-    top: str | dict[str, str]
+    # The aggregate is assembled from the already-built stores so no rules
+    # file is parsed twice.  It is unavailable whenever any store failed.
     aggregate: AggregateRuleSetStore | None = None
-    try:
-        if has_store_errors:
-            raise ValueError("one or more configured stores could not be built")
-        aggregate = build_store_from_config(config)
-        top = aggregate.ruleset_hash
-    except Exception as exc:  # noqa: BLE001 — aggregate construction can fail per backend
-        top = {"error": str(exc)}
-        has_store_errors = True
+    top_error: str | None = None
+    if has_store_errors:
+        top_error = "one or more configured stores could not be built"
+    else:
+        try:
+            aggregate = AggregateRuleSetStore(built_stores)
+            _ = aggregate.ruleset_hash
+        except Exception as exc:  # noqa: BLE001 — composite construction can fail per backend
+            aggregate = None
+            top_error = str(exc)
+            has_store_errors = True
 
     aliases = [
         {
             "name": name,
             "hash": ruleset_hash,
-            "owned": (
-                aggregate.owns(ruleset_hash)
-                if aggregate is not None
-                else any(store.owns(ruleset_hash) for store in built_stores)
-            ),
+            # Ownership is unknown (None) when the aggregate is unavailable.
+            "owned": aggregate.owns(ruleset_hash) if aggregate is not None else None,
         }
         for name, ruleset_hash in config.aliases.items()
     ]
-    payload = {
-        "config": str(path),
-        "base_dir": str(config.base_dir),
-        "top": top,
-        "stores": store_rows,
-        "aliases": aliases,
-        "plugins": config.foreign_plugins,
+
+    payload: dict[str, Any] = {
+        "config": str(path.resolve()),
+        "base_dir": str(config.base_dir.resolve()),
+        "top": aggregate.ruleset_hash if aggregate is not None else None,
     }
+    if top_error is not None:
+        payload["top_error"] = top_error
+    payload.update(
+        {
+            "stores": store_rows,
+            "aliases": aliases,
+            "plugins": config.foreign_plugins,
+        }
+    )
+
     if output_format == "json":
         click.echo(json.dumps(payload, indent=2 if pretty_print else None))
     else:
@@ -509,8 +515,12 @@ def cmd_store_list(
     pretty_print: bool,
 ) -> None:
     """List configured ruleset stores."""
-    store = _load_store(config_path)
-    store_info = _gather_store_info(store)
+    try:
+        store = _load_store(config_path)
+        store_info = _gather_store_info(store)
+    except Exception as exc:  # noqa: BLE001 — store backends fail in backend-specific ways
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
     if output_format == "json":
         click.echo(_format_store_info_json(store_info, pretty_print))
         return
@@ -568,15 +578,8 @@ def cmd_rules_add(
         sys.exit(1)
 
     try:
-        config = Config(resolved_config_path)
+        config = _open_config(resolved_config_path)
         store_config = config.append_file_store(path)
-    except FileNotFoundError:
-        click.echo(
-            f"Error: config file not found: {resolved_config_path}; "
-            "run `adjourn config init` first",
-            err=True,
-        )
-        sys.exit(1)
     except (OSError, ValueError, KeyError) as exc:
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)
@@ -650,12 +653,28 @@ def _resolve_config_path(config_path: Path | None) -> Path:
     return Path(".adjourn/config.yaml")
 
 
+def _open_config(config_path: Path | None) -> Config:
+    """Load the project config, hinting at ``config init`` when it is missing.
+
+    Raises:
+        FileNotFoundError: If the resolved config file does not exist; the
+            message names the path and suggests ``adjourn config init``.
+        ValueError: If the config file is invalid.
+    """
+    path = _resolve_config_path(config_path)
+    try:
+        return Config(path)
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(
+            f"config file not found: {path}; run `adjourn config init` first"
+        ) from exc
+
+
 # TODO: This will contain more than just the store at some point
 
 def _load_store(config_path: Path | None) -> AggregateRuleSetStore:
     """Load the configured aggregate ruleset store."""
-    config = Config(_resolve_config_path(config_path))
-    return build_store_from_config(config)
+    return build_store_from_config(_open_config(config_path))
 
 
 def _gather_store_info(
@@ -664,9 +683,7 @@ def _gather_store_info(
     """Gather display metadata for an aggregate or individual store."""
     if isinstance(store, AggregateRuleSetStore):
         return store.store_info_list()
-    if isinstance(store, (FileRuleSetStore, MnesticRuleSetStore)):
-        return [store.store_info()]
-    raise TypeError(f"Unsupported store type: {type(store).__name__}")
+    return [store.store_info()]
 
 
 def _format_store_info_raw(store_info_list: list[StoreInfo]) -> str:
@@ -706,11 +723,10 @@ def _format_config_raw(payload: dict[str, Any]) -> str:
         f"config: {payload['config']}",
         f"base_dir: {payload['base_dir']}",
     ]
-    top = payload["top"]
-    if isinstance(top, dict):
-        lines.append(f"top: ERROR: {top['error']}")
+    if payload.get("top_error") is not None:
+        lines.append(f"top: ERROR: {payload['top_error']}")
     else:
-        lines.append(f"top: {top}")
+        lines.append(f"top: {payload['top']}")
 
     store_rows = payload["stores"]
     lines.append("stores:")
@@ -724,13 +740,21 @@ def _format_config_raw(payload: dict[str, Any]) -> str:
     rows = []
     for item in store_rows:
         row = [str(item["type"])]
-        row.extend(str(item.get(key, "")) for key in store_headers[1:])
+        for key in store_headers[1:]:
+            value = item.get(key, "")
+            if key == "hash" and value is None:
+                value = "<error>"
+            row.append(str(value))
         rows.append(row)
     lines.append(_format_table(store_headers, rows) if rows else "(none)")
 
     lines.append("aliases:")
     alias_rows = [
-        [item["name"], item["hash"], str(item["owned"]).lower()]
+        [
+            item["name"],
+            item["hash"],
+            "unknown" if item["owned"] is None else str(item["owned"]).lower(),
+        ]
         for item in payload["aliases"]
     ]
     lines.append(

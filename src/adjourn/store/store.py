@@ -44,6 +44,19 @@ class RuleSetStore(ABC):
         """Return whether this store contains *ruleset_hash*."""
         return ruleset_hash in self.known_rulesets()
 
+    def store_info(self) -> "StoreInfo":
+        """Return display metadata for this store.
+
+        The default describes the store by its class name with no path or
+        name; concrete stores override this with richer metadata.
+        """
+        return StoreInfo(
+            type=type(self).__name__,
+            name=getattr(self, "name", None),
+            path="",
+            hash=self.ruleset_hash,
+        )
+
 
 @dataclass(frozen=True)
 class StoreInfo:
@@ -258,15 +271,21 @@ def build_store_from_config(config: Config) -> AggregateRuleSetStore:
     )
 
 
+def resolve_store_path(config: Config, path: str | Path) -> Path:
+    """Resolve a config-relative store path against ``config.base_dir``."""
+    resolved = Path(path)
+    if not resolved.is_absolute():
+        resolved = config.base_dir / resolved
+    return resolved
+
+
 def build_store_from_config_entry(
     config: Config,
     store_config: dict[str, Any],
 ) -> RuleSetStore:
     """Build one configured store without loading any of its rules yet."""
     store_type = store_config["type"]
-    store_path = Path(store_config["path"])
-    if not store_path.is_absolute():
-        store_path = config.base_dir / store_path
+    store_path = resolve_store_path(config, store_config["path"])
     if store_type == "file":
         return FileRuleSetStore(
             store_path,
@@ -279,9 +298,7 @@ def build_store_from_config_entry(
         support_val = store_config.get("support")
         support_path: Path | None = None
         if support_val is not None:
-            support_path = Path(support_val)
-            if not support_path.is_absolute():
-                support_path = config.base_dir / support_path
+            support_path = resolve_store_path(config, support_val)
         return MnesticRuleSetStore(
             store_path,
             name=store_config.get("name"),

@@ -575,6 +575,33 @@ class TestWorkspaceTools:
         resumed = ws.resume(session_id)
         assert resumed["status"] == "solution"
 
+    def test_init_create_config_tolerates_concurrent_creation(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A `config init` that loses a creation race should not fail init."""
+        config_path = tmp_path / ".adjourn" / "config.yaml"
+        monkeypatch.delenv("ADJOURN_CONFIG", raising=False)
+        ws = Workspace(
+            config_path,
+            sessions_dir=tmp_path / "sessions",
+            create_config=True,
+        )
+        real_run_cli_command = ws._run_cli_command
+
+        def racing_run_cli_command(args: list[str], cwd: Path | None = None) -> str:
+            if args[:2] == ["config", "init"]:
+                # Another process wins the race, so our `config init` fails.
+                real_run_cli_command(args, cwd=cwd)
+                return real_run_cli_command(args, cwd=cwd)
+            return real_run_cli_command(args, cwd=cwd)
+
+        monkeypatch.setattr(ws, "_run_cli_command", racing_run_cli_command)
+
+        result = ws.init("true")
+
+        assert result["ruleset_hash"] == "@empty"
+        assert config_path.exists()
+
     def test_init_without_create_config_missing_config_raises(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -583,5 +610,5 @@ class TestWorkspaceTools:
         monkeypatch.delenv("ADJOURN_CONFIG", raising=False)
         ws = Workspace(config_path, sessions_dir=tmp_path / "sessions")
 
-        with pytest.raises(RuntimeError, match="Config file not found"):
+        with pytest.raises(RuntimeError, match="config file not found"):
             ws.init("true")

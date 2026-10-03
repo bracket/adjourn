@@ -355,6 +355,11 @@ def test_state_projection_includes_selected_fields_for_each_status(
     }
 
 
+def test_state_projection_rejects_unknown_fields() -> None:
+    with pytest.raises(KeyError, match="lable"):
+        state_projection({"status": "running"}, ("status", "lable"))
+
+
 def test_state_projection_returns_none_for_unavailable_fields() -> None:
     projection = state_projection({"status": "running"}, DEFAULT_FIELDS + ("branch_count",))
 
