@@ -331,10 +331,10 @@ def cmd_state_show(
             raise ValueError("expected a JSON object")
     except OSError as exc:
         click.echo(f"Error reading {state_file}: {exc}", err=True)
-        sys.exit(1)
+        raise click.exceptions.Exit(1)
     except (json.JSONDecodeError, ValueError) as exc:
         click.echo(f"Error parsing {state_file}: {exc}", err=True)
-        sys.exit(1)
+        raise click.exceptions.Exit(1)
 
     if output_format == "json":
         fields = VERBOSE_FIELDS if verbose else DEFAULT_FIELDS
@@ -364,10 +364,10 @@ def cmd_config_init(config_path: Path | None, force: bool) -> None:
         create_config_file(path, force=force)
     except FileExistsError:
         click.echo(f"Error: config file already exists: {path}", err=True)
-        sys.exit(1)
+        raise click.exceptions.Exit(1)
     except OSError as exc:
         click.echo(f"Error: {exc}", err=True)
-        sys.exit(1)
+        raise click.exceptions.Exit(1)
     click.echo(f"Initialized config: {path}")
 
 
@@ -404,7 +404,7 @@ def cmd_config_show(
         config = _open_config(path)
     except (OSError, ValueError) as exc:
         click.echo(f"Error: {exc}", err=True)
-        sys.exit(1)
+        raise click.exceptions.Exit(1)
 
     store_rows: list[dict[str, Any]] = []
     built_stores: list[RuleSetStore] = []
@@ -479,7 +479,7 @@ def cmd_config_show(
     else:
         click.echo(_format_config_raw(payload))
     if has_store_errors:
-        sys.exit(1)
+        raise click.exceptions.Exit(1)
 
 
 @main.group("store")
@@ -520,7 +520,7 @@ def cmd_store_list(
         store_info = _gather_store_info(store)
     except Exception as exc:  # noqa: BLE001 — store backends fail in backend-specific ways
         click.echo(f"Error: {exc}", err=True)
-        sys.exit(1)
+        raise click.exceptions.Exit(1)
     if output_format == "json":
         click.echo(_format_store_info_json(store_info, pretty_print))
         return
