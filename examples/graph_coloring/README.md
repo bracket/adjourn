@@ -9,8 +9,9 @@ from the command line. Each `adjourn resume` is a new process: it reads the
 saved state, continues the search until something reportable happens, writes
 the state back, and exits.
 
-The rules are in [`coloring.pl`](coloring.pl). Each valid coloring hits
-`yield(found)`, which suspends the search before the coloring is reported.
+The rules are in [`coloring.pl`](coloring.pl). The search stops at each
+solution: the coloring is reported, and the remaining choices are saved so
+the next resume can backtrack into them.
 
 ## Walkthrough
 
@@ -31,9 +32,9 @@ Then resume it, in place, as many times as you like:
 
 ```console
 $ adjourn resume state.json state.json
-status: suspended — label: "found"
-ruleset_hash: d9402234e3f2
-resume_hash:  d9402234e3f2
+status: solution — bindings: A=red, B=green, C=red, D=green
+ruleset_hash: bba61a098984
+resume_hash:  bba61a098984
 goal: coloring(A, B, C, D)
 ```
 
@@ -41,17 +42,14 @@ Later output is trimmed to the status line:
 
 ```console
 $ adjourn resume state.json state.json
-status: solution — bindings: A=red, B=green, C=red, D=green
-$ adjourn resume state.json state.json
-status: suspended — label: "found"
-$ adjourn resume state.json state.json
 status: solution — bindings: A=red, B=green, C=red, D=blue
+$ adjourn resume state.json state.json
+status: solution — bindings: A=red, B=green, C=blue, D=green
 ```
 
-Each coloring takes two resumes: the first stops at the `yield`, the next
-reports the coloring as a solution with the goal's variables bound. Resuming
-past a solution backtracks into the remaining choices for the next coloring.
-After the sixth coloring, the search is exhausted:
+Each resume reports one coloring, with the goal's variables bound, by
+backtracking into the choices left over from the previous one. After the
+sixth coloring, the search is exhausted:
 
 ```console
 $ adjourn resume state.json state.json
