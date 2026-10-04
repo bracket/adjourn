@@ -247,6 +247,14 @@ class TestConfig:
 class TestStores:
     """Store dispatch tests."""
 
+    def test_custom_store_gets_default_store_info(self) -> None:
+        info = _EmptyRuleSetStore().store_info()
+
+        assert info.type == "_EmptyRuleSetStore"
+        assert info.name is None
+        assert info.path == ""
+        assert info.hash == "f" * 64
+
     def test_file_store_returns_clauses_for_known_hash(self, tmp_path: Path) -> None:
         rules_path = _write_rules(tmp_path, "rules.pl", "p(a).\n")
         store = FileRuleSetStore(rules_path)

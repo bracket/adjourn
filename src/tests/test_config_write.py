@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from adjourn.config import Config
+from adjourn.config import Config, create_config_file
 
 
 def _write_config(tmp_path: Path, data: dict) -> Path:
@@ -272,3 +272,29 @@ class TestConfigCreateOption:
         assert config_path.read_bytes() == original
         assert len(config.store_configs) == 1
         assert config.store_configs[0]["path"] == "a.pl"
+
+
+class TestCreateConfigFile:
+    """Tests for creating empty config files through the shared helper."""
+
+    def test_creates_config_and_parent_directories(self, tmp_path: Path) -> None:
+        path = tmp_path / "nested" / "config.yaml"
+
+        assert create_config_file(path) == path
+        assert yaml.safe_load(path.read_text()) == {"stores": []}
+
+    def test_existing_file_requires_force(self, tmp_path: Path) -> None:
+        path = _write_config(tmp_path, {"stores": [{"type": "file", "path": "x.pl"}]})
+        original = path.read_text()
+
+        with pytest.raises(FileExistsError):
+            create_config_file(path)
+
+        assert path.read_text() == original
+
+    def test_force_overwrites_existing_file(self, tmp_path: Path) -> None:
+        path = _write_config(tmp_path, {"stores": [{"type": "file", "path": "x.pl"}]})
+
+        create_config_file(path, force=True)
+
+        assert yaml.safe_load(path.read_text()) == {"stores": []}

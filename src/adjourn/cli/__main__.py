@@ -10,11 +10,23 @@ import click
 from click.shell_completion import get_completion_class
 
 from adjourn.adjourn_foreign import load_foreign_plugins
-from adjourn.config import Config
-from adjourn.runner import Runner
-from adjourn.state import init_state, set_resume_hash
+from adjourn.config import Config, create_config_file
+from adjourn.state import (
+    DEFAULT_FIELDS,
+    VERBOSE_FIELDS,
+    init_state,
+    set_resume_hash,
+    state_projection,
+)
 from adjourn.state_store import JsonFileStateStore
-from adjourn.store import AggregateRuleSetStore, StoreInfo, build_store_from_config
+from adjourn.store import (
+    AggregateRuleSetStore,
+    RuleSetStore,
+    StoreInfo,
+    build_store_from_config,
+    build_store_from_config_entry,
+    resolve_store_path,
+)
 
 
 @click.group(invoke_without_command=True)
@@ -63,13 +75,6 @@ def main(ctx: click.Context) -> None:
     default=False,
     help="Pretty-print JSON output.",
 )
-@click.option(
-    "--create-config",
-    "create_config",
-    is_flag=True,
-    default=False,
-    help="Create the config file (with an empty stores list) if it does not exist.",
-)
 def cmd_init(
     query: str,
     state_file: Path,
@@ -77,7 +82,6 @@ def cmd_init(
     config_path: Path | None,
     output_format: str,
     pretty_print: bool,
-    create_config: bool,
 ) -> None:
     """Initialise a new resolution state and write it to STATE_FILE.
 
@@ -88,18 +92,12 @@ def cmd_init(
     v0 state and writes it as pretty-printed JSON.  Use the ``resume``
     command to drive the meta-interpreter forward.
 
-    With ``--create-config``, a missing config file is created (with an
-    empty ``stores`` list) instead of failing.  On an empty program the
-    state records the reserved ``@empty`` ruleset hash for both
-    ``ruleset_hash`` and ``resume_hash``.
-
     Examples:
 
         adjourn init "color(X, Y)" state.json --ruleset coloring
-        adjourn init "true" state.json --create-config
     """
     try:
-        config = Config(_resolve_config_path(config_path), create=create_config)
+        config = _open_config(config_path)
         load_foreign_plugins(config.foreign_plugins)
         store = build_store_from_config(config)
         state = init_state(query, ruleset_name, store, config)
@@ -111,7 +109,7 @@ def cmd_init(
         JsonFileStateStore().store_init_state(state)
 
         if output_format == "json":
-            projection = _build_state_projection(state)
+            projection = state_projection(state, DEFAULT_FIELDS)
             click.echo(_format_state_json(projection, pretty_print))
 
     except (OSError, ValueError, KeyError) as exc:
@@ -179,9 +177,11 @@ def cmd_resume(
         sys.exit(1)
 
     try:
-        config = Config(_resolve_config_path(config_path))
+        config = _open_config(config_path)
         load_foreign_plugins(config.foreign_plugins)
         store = build_store_from_config(config)
+        from adjourn.runner import Runner
+
         runner = Runner(store)
         new_state = runner.run(state)
         if "resume_hash" in state:
@@ -198,10 +198,10 @@ def cmd_resume(
         sys.exit(1)
 
     if output_format == "json":
-        projection = _build_state_projection(new_state)
+        projection = state_projection(new_state, DEFAULT_FIELDS)
         click.echo(_format_state_json(projection, pretty_print))
     else:
-        _print_status_summary(new_state)
+        click.echo(_format_state_raw(new_state))
 
 
 @main.command("set-resume")
@@ -252,7 +252,7 @@ def cmd_set_resume(
     The resolved ruleset hash is written as the ``resume_hash`` field.
     The ``ruleset_hash`` field is left untouched.
 
-    Under ``--format json``, stdout receives the four-field state projection
+    Under ``--format json``, stdout receives the shared state projection
     used by ``resume``. Under the default ``raw`` format, stdout behavior is
     unchanged: in-place and file outputs are silent, while ``-o -`` writes the
     rewritten full state JSON.
@@ -274,7 +274,7 @@ def cmd_set_resume(
         sys.exit(1)
 
     try:
-        config = Config(_resolve_config_path(config_path))
+        config = _open_config(config_path)
         store = build_store_from_config(config)
         new_state = set_resume_hash(state, ruleset_name, store, config)
     except (ValueError, KeyError, OSError) as exc:
@@ -290,10 +290,197 @@ def cmd_set_resume(
         output_file.write_text(serialized)
 
     if output_format == "json":
-        projection = _build_state_projection(new_state)
+        projection = state_projection(new_state, DEFAULT_FIELDS)
         click.echo(_format_state_json(projection, pretty_print))
     elif str(output_file) == "-":
         click.echo(serialized, nl=False)
+
+
+@main.group("state")
+def state_group() -> None:
+    """Inspect resolution state files."""
+
+
+@state_group.command("show")
+@click.argument("state_file", type=click.Path(path_type=Path))
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["raw", "json"], case_sensitive=False),
+    default="raw",
+    show_default=True,
+    help="Output format.",
+)
+@click.option(
+    "--pretty-print",
+    is_flag=True,
+    default=False,
+    help="Pretty-print JSON output.",
+)
+@click.option("-v", "--verbose", is_flag=True, help="Show branches and full hashes.")
+def cmd_state_show(
+    state_file: Path,
+    output_format: str,
+    pretty_print: bool,
+    verbose: bool,
+) -> None:
+    """Show the state stored in STATE_FILE."""
+    try:
+        state = json.loads(state_file.read_text(encoding="utf-8"))
+        if not isinstance(state, dict):
+            raise ValueError("expected a JSON object")
+    except OSError as exc:
+        click.echo(f"Error reading {state_file}: {exc}", err=True)
+        raise click.exceptions.Exit(1)
+    except (json.JSONDecodeError, ValueError) as exc:
+        click.echo(f"Error parsing {state_file}: {exc}", err=True)
+        raise click.exceptions.Exit(1)
+
+    if output_format == "json":
+        fields = VERBOSE_FIELDS if verbose else DEFAULT_FIELDS
+        click.echo(_format_state_json(state_projection(state, fields), pretty_print))
+    else:
+        click.echo(_format_state_raw(state, verbose=verbose))
+
+
+@main.group("config")
+def config_group() -> None:
+    """Inspect and initialize project configuration."""
+
+
+@config_group.command("init")
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Path to the project config file.",
+)
+@click.option("-f", "--force", is_flag=True, help="Overwrite an existing config file.")
+def cmd_config_init(config_path: Path | None, force: bool) -> None:
+    """Create an empty project config file."""
+    path = _resolve_config_path(config_path)
+    try:
+        create_config_file(path, force=force)
+    except FileExistsError:
+        click.echo(f"Error: config file already exists: {path}", err=True)
+        raise click.exceptions.Exit(1)
+    except OSError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        raise click.exceptions.Exit(1)
+    click.echo(f"Initialized config: {path}")
+
+
+@config_group.command("show")
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Path to the project config file.",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["raw", "json"], case_sensitive=False),
+    default="raw",
+    show_default=True,
+    help="Output format.",
+)
+@click.option(
+    "--pretty-print",
+    is_flag=True,
+    default=False,
+    help="Pretty-print JSON output.",
+)
+def cmd_config_show(
+    config_path: Path | None,
+    output_format: str,
+    pretty_print: bool,
+) -> None:
+    """Show resolved config, stores, aliases, and foreign plugins."""
+    path = _resolve_config_path(config_path)
+    try:
+        config = _open_config(path)
+    except (OSError, ValueError) as exc:
+        click.echo(f"Error: {exc}", err=True)
+        raise click.exceptions.Exit(1)
+
+    store_rows: list[dict[str, Any]] = []
+    built_stores: list[RuleSetStore] = []
+    has_store_errors = False
+    for store_config in config.store_configs:
+        item: dict[str, Any] = {
+            "type": store_config["type"],
+            "path": store_config["path"],
+            "resolved_path": str(
+                resolve_store_path(config, store_config["path"]).resolve()
+            ),
+        }
+        for key in ("name", "prolog", "support"):
+            if key in store_config:
+                item[key] = store_config[key]
+        try:
+            store = build_store_from_config_entry(config, store_config)
+            store_info = _gather_store_info(store)[0]
+            item["type"] = store_info.type
+            item["hash"] = store_info.hash
+            if store_info.name is not None:
+                item["name"] = store_info.name
+            built_stores.append(store)
+        except Exception as exc:  # noqa: BLE001 — store backends fail independently
+            item["hash"] = None
+            item["error"] = str(exc)
+            has_store_errors = True
+        store_rows.append(item)
+
+    # The aggregate is assembled from the already-built stores so no rules
+    # file is parsed twice.  It is unavailable whenever any store failed.
+    aggregate: AggregateRuleSetStore | None = None
+    top_error: str | None = None
+    if has_store_errors:
+        top_error = "one or more configured stores could not be built"
+    else:
+        try:
+            aggregate = AggregateRuleSetStore(built_stores)
+            _ = aggregate.ruleset_hash
+        except Exception as exc:  # noqa: BLE001 — composite construction can fail per backend
+            aggregate = None
+            top_error = str(exc)
+            has_store_errors = True
+
+    aliases = [
+        {
+            "name": name,
+            "hash": ruleset_hash,
+            # Ownership is unknown (None) when the aggregate is unavailable.
+            "owned": aggregate.owns(ruleset_hash) if aggregate is not None else None,
+        }
+        for name, ruleset_hash in config.aliases.items()
+    ]
+
+    payload: dict[str, Any] = {
+        "config": str(path.resolve()),
+        "base_dir": str(config.base_dir.resolve()),
+        "top": aggregate.ruleset_hash if aggregate is not None else None,
+    }
+    if top_error is not None:
+        payload["top_error"] = top_error
+    payload.update(
+        {
+            "stores": store_rows,
+            "aliases": aliases,
+            "plugins": config.foreign_plugins,
+        }
+    )
+
+    if output_format == "json":
+        click.echo(json.dumps(payload, indent=2 if pretty_print else None))
+    else:
+        click.echo(_format_config_raw(payload))
+    if has_store_errors:
+        raise click.exceptions.Exit(1)
+
 
 @main.group("store")
 def store_group() -> None:
@@ -328,8 +515,12 @@ def cmd_store_list(
     pretty_print: bool,
 ) -> None:
     """List configured ruleset stores."""
-    store = _load_store(config_path)
-    store_info = store.store_info_list()
+    try:
+        store = _load_store(config_path)
+        store_info = _gather_store_info(store)
+    except Exception as exc:  # noqa: BLE001 — store backends fail in backend-specific ways
+        click.echo(f"Error: {exc}", err=True)
+        raise click.exceptions.Exit(1)
     if output_format == "json":
         click.echo(_format_store_info_json(store_info, pretty_print))
         return
@@ -387,14 +578,7 @@ def cmd_rules_add(
         sys.exit(1)
 
     try:
-        try:
-            config = Config(resolved_config_path)
-        except FileNotFoundError:
-            config = Config.__new__(Config)
-            config.path = Path(resolved_config_path)
-            config._data = {"stores": [], "aliases": {}, "foreign": {}}
-            config._create_if_missing()
-
+        config = _open_config(resolved_config_path)
         store_config = config.append_file_store(path)
     except (OSError, ValueError, KeyError) as exc:
         click.echo(f"Error: {exc}", err=True)
@@ -415,46 +599,48 @@ def cmd_rules_add(
         click.echo(f"Store with path '{path}' already registered.")
 
 
-def _print_status_summary(state: dict[str, Any]) -> None:
-    """Print a one-line human-readable summary of the state status.
+def _format_state_raw(state: dict[str, Any], verbose: bool = False) -> str:
+    """Format the human-readable state summary shared by resume and state show.
 
     Args:
-        state: A v0 state dictionary.  Recognised keys:
-
-            - ``status`` (str): one of ``"done"``, ``"solution"``,
-              ``"suspended"``, or ``"running"``.
-            - ``bindings`` (dict, optional): variable bindings present when
-              ``status`` is ``"solution"``.
-            - ``suspension`` (dict, optional): dict with a ``"label"`` key
-              present when ``status`` is ``"suspended"``.
-            - ``branches`` (list, optional): remaining branch list used when
-              ``status`` is ``"running"``.
+        state: A v0 state dictionary.
+        verbose: Include full hashes, resume kind, and branch stacks.
     """
+    lines: list[str] = []
     status = state.get("status", "unknown")
     if status == "done":
-        click.echo("status: done")
+        lines.append("status: done")
     elif status == "solution":
         bindings = state.get("bindings", {})
         if bindings:
             pairs = ", ".join(f"{k}={v}" for k, v in bindings.items())
-            click.echo(f"status: solution — bindings: {pairs}")
+            lines.append(f"status: solution — bindings: {pairs}")
         else:
-            click.echo("status: solution")
+            lines.append("status: solution")
     elif status == "suspended":
         label = state.get("suspension", {}).get("label", "")
-        click.echo(f'status: suspended — label: "{label}"')
+        lines.append(f'status: suspended — label: "{label}"')
     elif status == "running":
         branches = len(state.get("branches", []))
-        click.echo(f"status: running — {branches} branch(es) remaining")
+        lines.append(f"status: running — {branches} branch(es) remaining")
     else:
-        click.echo(f"status: {status}")
+        lines.append(f"status: {status}")
 
     ruleset_hash = state.get("ruleset_hash")
     if isinstance(ruleset_hash, str) and ruleset_hash:
-        click.echo(f"ruleset_hash: {ruleset_hash[:12]}")
-        resume_hash = state.get("resume_hash")
-        if isinstance(resume_hash, str) and resume_hash:
-            click.echo(f"resume_hash:  {resume_hash[:12]}")
+        lines.append(
+            f"ruleset_hash: {ruleset_hash if verbose else ruleset_hash[:12]}"
+        )
+    resume_hash = state.get("resume_hash")
+    if isinstance(resume_hash, str) and resume_hash:
+        lines.append(f"resume_hash:  {resume_hash if verbose else resume_hash[:12]}")
+    lines.append(f"goal: {state.get('original_goal')}")
+    if verbose:
+        lines.append(f"resume_kind: {state.get('resume_kind')}")
+        for branch in state.get("branches", []):
+            lines.append(f"branch: {branch.get('orig_goal')}")
+            lines.extend(f"  {goal}" for goal in branch.get("goals", []))
+    return "\n".join(lines)
 
 
 def _resolve_config_path(config_path: Path | None) -> Path:
@@ -467,43 +653,120 @@ def _resolve_config_path(config_path: Path | None) -> Path:
     return Path(".adjourn/config.yaml")
 
 
+def _open_config(config_path: Path | None) -> Config:
+    """Load the project config, hinting at ``config init`` when it is missing.
+
+    Raises:
+        FileNotFoundError: If the resolved config file does not exist; the
+            message names the path and suggests ``adjourn config init``.
+        ValueError: If the config file is invalid.
+    """
+    path = _resolve_config_path(config_path)
+    try:
+        return Config(path)
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(
+            f"config file not found: {path}; run `adjourn config init` first"
+        ) from exc
+
+
 # TODO: This will contain more than just the store at some point
 
 def _load_store(config_path: Path | None) -> AggregateRuleSetStore:
     """Load the configured aggregate ruleset store."""
-    config = Config(_resolve_config_path(config_path))
-    return build_store_from_config(config)
+    return build_store_from_config(_open_config(config_path))
+
+
+def _gather_store_info(
+    store: AggregateRuleSetStore | RuleSetStore,
+) -> list[StoreInfo]:
+    """Gather display metadata for an aggregate or individual store."""
+    if isinstance(store, AggregateRuleSetStore):
+        return store.store_info_list()
+    return [store.store_info()]
 
 
 def _format_store_info_raw(store_info_list: list[StoreInfo]) -> str:
     """Return raw aligned store metadata output."""
     include_name = any(store_info.name is not None for store_info in store_info_list)
-    columns: list[tuple[str, list[str]]] = [
-        ("type", [store_info.type for store_info in store_info_list]),
-    ]
+    headers = ["type"]
     if include_name:
-        columns.append(("name", [store_info.name or "" for store_info in store_info_list]))
-    columns.extend(
-        [
-            ("path", [store_info.path for store_info in store_info_list]),
-            ("hash", [store_info.hash for store_info in store_info_list]),
-        ]
-    )
+        headers.append("name")
+    headers.extend(("path", "hash"))
+    rows = []
+    for store_info in store_info_list:
+        row = [store_info.type]
+        if include_name:
+            row.append(store_info.name or "")
+        row.extend((store_info.path, store_info.hash))
+        rows.append(row)
+    return _format_table(headers, rows)
+
+
+def _format_table(headers: list[str], rows: list[list[str]]) -> str:
+    """Return rows as a plain-text table with aligned columns."""
     widths = [
-        max(len(header), *(len(value) for value in values))
-        for header, values in columns
+        max(len(header), *(len(row[index]) for row in rows))
+        for index, header in enumerate(headers)
     ]
-    headers = [
-        header.ljust(width)
-        for width, (header, _) in zip(widths, columns, strict=False)
+    lines = [" ".join(header.ljust(width) for header, width in zip(headers, widths))]
+    lines.extend(
+        " ".join(value.ljust(width) for value, width in zip(row, widths)).rstrip()
+        for row in rows
+    )
+    return "\n".join(line.rstrip() for line in lines)
+
+
+def _format_config_raw(payload: dict[str, Any]) -> str:
+    """Format the resolved config view as sectioned plain text."""
+    lines = [
+        f"config: {payload['config']}",
+        f"base_dir: {payload['base_dir']}",
     ]
-    lines = [" ".join(headers).rstrip()]
-    for index in range(len(store_info_list)):
-        row = [
-            values[index].ljust(width)
-            for width, (_, values) in zip(widths, columns, strict=False)
+    if payload.get("top_error") is not None:
+        lines.append(f"top: ERROR: {payload['top_error']}")
+    else:
+        lines.append(f"top: {payload['top']}")
+
+    store_rows = payload["stores"]
+    lines.append("stores:")
+    store_headers = ["type"]
+    for optional_header in ("name", "prolog", "support"):
+        if any(optional_header in item for item in store_rows):
+            store_headers.append(optional_header)
+    store_headers.extend(("path", "resolved_path", "hash"))
+    if any("error" in item for item in store_rows):
+        store_headers.append("error")
+    rows = []
+    for item in store_rows:
+        row = [str(item["type"])]
+        for key in store_headers[1:]:
+            value = item.get(key, "")
+            if key == "hash" and value is None:
+                value = "<error>"
+            row.append(str(value))
+        rows.append(row)
+    lines.append(_format_table(store_headers, rows) if rows else "(none)")
+
+    lines.append("aliases:")
+    alias_rows = [
+        [
+            item["name"],
+            item["hash"],
+            "unknown" if item["owned"] is None else str(item["owned"]).lower(),
         ]
-        lines.append(" ".join(row).rstrip())
+        for item in payload["aliases"]
+    ]
+    lines.append(
+        _format_table(["name", "hash", "owned"], alias_rows)
+        if alias_rows
+        else "(none)"
+    )
+    lines.append("plugins:")
+    plugins = payload["plugins"]
+    lines.extend(f"  - {plugin}" for plugin in plugins)
+    if not plugins:
+        lines.append("  (none)")
     return "\n".join(lines)
 
 
@@ -536,31 +799,6 @@ def _state_ruleset_hash(state: dict[str, Any]) -> str:
     return ruleset_hash
 
 
-def _build_state_projection(state: dict[str, Any]) -> dict[str, Any]:
-    """Build a JSON projection dict from a state dictionary.
-
-    The projection contains exactly these keys:
-
-    - ``status`` — from ``state["status"]``.
-    - ``label`` — from ``state.get("suspension", {}).get("label")``; ``None``
-      when the state is not suspended or has no label.
-    - ``ruleset_hash`` — from ``state.get("ruleset_hash")``.
-    - ``resume_hash`` — from ``state.get("resume_hash")``; ``None`` when absent.
-
-    Args:
-        state: A v0 state dictionary.
-
-    Returns:
-        A dict with the four projection keys.
-    """
-    return {
-        "status": state.get("status"),
-        "label": state.get("suspension", {}).get("label"),
-        "ruleset_hash": state.get("ruleset_hash"),
-        "resume_hash": state.get("resume_hash"),
-    }
-
-
 def _format_state_json(
     projection: dict[str, Any],
     pretty_print: bool,
@@ -568,7 +806,7 @@ def _format_state_json(
     """Return JSON serialization of a state projection.
 
     Args:
-        projection: A state projection dict (from :func:`_build_state_projection`).
+        projection: A state projection dict.
         pretty_print: If ``True``, produce indented JSON.
 
     Returns:

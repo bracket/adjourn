@@ -22,6 +22,7 @@ from typing import Any
 
 from adjourn.context import ContextStack
 from adjourn.prompts import read_prompt, render_usage
+from adjourn.state import state_projection
 from adjourn.tools import Workspace
 
 _HAFT_IMPORT_ERROR = (
@@ -246,17 +247,12 @@ class Driver:
     def _tool_state(self, session: str) -> dict[str, Any]:
         """Build the LLM-facing result dict from the session state file.
 
-        The result always carries ``status``; it carries ``label`` only when
-        the session is suspended and ``bindings`` only when it has a
-        solution.  It never carries the session id or any hash keys.
+        The result always carries ``status``, ``label``, and ``bindings``.
+        Unavailable fields are ``None``.  It never carries the session id or
+        any hash keys.
         """
         state = self._read_state(session)
-        result: dict[str, Any] = {"status": state["status"]}
-        if state["status"] == "suspended":
-            result["label"] = state["suspension"]["label"]
-        elif state["status"] == "solution":
-            result["bindings"] = state["bindings"]
-        return result
+        return state_projection(state, ("status", "label", "bindings"))
 
     def _create_chat_session(self, chat_session_cls: type[Any]) -> Any:
         """Create a fresh haft chat session for one round."""

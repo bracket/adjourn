@@ -7,6 +7,7 @@ import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -103,6 +104,41 @@ def _session_id(workspace: Workspace) -> str:
     ]
     assert len(states) == 1
     return states[0].stem
+
+
+@pytest.mark.parametrize(
+    ("status", "suspension", "bindings", "expected_label", "expected_bindings"),
+    [
+        ("running", None, None, None, None),
+        ("suspended", {"label": "need_input"}, None, "need_input", None),
+        ("solution", None, {"X": "1"}, None, {"X": "1"}),
+        ("done", None, None, None, None),
+    ],
+)
+def test_driver_tool_state_always_projects_all_three_fields(
+    tmp_path: Path,
+    status: str,
+    suspension: dict[str, str] | None,
+    bindings: dict[str, str] | None,
+    expected_label: str | None,
+    expected_bindings: dict[str, str] | None,
+) -> None:
+    state_path = tmp_path / "state.json"
+    state = {"status": status}
+    if suspension is not None:
+        state["suspension"] = suspension
+    if bindings is not None:
+        state["bindings"] = bindings
+    state_path.write_text(json.dumps(state))
+
+    driver = object.__new__(Driver)
+    driver.workspace = SimpleNamespace(state_path=lambda session: state_path)
+
+    assert driver._tool_state("session") == {
+        "status": status,
+        "label": expected_label,
+        "bindings": expected_bindings,
+    }
 
 
 class TestDriverSolutions:
