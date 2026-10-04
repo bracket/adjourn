@@ -81,16 +81,45 @@ Rulesets compose into ordered chains with deterministic composite hashes.
 
 ## Installation
 
-Requires Python 3.11+ and a recent [SWI-Prolog](https://www.swi-prolog.org/)
-10.x with Janus support.
+Requires Python 3.11+ and [SWI-Prolog](https://www.swi-prolog.org/) 10.x.
+Install SWI-Prolog first, since the `janus-swi` dependency builds against it:
+
+```bash
+brew install swi-prolog                       # macOS (Homebrew)
+
+sudo apt-add-repository ppa:swi-prolog/stable # Ubuntu
+sudo apt-get update && sudo apt-get install swi-prolog
+```
+
+For other platforms, see the
+[SWI-Prolog downloads](https://www.swi-prolog.org/Download.html).
+
+Then install adjourn directly from GitHub:
+
+```bash
+pip install "adjourn @ git+https://github.com/bracket/adjourn.git"
+```
+
+Optional extras use the same form, for example
+`pip install "adjourn[mcp] @ git+https://github.com/bracket/adjourn.git"`:
+
+- `[mcp]`: MCP server and LLM driver.
+- `[query]`: mnestic (CozoDB) ruleset stores.
+
+To work on adjourn itself, clone it and install in editable mode instead:
 
 ```bash
 git clone https://github.com/bracket/adjourn.git
 cd adjourn
-pip install -e .            # core engine and CLI
-pip install -e ".[mcp]"     # + MCP server and LLM driver
-pip install -e ".[query]"   # + mnestic (CozoDB) ruleset stores
+pip install -e ".[dev]"
 ```
+
+## Example
+
+[`examples/graph_coloring`](examples/graph_coloring/) colors a small graph
+entirely from the command line. Each `adjourn resume` is a fresh process that
+picks the search up from a JSON state file, and backtracks into the next
+coloring.
 
 ## Command line
 
