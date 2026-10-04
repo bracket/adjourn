@@ -35,7 +35,7 @@ continues past the yield.
 
 ## Extending the program
 
-Rules are ordinary Prolog clauses. Adding rules makes the new clauses
-available and sets the session to restart the current goal from the top when
-it is next resumed, so a goal that was stuck can now proceed. Adding rules
-does not itself resume the session.
+Rules are ordinary Prolog clauses. Adding rules registers the new clauses
+and points the session at @top, the ruleset containing every registered rule,
+so the new rules are in scope when it is next resumed and a goal that was
+stuck can now proceed. Adding rules does not itself resume the session.

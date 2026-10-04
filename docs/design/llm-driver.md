@@ -68,8 +68,9 @@ The entry point for the first cut is the Python API only.
    rounds; the context stack is the only memory. The LLM may make any number
    of tool calls, including none.
 3. When `send()` returns, the driver saves the context stack and resumes
-   the session. If rules were added, resolution restarts from the top of
-   the current goal; otherwise it continues past the yield.
+   the session, continuing past the yield. If rules were added, the session
+   was repointed at `@top` (the ruleset containing every registered rule),
+   so the new rules are in scope for the goals still to be reduced.
 4. At the next stop: suspended -> next round; solution or done -> finish
    (see Solutions).
 

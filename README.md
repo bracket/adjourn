@@ -43,8 +43,9 @@ Each time the goal suspends, the driver opens a fresh LLM round with the
 suspension label, the session state, and a small context stack. The LLM has
 three tools:
 
-- `add_rules(rules)`: add Prolog clauses; the current goal restarts from the
-  top on the next resume.
+- `add_rules(rules)`: add Prolog clauses and point the session at `@top`,
+  the ruleset containing every registered rule, so they are in scope on the
+  next resume.
 - `push_context(text)` / `pop_context()`: manage its own working notes,
   which are the only memory carried between rounds.
 
@@ -119,7 +120,9 @@ pip install -e ".[dev]"
 [`examples/graph_coloring`](examples/graph_coloring/) colors a small graph
 entirely from the command line. Each `adjourn resume` is a fresh process that
 picks the search up from a JSON state file, and backtracks into the next
-coloring.
+coloring. [`examples/graph_coloring_llm`](examples/graph_coloring_llm/)
+solves the same problem with the LLM driver: an LLM writes the program when
+the seed program suspends.
 
 ## Command line
 
