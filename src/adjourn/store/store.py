@@ -44,7 +44,7 @@ class RuleSetStore(ABC):
         """Return whether this store contains *ruleset_hash*."""
         return ruleset_hash in self.known_rulesets()
 
-    def store_info(self) -> "StoreInfo":
+    def store_info(self) -> StoreInfo:
         """Return display metadata for this store.
 
         The default describes the store by its class name with no path or
