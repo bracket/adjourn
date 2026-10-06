@@ -38,7 +38,10 @@ Color the vertices of the cycle graph a-b-c-d-a with red, green and blue so
 that adjacent vertices have different colors. Vertex a is red.
 When the program suspends at implement_program, add rules defining
 implementation(A, B, C, D), which binds A, B, C and D to the colors of
-vertices a, b, c and d."""
+vertices a, b, c and d. Write a general program: describe the graph and the
+available colors as facts, state the constraint that adjacent vertices must
+differ, and let implementation/4 search for colorings. Do not work out or
+list the colorings yourself."""
 
 HERE = Path(__file__).resolve().parent
 RUN_DIR = HERE / "llm_run"

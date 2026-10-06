@@ -81,6 +81,13 @@ reduce_goal(OrigGoal, true, Gs, Rest, Event, State1) :- !,
 reduce_goal(OrigGoal, (A,B), Gs, Rest, Event, State1) :- !,
     step(state([branch(OrigGoal, [A,B|Gs])|Rest]), Event, State1).
 
+% \+ G: negation as failure.  G is proved by the interpreter itself (so it
+% can use rule/2 predicates) in a nested resolution; the branch survives only
+% if that proof finds no solution.  No bindings from the proof leak out.
+reduce_goal(OrigGoal, \+ G, Gs, Rest, Event, State1) :- !,
+    branch_survives(\+ provable(G), branch(OrigGoal, Gs), Rest, Next),
+    step(state(Next), Event, State1).
+
 % yield(Label): cooperative suspension point.  The yield/1 goal is removed
 % from the resolvent, so resuming from this state continues after it.
 reduce_goal(OrigGoal, yield(Label), Gs, Rest, suspended(Label), state([branch(OrigGoal, Gs)|Rest])) :- !.
@@ -163,6 +170,24 @@ rule_branches(Goal, OrigGoal, Gs, Branches) :-
               append(BodyGoals, GsCopy, NewGoals)
             ),
             Branches).
+
+% provable(+G)
+% True if the interpreter finds at least one solution for G.  The proof runs
+% to its first event: a solution proves G, exhaustion (done) fails, and a
+% checkpoint is stepped past (there is nothing to persist from inside a nested
+% proof).  A yield cannot suspend a nested proof, so it is an error.
+provable(G) :-
+    init(G, State),
+    prove(State).
+
+prove(State) :-
+    step(State, Event, State1),
+    proof_event(Event, State1).
+
+proof_event(solution(_),   _).
+proof_event(checkpoint(_), State1) :- prove(State1).
+proof_event(suspended(L),  _) :-
+    throw(error(yield_in_negation(L), context(reduce_goal/6, _))).
 
 % branch_survives(+Test, +Branch, +Rest, -Next)
 % If Test succeeds (first solution only), Branch stays at the front;

@@ -7,7 +7,7 @@ defines `coloring/4` in terms of an `implementation/4` that does not exist
 yet:
 
 ```prolog
-coloring(A, B, C, D) :- implement_program, fail.
+coloring(_, _, _, _) :- implement_program, fail.
 coloring(A, B, C, D) :- implementation(A, B, C, D).
 
 implement_program :- yield(implement_program).

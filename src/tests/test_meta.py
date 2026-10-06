@@ -933,3 +933,85 @@ class TestReductionSemantics:
 
         result = resume_state(_running_state("rs_foreign_mismatch"), self.ruleset)
         assert result["status"] == "done"
+
+
+class TestNegation:
+    """Pins interpreted negation as failure (\\+).
+
+    Predicate names are prefixed ``ng_`` so rule/2 facts accumulated in the
+    shared SWI-Prolog process by other test classes cannot interfere.
+    """
+
+    def setup_method(self) -> None:
+        self.ruleset = _parse_rules(
+            "rule(ng_item(a), true).\n"
+            "rule(ng_item(b), true).\n"
+            "rule(ng_bad(a), true).\n"
+            "rule(ng_good(X), (ng_item(X), \\+ ng_bad(X))).\n"
+            "rule(ng_none, \\+ ng_item(_)).\n"
+            "rule(ng_no_leak(X), \\+ \\+ X = a).\n"
+            "rule(ng_yields, yield(inner)).\n"
+            "rule(ng_yield_in_negation, \\+ ng_yields).\n"
+            "rule(ng_cp_fails, (checkpoint(c), fail)).\n"
+            "rule(ng_cp_succeeds, (checkpoint(c), true)).\n"
+            "rule(ng_after_failed_cp, \\+ ng_cp_fails).\n"
+            "rule(ng_after_proved_cp, \\+ ng_cp_succeeds).\n"
+            # The shape an LLM produced for the graph coloring demo.
+            "rule(ng_edge(a, b), true).\n"
+            "rule(ng_edge(b, c), true).\n"
+            "rule(ng_adj(X, Y), ng_edge(X, Y)).\n"
+            "rule(ng_adj(X, Y), ng_edge(Y, X)).\n"
+            "rule(ng_member(X, [X|_]), true).\n"
+            "rule(ng_member(X, [_|T]), ng_member(X, T)).\n"
+            "rule(ng_conflict(As), (ng_adj(X, Y), ng_member(X-C, As), "
+            "ng_member(Y-C, As))).\n"
+            "rule(ng_color(red), true).\n"
+            "rule(ng_color(green), true).\n"
+            "rule(ng_path_coloring(B, C), (ng_color(B), ng_color(C), "
+            "\\+ ng_conflict([a-red, b-B, c-C]))).\n"
+        )
+
+    def test_negation_of_unprovable_goal_succeeds(self) -> None:
+        from adjourn.meta import resume_state
+
+        result = resume_state(_running_state("ng_good(X)"), self.ruleset)
+        assert result["status"] == "solution"
+        assert result["bindings"] == {"X": "b"}
+
+    def test_negation_of_provable_goal_drops_branch(self) -> None:
+        from adjourn.meta import resume_state
+
+        result = resume_state(_running_state("ng_none"), self.ruleset)
+        assert result["status"] == "done"
+
+    def test_negation_does_not_leak_bindings(self) -> None:
+        from adjourn.meta import resume_state
+
+        result = resume_state(_running_state("ng_no_leak(X)"), self.ruleset)
+        assert result["status"] == "solution"
+        assert result["bindings"] == {}
+
+    def test_yield_inside_negation_raises(self) -> None:
+        from adjourn.meta import resume_state
+
+        with pytest.raises(Exception, match="yield_in_negation"):
+            resume_state(_running_state("ng_yield_in_negation"), self.ruleset)
+
+    def test_checkpoint_inside_negation_is_stepped_past(self) -> None:
+        from adjourn.meta import resume_state
+
+        unprovable = resume_state(_running_state("ng_after_failed_cp"), self.ruleset)
+        assert unprovable["status"] == "solution"
+
+        provable = resume_state(_running_state("ng_after_proved_cp"), self.ruleset)
+        assert provable["status"] == "done"
+
+    def test_negation_over_interpreted_predicates(self) -> None:
+        from adjourn.meta import resume_state
+
+        first = resume_state(_running_state("ng_path_coloring(B, C)"), self.ruleset)
+        assert first["status"] == "solution"
+        assert first["bindings"] == {"B": "green", "C": "red"}
+
+        second = resume_state(first, self.ruleset)
+        assert second["status"] == "done"
