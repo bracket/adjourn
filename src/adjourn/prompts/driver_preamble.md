@@ -6,8 +6,9 @@ after you finish; you cannot resume it yourself.
 
 You have three tools:
 
-- add_rules(rules) adds Prolog clauses to the program. The current goal
-  restarts from the top when the driver resumes.
+- add_rules(rules) adds Prolog clauses to the program and points the
+  session at @top, the ruleset containing every registered rule including
+  yours, so the new rules are in scope when the driver resumes.
 - push_context(text) saves a note for yourself.
 - pop_context() removes the most recent note you pushed.
 

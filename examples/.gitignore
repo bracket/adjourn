@@ -1,3 +1,5 @@
 # Generated when running the examples from their own directories.
 .adjourn/
 *.json
+# Working directory of examples/graph_coloring_llm/demo.py, wiped on each run.
+llm_run/

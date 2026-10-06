@@ -297,9 +297,10 @@ class Driver:
             """Add Prolog clauses to the program.
 
             Use this when the program suspended because no rule covers a
-            goal.  The clauses are added to the program and the current goal
-            restarts from the top when the driver resumes.  This does not
-            resume the session itself.
+            goal.  The clauses are added to the program and the session is
+            pointed at ``@top`` (the ruleset containing every registered
+            rule), so they are in scope when the driver resumes.  This does
+            not resume the session itself.
 
             Args:
                 args: Tool arguments; ``rules`` holds the Prolog clause text.
