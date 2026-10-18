@@ -89,7 +89,7 @@ def cmd_init(
     STATE_FILE is the path to write the initial JSON state to.
 
     This command does not invoke Prolog; it simply constructs the initial
-    v0 state and writes it as pretty-printed JSON.  Use the ``resume``
+    v1 state and writes it as pretty-printed JSON.  Use the ``resume``
     command to drive the meta-interpreter forward.
 
     Examples:
@@ -603,7 +603,7 @@ def _format_state_raw(state: dict[str, Any], verbose: bool = False) -> str:
     """Format the human-readable state summary shared by resume and state show.
 
     Args:
-        state: A v0 state dictionary.
+        state: A v1 state dictionary.
         verbose: Include full hashes, resume kind, and branch stacks.
     """
     lines: list[str] = []
@@ -638,6 +638,9 @@ def _format_state_raw(state: dict[str, Any], verbose: bool = False) -> str:
     if verbose:
         lines.append(f"resume_kind: {state.get('resume_kind')}")
         for branch in state.get("branches", []):
+            if branch == "barrier":
+                lines.append("barrier")
+                continue
             lines.append(f"branch: {branch.get('orig_goal')}")
             lines.extend(f"  {goal}" for goal in branch.get("goals", []))
     return "\n".join(lines)

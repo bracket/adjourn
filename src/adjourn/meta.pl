@@ -22,13 +22,12 @@
 
 % --- State representation ---
 % state(Branches)
-% Branches is a list of branch(OrigGoal, Goals).  Goals is the resolvent
-% (the remaining goals to prove) for this branch.  OrigGoal is this branch's
-% OWN copy of the original goal term; its variables are shared with the goals
-% in this branch's resolvent, so bindings established while reducing the
-% resolvent are reflected in OrigGoal.  Carrying OrigGoal per-branch (rather
-% than once globally) is what lets distinct branches bind the goal's variables
-% to distinct values, and lets those bindings survive serialization.
+% Branches contains branch(OrigGoal, Goals) entries and positional barrier
+% atoms.  Goals is the resolvent (the remaining goals to prove) for this
+% branch.  OrigGoal is this branch's OWN copy of the original goal term; its
+% variables are shared with the goals in this branch's resolvent, so bindings
+% established while reducing the resolvent are reflected in OrigGoal.  A
+% barrier marks a cut scope; its level is the number of barriers behind it.
 
 % init(+Goal, -State)
 % Construct the initial interpreter state for a single goal.  The sole branch
@@ -47,6 +46,10 @@ step(state([]), done, state([])) :- !.
 % First branch has no remaining goals: emit a solution.  The branch's OrigGoal
 % is now fully bound and is dropped along with the (empty) resolvent.
 step(state([branch(SolvedOrigGoal, [])|Rest]), solution(SolvedOrigGoal), state(Rest)) :- !.
+
+% A barrier at the front means its call alternatives have been exhausted.
+step(state([barrier|Rest]), Event, State1) :- !,
+    step(state(Rest), Event, State1).
 
 % Otherwise, reduce one goal from the head of the current resolvent, carrying
 % this branch's OrigGoal so newly-created branches keep sharing its variables.
@@ -76,6 +79,17 @@ ensure_plain_goal(_).
 % true: trivially succeeds; drop it and continue.
 reduce_goal(OrigGoal, true, Gs, Rest, Event, State1) :- !,
     step(state([branch(OrigGoal, Gs)|Rest]), Event, State1).
+
+% A rewritten cut drops alternatives through the barrier for its call.
+reduce_goal(OrigGoal, '$cut'(K), Gs, Rest, Event, State1) :- !,
+    barrier_count(Rest, BarrierCount),
+    BarriersToDrop is BarrierCount - K,
+    drop_through_barriers(Rest, BarriersToDrop, PrunedRest),
+    step(state([branch(OrigGoal, Gs)|PrunedRest]), Event, State1).
+
+% A raw cut is only valid after it has been rewritten in a rule body.
+reduce_goal(_, !, _, _, _, _) :- !,
+    throw(error(cut_outside_rule_body, context(reduce_goal/6, _))).
 
 % conjunction: flatten (A,B) into [A, B | Gs].
 reduce_goal(OrigGoal, (A,B), Gs, Rest, Event, State1) :- !,
@@ -133,9 +147,9 @@ goal_kind(_,    unknown).
 % reduce_user_goal(+Kind, +Goal, +OrigGoal, +Gs, +Rest, -Next)
 % Compute the next branch list for a user goal of the given kind.
 reduce_user_goal(rules, Goal, OrigGoal, Gs, Rest, Next) :-
-    rule_branches(Goal, OrigGoal, Gs, NewBranches),
-    % DFS order: explore the first alternative first, keep the rest for later.
-    append(NewBranches, Rest, Next).
+    barrier_count(Rest, K),
+    rule_branches(Goal, OrigGoal, Gs, K, NewBranches, HasCut),
+    add_call_barrier(HasCut, NewBranches, Rest, Next).
 reduce_user_goal(builtin, Goal, OrigGoal, Gs, Rest, Next) :-
     branch_survives(user:Goal, branch(OrigGoal, Gs), Rest, Next).
 reduce_user_goal(unknown, Goal, _, _, _, _) :-
@@ -153,7 +167,7 @@ has_rules(Goal) :-
     functor(Skeleton, Functor, Arity),
     \+ \+ user:rule(Skeleton, _).
 
-% rule_branches(+Goal, +OrigGoal, +Gs, -Branches)
+% rule_branches(+Goal, +OrigGoal, +Gs, +K, -Branches, -HasCut)
 % One branch per rule whose head matches Goal.  When none match, Branches is
 % [] and the current branch simply drops out of the state.  findall/3 copies
 % each template, which is exactly what we want: distinct alternatives must be
@@ -162,14 +176,16 @@ has_rules(Goal) :-
 % own OrigGoal copy whose variables are shared, through the head unification,
 % with that branch's resolvent.  This is what lets a solution recover the
 % goal's bindings for that branch.
-rule_branches(Goal, OrigGoal, Gs, Branches) :-
-    findall(branch(OGCopy, NewGoals),
+rule_branches(Goal, OrigGoal, Gs, K, Branches, HasCut) :-
+    findall(branch(OGCopy, NewGoals, BodyHasCut),
             ( copy_term(OrigGoal-Goal-Gs, OGCopy-GoalCopy-GsCopy),
               user:rule(GoalCopy, Body),
-              body_to_goals(Body, BodyGoals),
+              body_to_goals(Body, K, BodyGoals),
+              body_has_cut(BodyGoals, K, BodyHasCut),
               append(BodyGoals, GsCopy, NewGoals)
             ),
-            Branches).
+            RawBranches),
+    split_rule_branches(RawBranches, Branches, HasCut).
 
 % provable(+G)
 % True if the interpreter finds at least one solution for G.  The proof runs
@@ -177,8 +193,15 @@ rule_branches(Goal, OrigGoal, Gs, Branches) :-
 % checkpoint is stepped past (there is nothing to persist from inside a nested
 % proof).  A yield cannot suspend a nested proof, so it is an error.
 provable(G) :-
-    init(G, State),
+    body_to_goals(G, 0, Goals),
+    negation_state(G, Goals, State),
     prove(State).
+
+% negation_state(+G, +Goals, -State)
+% Cuts in a negated body have a local barrier at level zero.
+negation_state(G, Goals, state([branch(G, Goals), barrier])) :-
+    body_has_cut(Goals, 0, yes), !.
+negation_state(G, Goals, state([branch(G, Goals)])).
 
 prove(State) :-
     step(State, Event, State1),
@@ -195,17 +218,68 @@ proof_event(suspended(L),  _) :-
 branch_survives(Test, Branch, Rest, [Branch|Rest]) :- call(Test), !.
 branch_survives(_,    _,      Rest, Rest).
 
-% body_to_goals(+Body, -Goals)
+% body_to_goals(+Body, +K, -Goals)
 % Convert a rule body into a flat goal list (resolvent segment).  An unbound
 % body is kept as a single goal (so reducing it raises an instantiation
-% error) rather than unifying with the true/0 or (,)/2 clause heads.
-body_to_goals(Body, [Body]) :- var(Body), !.
-body_to_goals(true, []) :- !.
-body_to_goals((A,B), Goals) :- !,
-    body_to_goals(A, GA),
-    body_to_goals(B, GB),
+% error) rather than unifying with the true/0 or (,)/2 clause heads.  Cuts in
+% the body are rewritten to carry the positional barrier level at call time.
+body_to_goals(Body, _, [Body]) :- var(Body), !.
+body_to_goals(true, _, []) :- !.
+body_to_goals((A,B), K, Goals) :- !,
+    body_to_goals(A, K, GA),
+    body_to_goals(B, K, GB),
     append(GA, GB, Goals).
-body_to_goals(A, [A]).
+body_to_goals(!, K, ['$cut'(K)]) :- !.
+body_to_goals(A, _, [A]).
+
+% barrier_count(+Branches, -Count)
+% Count the positional cut barriers in the choice-point list.
+barrier_count([], 0).
+barrier_count([barrier|Rest], Count) :- !,
+    barrier_count(Rest, RestCount),
+    Count is RestCount + 1.
+barrier_count([_|Rest], Count) :-
+    barrier_count(Rest, Count).
+
+% drop_through_barriers(+Branches, +Count, -Remaining)
+% Discard the prefix through Count barriers, including the barriers.
+drop_through_barriers(Rest, 0, Rest) :- !.
+drop_through_barriers([barrier|Rest], Count, Remaining) :- !,
+    NextCount is Count - 1,
+    drop_through_barriers(Rest, NextCount, Remaining).
+drop_through_barriers([_|Rest], Count, Remaining) :-
+    drop_through_barriers(Rest, Count, Remaining).
+
+% body_has_cut(+Goals, +K, -HasCut)
+% Inspect without unifying a variable body goal with the cut marker.
+body_has_cut([Goal|_], K, yes) :-
+    nonvar(Goal),
+    Goal = '$cut'(K), !.
+body_has_cut([_|Goals], K, HasCut) :-
+    body_has_cut(Goals, K, HasCut).
+body_has_cut([], _, no).
+
+% split_rule_branches(+RawBranches, -Branches, -HasCut)
+% Remove temporary body cut flags while retaining whether this call needs a
+% barrier.  Only body flags count; continuation goals may carry an outer cut.
+split_rule_branches([], [], no).
+split_rule_branches(
+    [branch(OrigGoal, Goals, BodyHasCut)|Rest],
+    [branch(OrigGoal, Goals)|Branches],
+    HasCut
+) :-
+    split_rule_branches(Rest, Branches, RestHasCut),
+    combine_cut_flags(BodyHasCut, RestHasCut, HasCut).
+
+combine_cut_flags(yes, _, yes) :- !.
+combine_cut_flags(no, RestHasCut, RestHasCut).
+
+% add_call_barrier(+HasCut, +NewBranches, +Rest, -Next)
+% Insert a call's barrier after its alternatives only when its own body cuts.
+add_call_barrier(yes, NewBranches, Rest, Next) :-
+    append(NewBranches, [barrier|Rest], Next).
+add_call_barrier(no, NewBranches, Rest, Next) :-
+    append(NewBranches, Rest, Next).
 
 
 % --- Helpers for query/3 ---
@@ -284,10 +358,11 @@ interleave_lists([X|Xs], [Y|Ys], [X,Y|Zs]) :- interleave_lists(Xs, Ys, Zs).
 % parse_packed_branches(+PackedAtom, -FlatGoalList)
 %
 % Parse a packed atom and return all branches as a flat list of atoms, with
-% the atom 'branch_start' separating branches.  Immediately after each
+% the atom 'branch_start' separating branches and bare 'barrier' entries.
+% Immediately after each
 % 'branch_start' marker comes that branch's OrigGoal atom, then its goals:
 %   [branch_start, OrigGoal1, goal1, goal2, ...,
-%    branch_start, OrigGoal2, goal3, ...]
+%    barrier, branch_start, OrigGoal2, goal3, ...]
 %
 % Returns [] for an empty state (done).
 parse_packed_branches(PackedAtom, FlatGoalList) :-
@@ -304,7 +379,10 @@ parse_packed_branches(PackedAtom, FlatGoalList) :-
 branch_as_atoms(branch(OrigGoal, Goals), [OrigGoalAtom|GoalAtoms]) :-
     term_to_atom(OrigGoal, OrigGoalAtom),
     maplist(term_to_atom, Goals, GoalAtoms).
+branch_as_atoms(barrier, barrier).
 
+flatten_with_markers([barrier|Rest], [barrier|Flat]) :- !,
+    flatten_with_markers(Rest, Flat).
 flatten_with_markers([], []).
 flatten_with_markers([Items|Rest], [branch_start|Flat]) :-
     append(Items, RestFlat, Flat),

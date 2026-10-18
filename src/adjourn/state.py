@@ -6,7 +6,7 @@ dicts and resolving ruleset names to content hashes.  It does **not** import
 
 Public functions:
 
-- :func:`init_state` — build a v0 state dict with both ``ruleset_hash`` and
+- :func:`init_state` — build a v1 state dict with both ``ruleset_hash`` and
   ``resume_hash`` stamped.
 - :func:`set_resume_hash` — set or update ``resume_hash`` on an existing state.
 - :func:`resolve_ruleset_hash` — resolve a ruleset name/alias/hash to a known
@@ -171,9 +171,9 @@ def init_state(
         config: The project configuration used for alias resolution.
 
     Returns:
-        A v0 state dictionary with the following keys:
+        A v1 state dictionary with the following keys:
 
-        - ``version`` (int): schema version, always ``0``.
+        - ``version`` (int): schema version, always ``1``.
         - ``original_goal`` (str): the *goal* string, unchanged.
         - ``branches`` (list[dict]): one-element list
           ``[{"orig_goal": goal, "goals": [goal]}]``.
@@ -183,7 +183,7 @@ def init_state(
     """
     h = resolve_ruleset_hash(ruleset_name, store, config)
     return {
-        "version": 0,
+        "version": 1,
         "original_goal": goal,
         "branches": [{"orig_goal": goal, "goals": [goal]}],
         "status": "running",
@@ -208,7 +208,7 @@ def set_resume_hash(
     ``ruleset_hash`` or any other field.
 
     Args:
-        state: A v0 state dictionary (any existing keys are preserved).
+        state: A v1 state dictionary (any existing keys are preserved).
         ruleset_name: A ruleset alias, store name, ``@``-prefixed system
             alias, or raw 64-character hex hash.
         store: The aggregate ruleset store used to resolve the hash.

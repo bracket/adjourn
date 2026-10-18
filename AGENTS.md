@@ -63,9 +63,11 @@ so it can be reached via `importlib.resources`. Exports: `init/2`, `step/3`,
 
 Key facts an agent must know:
 
-- **State shape (L2):** `state(Branches)` where `Branches` is a list of
-  `branch(Goals)`, and `Goals` is the resolvent (remaining goals). This is the
-  Prolog-side representation; the Python-side JSON schema is different (see L1).
+- **State shape (L2):** `state(Branches)` where `Branches` contains
+  `branch(OrigGoal, Goals)` entries and positional `barrier` atoms. `Goals` is
+  the resolvent (remaining goals); a barrier's level is the number of barriers
+  behind it. This is the Prolog-side representation; the Python-side JSON
+  schema is different (see L1).
 - **`rule/2` is `:- multifile user:rule/2`.** Any consulted ruleset adds
   `user:rule/2` facts **without module qualification**. This is the seam
   between L2 and L3.
@@ -144,9 +146,10 @@ Rules for adding a new `.pl` file that Python must load:
   `instance_`; `RUNNER_ALWAYS_FORCE_NEW` / `force_new` for tests). Reads the
   pinned ruleset hash from a state dict, resolves clauses via a
   `RuleSetStore`, calls `meta.resume_state`.
-- **State (L1 JSON schema, v0):** `{version, original_goal, branches:
-  [{goals:[...]}], status}` plus `suspension` (when suspended/checkpoint),
-  `bindings` (best-effort on solution), `ruleset_hash` (when pinned). Do not
+- **State (L1 JSON schema, v1):** `{version, original_goal, branches:
+  [{orig_goal, goals:[...]} | "barrier"], status}` plus `suspension` (when
+  suspended/checkpoint), `bindings` (best-effort on solution), and
+  `ruleset_hash` (when pinned). Do not
   conflate this with the L2 `state(Branches)` term — `meta.py` packs/unpacks
   between them via `_build_packed_atom` / `parse_packed_branches`.
 - **Packed-atom interop:** Janus can't marshal compound Prolog terms, so the

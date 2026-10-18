@@ -283,6 +283,25 @@ class TestStores:
         with pytest.raises(ValueError, match="empty program"):
             store.known_rulesets()
 
+    @pytest.mark.parametrize(
+        ("content", "prolog_mode", "reserved"),
+        [
+            ("'$cut'(_).\n", "wrapped", r"reserved_predicate\('\$cut'/1\)"),
+            ("rule('$cut'(_), true).\n", "strict", r"reserved_predicate\('\$cut'/1\)"),
+            ("!.\n", "wrapped", r"reserved_predicate\('!'/0\)"),
+            ("rule(!, true).\n", "strict", r"reserved_predicate\('!'/0\)"),
+        ],
+    )
+    def test_file_store_rejects_reserved_rule_heads(
+        self, tmp_path: Path, content: str, prolog_mode: str, reserved: str
+    ) -> None:
+        store = FileRuleSetStore(
+            _write_rules(tmp_path, "reserved.pl", content), prolog=prolog_mode
+        )
+
+        with pytest.raises(ValueError, match=reserved):
+            store.known_rulesets()
+
     def test_wrapped_mode_wraps_bare_clauses(self, tmp_path: Path) -> None:
         rules_path = _write_rules(tmp_path, "rules.pl", "foo.\nbar :- baz.\n")
         store = FileRuleSetStore(rules_path)
