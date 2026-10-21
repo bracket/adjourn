@@ -48,17 +48,17 @@ class TestInitState:
 
     def test_schema_version(self) -> None:
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "foo",
             "branches": [{"goals": ["foo"]}],
             "status": "running",
         }
-        assert state["version"] == 0
+        assert state["version"] == 1
 
     def test_original_goal_preserved(self) -> None:
         goal = "color(X, Y)"
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": goal,
             "branches": [{"goals": [goal]}],
             "status": "running",
@@ -67,7 +67,7 @@ class TestInitState:
 
     def test_status_is_running(self) -> None:
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "foo(bar)",
             "branches": [{"goals": ["foo(bar)"]}],
             "status": "running",
@@ -77,7 +77,7 @@ class TestInitState:
     def test_single_branch_with_goal(self) -> None:
         goal = "member(X, [1,2,3])"
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": goal,
             "branches": [{"goals": [goal]}],
             "status": "running",
@@ -87,7 +87,7 @@ class TestInitState:
 
     def test_no_suspension_or_bindings(self) -> None:
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "any_goal",
             "branches": [{"goals": ["any_goal"]}],
             "status": "running",
@@ -108,7 +108,7 @@ class TestInitState:
         monkeypatch.setattr(janus, "consult", _spy)
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "pure_python_goal",
             "branches": [{"goals": ["pure_python_goal"]}],
             "status": "running",
@@ -132,7 +132,7 @@ class TestResumeStateTrueGoal:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "true",
             "branches": [{"goals": ["true"]}],
             "status": "running",
@@ -144,7 +144,7 @@ class TestResumeStateTrueGoal:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "true",
             "branches": [{"goals": ["true"]}],
             "status": "running",
@@ -156,7 +156,7 @@ class TestResumeStateTrueGoal:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "true",
             "branches": [{"goals": ["true"]}],
             "status": "running",
@@ -168,7 +168,7 @@ class TestResumeStateTrueGoal:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "true",
             "branches": [{"goals": ["true"]}],
             "status": "running",
@@ -180,7 +180,7 @@ class TestResumeStateTrueGoal:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "true",
             "branches": [{"goals": ["true"]}],
             "status": "running",
@@ -199,7 +199,7 @@ class TestResumeStateYield:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "test_yield",
             "branches": [{"goals": ["test_yield"]}],
             "status": "running",
@@ -211,7 +211,7 @@ class TestResumeStateYield:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "test_yield",
             "branches": [{"goals": ["test_yield"]}],
             "status": "running",
@@ -223,7 +223,7 @@ class TestResumeStateYield:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "test_yield",
             "branches": [{"goals": ["test_yield"]}],
             "status": "running",
@@ -236,7 +236,7 @@ class TestResumeStateYield:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "test_yield",
             "branches": [{"goals": ["test_yield"]}],
             "status": "running",
@@ -251,7 +251,7 @@ class TestResumeStateYield:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "test_yield",
             "branches": [{"goals": ["test_yield"]}],
             "status": "running",
@@ -271,7 +271,7 @@ class TestResumeStateDone:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "no_rule_exists_for_this_goal",
             "branches": [{"goals": ["no_rule_exists_for_this_goal"]}],
             "status": "running",
@@ -284,7 +284,7 @@ class TestResumeStateDone:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "true",
             "branches": [],
             "status": "done",
@@ -298,7 +298,7 @@ class TestResumeStateDone:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "false",
             "branches": [{"goals": ["false"]}],
             "status": "running",
@@ -321,7 +321,7 @@ class TestResumeStateEscapeHatch:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "atom_concat(prefix, suffix, R)",
             "branches": [{"goals": ["atom_concat(prefix, suffix, R)"]}],
             "status": "running",
@@ -334,7 +334,7 @@ class TestResumeStateEscapeHatch:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "plain_concat_result(R)",
             "branches": [{"goals": ["plain_concat_result(R)"]}],
             "status": "running",
@@ -347,7 +347,7 @@ class TestResumeStateEscapeHatch:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "(atom_concat(prefix, suffix, R), yield(pause), R=prefixsuffix)",
             "branches": [{"goals": ["(atom_concat(prefix, suffix, R), yield(pause), R=prefixsuffix)"]}],
             "status": "running",
@@ -365,7 +365,7 @@ class TestResumeStateEmptyRuleset:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "true",
             "branches": [{"goals": ["true"]}],
             "status": "running",
@@ -378,7 +378,7 @@ class TestResumeStateEmptyRuleset:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "true",
             "branches": [],
             "status": "done",
@@ -401,7 +401,7 @@ class TestResumeStateMultipleRules:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "choice",
             "branches": [{"goals": ["choice"]}],
             "status": "running",
@@ -414,7 +414,7 @@ class TestResumeStateMultipleRules:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "choice",
             "branches": [{"goals": ["choice"]}],
             "status": "running",
@@ -431,7 +431,7 @@ class TestResumeStateMultipleRules:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "choice",
             "branches": [{"goals": ["choice"]}],
             "status": "running",
@@ -450,21 +450,21 @@ class TestResumeStateSchemaConsistency:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "step_goal",
             "branches": [{"goals": ["step_goal"]}],
             "status": "running",
         }
         for _ in range(3):
             state = resume_state(state, self.ruleset)
-            assert state["version"] == 0
+            assert state["version"] == 1
 
     def test_original_goal_unchanged_across_resumes(self) -> None:
         from adjourn.meta import resume_state
 
         goal = "step_goal"
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": goal,
             "branches": [{"goals": [goal]}],
             "status": "running",
@@ -493,7 +493,7 @@ class TestForeignGoal:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "test_foreign_call",
             "branches": [{"goals": ["test_foreign_call"]}],
             "status": "running",
@@ -506,7 +506,7 @@ class TestForeignGoal:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "test_foreign_call",
             "branches": [{"goals": ["test_foreign_call"]}],
             "status": "running",
@@ -519,7 +519,7 @@ class TestForeignGoal:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "test_foreign_call",
             "branches": [{"goals": ["test_foreign_call"]}],
             "status": "running",
@@ -533,7 +533,7 @@ class TestForeignGoal:
 
         goal = "test_foreign_call"
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": goal,
             "branches": [{"goals": [goal]}],
             "status": "running",
@@ -563,7 +563,7 @@ class TestForeignGoalPackedRoundTrip:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "test_foreign_later",
             "branches": [{"goals": ["test_foreign_later"]}],
             "status": "running",
@@ -576,7 +576,7 @@ class TestForeignGoalPackedRoundTrip:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "test_foreign_later",
             "branches": [{"goals": ["test_foreign_later"]}],
             "status": "running",
@@ -594,7 +594,7 @@ class TestForeignGoalPackedRoundTrip:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "test_foreign_later",
             "branches": [{"goals": ["test_foreign_later"]}],
             "status": "running",
@@ -618,7 +618,7 @@ class TestResumeStateCheckpoint:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "test_checkpoint",
             "branches": [{"goals": ["test_checkpoint"]}],
             "status": "running",
@@ -630,7 +630,7 @@ class TestResumeStateCheckpoint:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "test_checkpoint",
             "branches": [{"goals": ["test_checkpoint"]}],
             "status": "running",
@@ -642,7 +642,7 @@ class TestResumeStateCheckpoint:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "test_checkpoint",
             "branches": [{"goals": ["test_checkpoint"]}],
             "status": "running",
@@ -654,7 +654,7 @@ class TestResumeStateCheckpoint:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "test_checkpoint",
             "branches": [{"goals": ["test_checkpoint"]}],
             "status": "running",
@@ -667,7 +667,7 @@ class TestResumeStateCheckpoint:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "test_checkpoint",
             "branches": [{"goals": ["test_checkpoint"]}],
             "status": "running",
@@ -684,7 +684,7 @@ class TestResumeStateCheckpoint:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "test_checkpoint",
             "branches": [{"goals": ["test_checkpoint"]}],
             "status": "running",
@@ -707,7 +707,7 @@ class TestResumeStateCheckpointMultiple:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "test_multi",
             "branches": [{"goals": ["test_multi"]}],
             "status": "running",
@@ -727,7 +727,7 @@ class TestResumeStateCheckpointMultiple:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "test_ck_yield",
             "branches": [{"goals": ["test_ck_yield"]}],
             "status": "running",
@@ -757,7 +757,7 @@ class TestResumeStateYieldResumeKind:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "test_yield_rk",
             "branches": [{"goals": ["test_yield_rk"]}],
             "status": "running",
@@ -770,7 +770,7 @@ class TestResumeStateYieldResumeKind:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "test_yield_rk",
             "branches": [{"goals": ["test_yield_rk"]}],
             "status": "running",
@@ -793,7 +793,7 @@ class TestResumeHashPreservation:
         resume_hash = "test_resume_hash_value"
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "step_goal",
             "branches": [{"goals": ["step_goal"]}],
             "status": "running",
@@ -816,7 +816,7 @@ class TestResumeHashPreservation:
         ruleset_hash = hash_clauses(self.ruleset)
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "step_goal",
             "branches": [{"goals": ["step_goal"]}],
             "status": "running",
@@ -834,7 +834,7 @@ class TestResumeHashPreservation:
         from adjourn.meta import resume_state
 
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "true",
             "branches": [],
             "status": "done",
@@ -855,7 +855,7 @@ class TestResumeHashPreservation:
 def _running_state(goal: str) -> dict[str, Any]:
     """Return a fresh running state for *goal*."""
     return {
-        "version": 0,
+        "version": 1,
         "original_goal": goal,
         "branches": [{"goals": [goal]}],
         "status": "running",
@@ -1015,3 +1015,167 @@ class TestNegation:
 
         second = resume_state(first, self.ruleset)
         assert second["status"] == "done"
+
+
+class TestCut:
+    """Pins cut pruning, scoping, suspension, and packed-state behavior."""
+
+    def test_cut_prunes_clause_and_goal_alternatives(self) -> None:
+        from adjourn.meta import resume_state
+
+        ruleset = _parse_rules(
+            "rule(cut_p(X), (cut_q(X), !, cut_r(X))).\n"
+            "rule(cut_p(z), true).\n"
+            "rule(cut_q(1), true).\n"
+            "rule(cut_q(2), true).\n"
+            "rule(cut_r(_), true).\n"
+        )
+
+        first = resume_state(_running_state("cut_p(X)"), ruleset)
+        assert first["status"] == "solution"
+        assert first["bindings"] == {"X": "1"}
+        assert resume_state(first, ruleset)["status"] == "done"
+
+    def test_cut_commits_only_when_preceding_goal_succeeds(self) -> None:
+        from adjourn.meta import resume_state
+
+        ruleset = _parse_rules(
+            "rule(cut_m(X, a), (X > 0, !)).\n"
+            "rule(cut_m(_, b), true).\n"
+        )
+
+        positive = resume_state(_running_state("cut_m(1, R)"), ruleset)
+        assert positive["status"] == "solution"
+        assert positive["bindings"] == {"R": "a"}
+
+        zero = resume_state(_running_state("cut_m(0, R)"), ruleset)
+        assert zero["status"] == "solution"
+        assert zero["bindings"] == {"R": "b"}
+
+    def test_cut_in_called_predicate_preserves_caller_alternatives(self) -> None:
+        from adjourn.meta import resume_state
+
+        ruleset = _parse_rules(
+            "rule(cut_t(X), cut_c(X)).\n"
+            "rule(cut_t(9), true).\n"
+            "rule(cut_c(1), !).\n"
+            "rule(cut_c(2), true).\n"
+        )
+
+        first = resume_state(_running_state("cut_t(X)"), ruleset)
+        assert first["status"] == "solution"
+        assert first["bindings"] == {"X": "1"}
+        second = resume_state(first, ruleset)
+        assert second["status"] == "solution"
+        assert second["bindings"] == {"X": "9"}
+        assert resume_state(second, ruleset)["status"] == "done"
+
+    @pytest.mark.parametrize(
+        ("suspension", "resume_kind"),
+        [("yield(wait)", "suspended"), ("checkpoint(wait)", "checkpoint")],
+    )
+    def test_cut_after_suspension_prunes_serialized_alternatives(
+        self, suspension: str, resume_kind: str
+    ) -> None:
+        from adjourn.meta import resume_state
+
+        ruleset = _parse_rules(
+            f"rule(cut_y(X), (cut_yq(X), {suspension}, !, true)).\n"
+            "rule(cut_y(z), true).\n"
+            "rule(cut_yq(1), true).\n"
+            "rule(cut_yq(2), true).\n"
+        )
+
+        suspended = resume_state(_running_state("cut_y(X)"), ruleset)
+        assert suspended["status"] == "suspended"
+        assert suspended["resume_kind"] == resume_kind
+        assert "barrier" in suspended["branches"]
+        solution = resume_state(suspended, ruleset)
+        assert solution["status"] == "solution"
+        assert solution["bindings"] == {"X": "1"}
+        assert resume_state(solution, ruleset)["status"] == "done"
+
+    def test_cut_in_negation_is_local(self) -> None:
+        from adjourn.meta import resume_state
+
+        ruleset = _parse_rules(
+            "rule(cut_nq(1), true).\n"
+            "rule(cut_outer(local), (\\+ (cut_nq(X), !), true)).\n"
+            "rule(cut_outer(outer), true).\n"
+        )
+
+        failed_negation = resume_state(_running_state("\\+ (cut_nq(X), !)"), ruleset)
+        assert failed_negation["status"] == "done"
+        successful_negation = resume_state(
+            _running_state("\\+ (cut_nq(2), !)"), ruleset
+        )
+        assert successful_negation["status"] == "solution"
+
+        outer = resume_state(_running_state("cut_outer(Result)"), ruleset)
+        assert outer["status"] == "solution"
+        assert outer["bindings"] == {"Result": "outer"}
+
+    @pytest.mark.parametrize("goal", ["!", "(true, !)"])
+    def test_raw_top_level_cut_raises(self, goal: str) -> None:
+        from adjourn.meta import resume_state
+
+        with pytest.raises(Exception, match="cut_outside_rule_body"):
+            resume_state(_running_state(goal), _parse_rules(NONEMPTY_RULESET))
+
+    def test_barriers_round_trip_through_step_packed(self) -> None:
+        from adjourn.meta import resume_state
+
+        state = {
+            "version": 1,
+            "original_goal": "yield(wait)",
+            "branches": [
+                {"orig_goal": "yield(wait)", "goals": ["yield(wait)"]},
+                "barrier",
+                {"orig_goal": "true", "goals": ["true"]},
+            ],
+            "status": "running",
+        }
+
+        resumed = resume_state(state, _parse_rules(NONEMPTY_RULESET))
+
+        assert resumed["status"] == "suspended"
+        assert resumed["branches"] == [
+            {"orig_goal": "yield(wait)", "goals": []},
+            "barrier",
+            {"orig_goal": "true", "goals": ["true"]},
+        ]
+
+    def test_cut_free_rules_do_not_add_barriers(self) -> None:
+        from adjourn.meta import resume_state
+
+        ruleset = _parse_rules(
+            "rule(cutfree_pick(a), true).\n"
+            "rule(cutfree_pick(b), true).\n"
+        )
+
+        first = resume_state(_running_state("cutfree_pick(X)"), ruleset)
+        assert first["status"] == "solution"
+        assert all(branch != "barrier" for branch in first["branches"])
+
+    @pytest.mark.parametrize(
+        "state",
+        [
+            {
+                "version": 0,
+                "original_goal": "true",
+                "branches": [],
+                "status": "running",
+            },
+            {
+                "version": 0,
+                "original_goal": "true",
+                "branches": [],
+                "status": "done",
+            },
+        ],
+    )
+    def test_resume_rejects_non_v1_state(self, state: dict[str, Any]) -> None:
+        from adjourn.meta import resume_state
+
+        with pytest.raises(ValueError, match="schema version"):
+            resume_state(state, _parse_rules(NONEMPTY_RULESET))

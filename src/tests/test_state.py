@@ -201,11 +201,11 @@ class TestResolveRulesetHash:
 class TestInitState:
     """Tests for init_state."""
 
-    def test_returns_v0_state(self, tmp_path: Path) -> None:
+    def test_returns_v1_state(self, tmp_path: Path) -> None:
         config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
         store, config = _build_store_and_config(config_path)
         state = init_state("true", "test_rules", store, config)
-        assert state["version"] == 0
+        assert state["version"] == 1
         assert state["original_goal"] == "true"
         assert state["branches"] == [{"orig_goal": "true", "goals": ["true"]}]
         assert state["status"] == "running"
@@ -270,7 +270,7 @@ class TestSetResumeHash:
             aliases={},
         )
         store, config = _build_store_and_config(config_path)
-        state = {"version": 0, "original_goal": "true", "branches": [], "status": "running"}
+        state = {"version": 1, "original_goal": "true", "branches": [], "status": "running"}
         new_state = set_resume_hash(state, "@first", store, config)
         first_hash = FileRuleSetStore(tmp_path / "rules" / "first_rules.pl").known_rulesets()[0]
         assert new_state["resume_hash"] == first_hash
@@ -280,7 +280,7 @@ class TestSetResumeHash:
         """set_resume_hash must succeed even when state has no ruleset_hash."""
         config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
         store, config = _build_store_and_config(config_path)
-        state = {"version": 0, "original_goal": "true", "branches": [], "status": "running"}
+        state = {"version": 1, "original_goal": "true", "branches": [], "status": "running"}
         # No ruleset_hash in state
         new_state = set_resume_hash(state, "test_rules", store, config)
         assert "resume_hash" in new_state
@@ -290,7 +290,7 @@ class TestSetResumeHash:
         config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
         store, config = _build_store_and_config(config_path)
         state = {
-            "version": 0,
+            "version": 1,
             "original_goal": "true",
             "branches": [],
             "status": "running",
@@ -303,7 +303,7 @@ class TestSetResumeHash:
     def test_unknown_ruleset_raises(self, tmp_path: Path) -> None:
         config_path = _write_config(tmp_path, {"test_rules": NONEMPTY_RULESET})
         store, config = _build_store_and_config(config_path)
-        state = {"version": 0, "original_goal": "true", "branches": [], "status": "running"}
+        state = {"version": 1, "original_goal": "true", "branches": [], "status": "running"}
         with pytest.raises(ValueError, match="Unknown ruleset"):
             set_resume_hash(state, "nonexistent", store, config)
 

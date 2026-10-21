@@ -166,7 +166,7 @@ class TestRunnerStep:
         """``step`` with a stub store (empty clauses) raises
         ``ValueError``, matching the old ``drive`` behaviour."""
         runner = Runner(STORE_A)
-        state = {"ruleset_hash": "abc", "status": "running"}
+        state = {"version": 1, "ruleset_hash": "abc", "status": "running"}
         with pytest.raises(ValueError, match="empty ruleset"):
             runner.step(state)
 
@@ -178,7 +178,12 @@ class TestRunnerStep:
         clauses using the ``resume_hash`` value, not ``ruleset_hash``."""
         store = _RecordingStore("rec")
         runner = Runner(store)
-        state = {"ruleset_hash": "abc", "resume_hash": "xyz", "status": "running"}
+        state = {
+            "version": 1,
+            "ruleset_hash": "abc",
+            "resume_hash": "xyz",
+            "status": "running",
+        }
         with pytest.raises(ValueError, match="empty ruleset"):
             runner.step(state)
         assert store.called_with == "xyz"
@@ -188,7 +193,7 @@ class TestRunnerStep:
         using ``ruleset_hash``."""
         store = _RecordingStore("rec")
         runner = Runner(store)
-        state = {"ruleset_hash": "abc", "status": "running"}
+        state = {"version": 1, "ruleset_hash": "abc", "status": "running"}
         with pytest.raises(ValueError, match="empty ruleset"):
             runner.step(state)
         assert store.called_with == "abc"
@@ -198,7 +203,12 @@ class TestRunnerStep:
         to the store rather than falling back to ``ruleset_hash``."""
         store = _RecordingStore("rec")
         runner = Runner(store)
-        state = {"ruleset_hash": "abc", "resume_hash": "", "status": "running"}
+        state = {
+            "version": 1,
+            "ruleset_hash": "abc",
+            "resume_hash": "",
+            "status": "running",
+        }
         with pytest.raises(ValueError, match="empty ruleset"):
             runner.step(state)
         assert store.called_with == ""

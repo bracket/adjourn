@@ -179,7 +179,7 @@ class TestSubprocessForeignGoal:
         state = {
 
 
-            "version": 0,
+            "version": 1,
 
 
             "original_goal": "test_subprocess_call",
@@ -206,7 +206,7 @@ class TestSubprocessForeignGoal:
         state = {
 
 
-            "version": 0,
+            "version": 1,
 
 
             "original_goal": "test_subprocess_call",
@@ -233,7 +233,7 @@ class TestSubprocessForeignGoal:
         state = {
 
 
-            "version": 0,
+            "version": 1,
 
 
             "original_goal": "test_subprocess_call",
@@ -260,7 +260,7 @@ class TestSubprocessForeignGoal:
         goal = "test_subprocess_call"
         state = {
 
-            "version": 0,
+            "version": 1,
 
             "original_goal": goal,
 

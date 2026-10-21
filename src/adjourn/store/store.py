@@ -109,6 +109,8 @@ class FileRuleSetStore(RuleSetStore):
         clauses = _program_clauses(program)
         if self.prolog == "wrapped":
             clauses = [_wrap_clause(clause) for clause in clauses]
+        for clause in clauses:
+            _validate_reserved_rule_head(clause)
         if not clauses:
             raise ValueError(
                 f"Ruleset file {self.path} parsed to an empty program: "
@@ -359,6 +361,19 @@ def _wrap_clause(clause: Clause) -> Clause:
     """
     body = clause.body if clause.body is not None else Atom("true")
     return Clause(head=Compound("rule", [clause.head, body]), body=None)
+
+
+def _validate_reserved_rule_head(clause: Clause) -> None:
+    """Reject interpreted rules defining meta-interpreter-reserved predicates."""
+    if not isinstance(clause.head, Compound) or clause.head.functor != "rule":
+        return
+    if len(clause.head.args) != 2:
+        return
+    head = clause.head.args[0]
+    if isinstance(head, Compound) and head.functor == "$cut" and len(head.args) == 1:
+        raise ValueError("reserved_predicate('$cut'/1)")
+    if isinstance(head, Atom) and head.value == "!":
+        raise ValueError("reserved_predicate('!'/0)")
 
 
 def _canonical_term(

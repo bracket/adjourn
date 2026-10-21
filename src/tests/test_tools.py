@@ -20,7 +20,7 @@ def _write_session_state(sessions_dir: Path, session: str) -> Path:
     state_path.write_text(
         json.dumps(
             {
-                "version": 0,
+                "version": 1,
                 "original_goal": "true",
                 "branches": [{"orig_goal": "true", "goals": ["true"]}],
                 "status": "running",

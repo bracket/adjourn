@@ -8,13 +8,14 @@ exposed:
 - :func:`resume_state` — load a ruleset's clauses, call ``step/3`` once, return
   the updated state dict.
 
-State file schema (v0)::
+State file schema (v1)::
 
     {
-        "version": 0,
+        "version": 1,
         "original_goal": "<prolog term string>",
         "branches": [
-            { "orig_goal": "<goal string>", "goals": ["<goal string>", ...] }
+            { "orig_goal": "<goal string>", "goals": ["<goal string>", ...] },
+            "barrier"
         ],
         "status": "running | suspended | solution | done",
         "suspension": { "label": "<term string>" },  # when suspended
@@ -60,12 +61,12 @@ def resume_state(state: dict[str, Any], clauses: list[Clause]) -> dict[str, Any]
     """Load *clauses*, call ``step/3`` once, and return the updated state dict.
 
     Args:
-        state: A v0 state dictionary as produced by :func:`init_state` or a
+        state: A v1 state dictionary as produced by :func:`init_state` or a
                previous call to :func:`resume_state`.
         clauses: Parsed Prolog clauses that define the interpreted program.
 
     Returns:
-        An updated v0 state dictionary reflecting the result of one ``step/3``
+        An updated v1 state dictionary reflecting the result of one ``step/3``
         call.  The returned dict always contains the same top-level keys as the
         input (``version``, ``original_goal``, ``branches``, ``status``).
         ``ruleset_hash`` and ``resume_hash`` are preserved when present in the input state.
@@ -73,10 +74,15 @@ def resume_state(state: dict[str, Any], clauses: list[Clause]) -> dict[str, Any]
         ``bindings`` is added when ``status == "solution"``.
 
     Raises:
+        ValueError: If the state schema version is not 1.
         RuntimeError: If ``step_packed/4`` fails unexpectedly.  A goal that
                       exhausts all alternatives is reported as ``done``, not
                       an error.
     """
+    if state.get("version") != 1:
+        raise ValueError(
+            f"Unsupported state schema version: {state.get('version')!r}; expected 1"
+        )
     if state.get("status") == "done":
         # Already exhausted — return unchanged.
         return dict(state)
@@ -180,7 +186,7 @@ def _build_packed_atom(state: dict[str, Any]) -> str:
     variable names.
 
     Args:
-        state: A v0 state dictionary.
+        state: A v1 state dictionary.
 
     Returns:
         Atom string of the form
@@ -188,8 +194,11 @@ def _build_packed_atom(state: dict[str, Any]) -> str:
     """
     orig_goal = state["original_goal"]
     branches = state.get("branches", [])
-    branch_terms = []
+    branch_terms: list[str] = []
     for branch in branches:
+        if branch == "barrier":
+            branch_terms.append("barrier")
+            continue
         # Each branch carries its OWN copy of the goal ("orig_goal") whose
         # variables are shared with that branch's resolvent goals.  This is
         # what lets distinct branches bind the goal's variables to distinct
@@ -206,17 +215,18 @@ def _build_packed_atom(state: dict[str, Any]) -> str:
     return f"adjourn_meta_pack(({orig_goal}), state({branches_list}))"
 
 
-def _parse_branches_from_packed(packed_out: str) -> list[dict[str, Any]]:
+def _parse_branches_from_packed(packed_out: str) -> list[Any]:
     """Parse a packed atom's state into a list of branch dicts.
 
     Calls ``parse_packed_branches/2`` in Prolog which returns a flat list
-    of goal atom strings interleaved with ``'branch_start'`` markers.
+    of goal atom strings interleaved with ``'branch_start'`` and ``'barrier'``
+    markers.
 
     Args:
         packed_out: The packed atom string returned by ``step_packed/4``.
 
     Returns:
-        List of ``{"orig_goal": "...", "goals": [...]}`` dicts.
+        Branch dictionaries and positional ``"barrier"`` entries.
     """
     result = janus.query_once(
         "parse_packed_branches(PA, FGL)",
@@ -228,13 +238,14 @@ def _parse_branches_from_packed(packed_out: str) -> list[dict[str, Any]]:
     return _unflatten_branches(flat)
 
 
-def _unflatten_branches(flat: list[Any]) -> list[dict[str, Any]]:
-    """Convert a flat ``[branch_start, orig_goal, goal, ...]`` list to branch dicts.
+def _unflatten_branches(flat: list[Any]) -> list[Any]:
+    """Convert packed branch and barrier markers to state entries.
 
     Immediately after each ``branch_start`` marker comes that branch's own
     copy of the original goal (``orig_goal``), followed by its resolvent goals.
+    Bare ``barrier`` markers are preserved as string entries in their position.
     """
-    branches: list[dict[str, Any]] = []
+    branches: list[Any] = []
     current: dict[str, Any] | None = None
     expect_orig_goal = False
     for item in flat:
@@ -243,6 +254,12 @@ def _unflatten_branches(flat: list[Any]) -> list[dict[str, Any]]:
                 branches.append(current)
             current = {"orig_goal": None, "goals": []}
             expect_orig_goal = True
+        elif item == "barrier":
+            if current is not None:
+                branches.append(current)
+                current = None
+            branches.append("barrier")
+            expect_orig_goal = False
         elif current is not None:
             if expect_orig_goal:
                 current["orig_goal"] = str(item)
@@ -271,12 +288,12 @@ def _build_new_state(
                       bindings from ``step_packed/4`` (often empty).
 
     Returns:
-        Updated v0 state dictionary.
+        Updated v1 state dictionary.
     """
     new_branches = _parse_branches_from_packed(packed_out)
 
     new_state: dict[str, Any] = {
-        "version": old_state.get("version", 0),
+        "version": old_state["version"],
         "original_goal": old_state["original_goal"],
         "branches": new_branches,
     }

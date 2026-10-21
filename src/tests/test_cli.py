@@ -183,7 +183,7 @@ class TestInitCommand:
         assert state_file.exists()
         state = json.loads(state_file.read_text())
         assert state["status"] == "running"
-        assert state["version"] == 0
+        assert state["version"] == 1
         assert "ruleset_hash" in state
 
 
@@ -695,7 +695,7 @@ class TestResumeCommand:
         state_file.write_text(
             json.dumps(
                 {
-                    "version": 0,
+                    "version": 1,
                     "original_goal": "true",
                     "branches": [{"goals": ["true"]}],
                     "status": "running",
@@ -761,7 +761,7 @@ class TestResumeCommand:
         state_file.write_text(
             json.dumps(
                 {
-                    "version": 0,
+                    "version": 1,
                     "original_goal": "true",
                     "branches": [{"goals": ["true"]}],
                     "status": "running",
@@ -1796,6 +1796,27 @@ class TestStateShowCommand:
         assert f"resume_hash:  {'b' * 64}" in result.output
         assert "resume_kind: checkpoint" in result.output
         assert "branch: p(X)\n  wait\n  finish(X)" in result.output
+
+    def test_state_show_raw_verbose_displays_barriers(self, runner: CliRunner, tmp_path: Path) -> None:
+        state_path = self._state_file(
+            tmp_path,
+            {
+                "status": "suspended",
+                "original_goal": "p(X)",
+                "branches": [
+                    {"orig_goal": "p(X)", "goals": ["wait"]},
+                    "barrier",
+                    {"orig_goal": "p(X)", "goals": ["finish(X)"]},
+                ],
+                "suspension": {"label": "need_input"},
+                "resume_kind": "suspended",
+            },
+        )
+
+        result = runner.invoke(main, ["state", "show", str(state_path), "-v"])
+
+        assert result.exit_code == 0, result.output
+        assert "branch: p(X)\n  wait\nbarrier\nbranch: p(X)\n  finish(X)" in result.output
 
     def test_state_show_json_default_and_verbose(
         self, runner: CliRunner, tmp_path: Path
